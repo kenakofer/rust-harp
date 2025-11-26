@@ -3,7 +3,7 @@
 //! A low-latency, windowed MIDI controller application designed for Linux.
 //!
 //! ## Functionality
-//! * **Interaction**: Moving the mouse cursor across a line triggers a MIDI Note On event.
+//! * **Interaction**: Dragging the mouse cursor across a line triggers a MIDI Note On event.
 //! * **Sound**: Acts as a virtual MIDI device (ALSA sequencer) named "Rust Harp Output".
 //!     Connect this output to any DAW or synthesizer to produce sound.
 //! * **Latency**: Prioritizes low-latency input handling by processing events directly
@@ -69,6 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Application State
     let mut prev_x: Option<f64> = None;
     let mut window_width = 800.0;
+    let mut is_mouse_down = false;
 
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
@@ -95,12 +96,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                         draw_strings(&mut surface, physical_size.width, physical_size.height);
                     }
 
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        if button == winit::event::MouseButton::Left {
+                            is_mouse_down = state == winit::event::ElementState::Pressed;
+                        }
+                    }
+
                     WindowEvent::CursorMoved { position, .. } => {
                         let curr_x = position.x;
 
-                        if let Some(last_x) = prev_x {
-                            // High-priority: Check for string crossings immediately
-                            check_pluck(last_x, curr_x, window_width, &mut midi_connection);
+                        if is_mouse_down {
+                            if let Some(last_x) = prev_x {
+                                // High-priority: Check for string crossings immediately
+                                check_pluck(last_x, curr_x, window_width, &mut midi_connection);
+                            }
                         }
 
                         prev_x = Some(curr_x);
