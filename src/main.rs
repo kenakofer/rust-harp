@@ -104,19 +104,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if event.state == winit::event::ElementState::Pressed {
                             match event.logical_key.as_ref() {
                                 winit::keyboard::Key::Character("a") => {
-                                    active_chord = if active_chord.map_or(false, |c| c.name == F_MAJOR.name) {
-                                        None
-                                    } else {
-                                        Some(&F_MAJOR)
-                                    };
+                                    active_chord = Some(&F_MAJOR);
                                     window.request_redraw();
                                 }
                                 winit::keyboard::Key::Character("s") => {
-                                    active_chord = if active_chord.map_or(false, |c| c.name == C_MAJOR.name) {
-                                        None
-                                    } else {
-                                        Some(&C_MAJOR)
-                                    };
+                                    active_chord = Some(&C_MAJOR);
                                     window.request_redraw();
                                 }
                                 _ => {}
