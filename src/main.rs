@@ -54,6 +54,11 @@ const II_MINOR: Chord = Chord {
     pitch_classes: &[2, 5, 9],
 };
 
+const II7_MAJOR: Chord = Chord {
+    name: "II7",
+    pitch_classes: &[2, 6, 9, 0],
+};
+
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -99,6 +104,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut is_mouse_down = false;
     let mut active_chord: Option<&'static Chord> = None;
     let mut active_notes = HashSet::new();
+    // Key state tracking for combos
+    let mut a_down = false;
+    let mut s_down = false;
+    let mut d_down = false;
+    let mut f_down = false;
+    let mut combo_active = false;
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
@@ -121,34 +132,77 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::KeyboardInput { event, .. } => {
+                        // Update pressed/released state
                         if event.state == winit::event::ElementState::Pressed {
-                            let old_chord = active_chord;
-
-                            let new_chord = match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => Some(&IV_MAJOR),
-                                winit::keyboard::Key::Character("s") => Some(&I_MAJOR),
-                                winit::keyboard::Key::Character("d") => Some(&V_MAJOR),
-                                winit::keyboard::Key::Character("f") => Some(&II_MINOR),
-                                _ => old_chord, // No change
-                            };
-
-                            if old_chord.map(|c| c.name) != new_chord.map(|c| c.name) {
-                                // Stop any playing notes that are not in the new chord
-                                if let Some(new) = new_chord {
-                                    let notes_to_stop: Vec<u8> = active_notes
-                                        .iter()
-                                        .filter(|&&note| !new.pitch_classes.contains(&(note % 12)))
-                                        .cloned()
-                                        .collect();
-                                    
-                                    for note in notes_to_stop {
-                                        stop_note(&mut midi_connection, note, &mut active_notes);
-                                    }
-                                }
-                                
-                                active_chord = new_chord;
-                                window.request_redraw();
+                            match event.logical_key.as_ref() {
+                                winit::keyboard::Key::Character("a") => a_down = true,
+                                winit::keyboard::Key::Character("s") => s_down = true,
+                                winit::keyboard::Key::Character("d") => d_down = true,
+                                winit::keyboard::Key::Character("f") => f_down = true,
+                                _ => {}
                             }
+                        } else {
+                            match event.logical_key.as_ref() {
+                                winit::keyboard::Key::Character("a") => a_down = false,
+                                winit::keyboard::Key::Character("s") => s_down = false,
+                                winit::keyboard::Key::Character("d") => d_down = false,
+                                winit::keyboard::Key::Character("f") => f_down = false,
+                                _ => {}
+                            }
+                        }
+
+                        let old_chord = active_chord;
+                        let mut new_chord: Option<&'static Chord> = old_chord;
+
+                        // Combo logic per spec:
+                        // - When d and f are both depressed => II7
+                        // - Then, if f is lifted => go to V (if d still down)
+                        // - But, if d is lifted while f remains down => stay on II7
+                        if d_down && f_down {
+                            new_chord = Some(&II7_MAJOR);
+                            combo_active = true;
+                        } else if combo_active {
+                            if !f_down {
+                                // F lifted => go to V if D still down
+                                if d_down {
+                                    new_chord = Some(&V_MAJOR);
+                                } else {
+                                    new_chord = None;
+                                }
+                                combo_active = false;
+                            } else {
+                                // D lifted but F still held => remain on II7
+                                new_chord = Some(&II7_MAJOR);
+                            }
+                        } else {
+                            // Regular single-key mapping priority
+                            if a_down {
+                                new_chord = Some(&IV_MAJOR);
+                            } else if s_down {
+                                new_chord = Some(&I_MAJOR);
+                            } else if d_down {
+                                new_chord = Some(&V_MAJOR);
+                            } else if f_down {
+                                new_chord = Some(&II_MINOR);
+                            } else {
+                                new_chord = None;
+                            }
+                        }
+
+                        if old_chord.map(|c| c.name) != new_chord.map(|c| c.name) {
+                            // Stop any playing notes that are not in the new chord
+                            if let Some(new) = new_chord {
+                                let notes_to_stop: Vec<u8> = active_notes
+                                    .iter()
+                                    .filter(|&&note| !new.pitch_classes.contains(&(note % 12)))
+                                    .cloned()
+                                    .collect();
+                                for note in notes_to_stop {
+                                    stop_note(&mut midi_connection, note, &mut active_notes);
+                                }
+                            }
+                            active_chord = new_chord;
+                            window.request_redraw();
                         }
                     }
                     
