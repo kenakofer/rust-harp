@@ -28,6 +28,21 @@ const NUM_STRINGS: usize = 24;
 const START_NOTE: u8 = 48; 
 const VELOCITY: u8 = 100;
 
+struct Chord {
+    name: &'static str,
+    pitch_classes: &'static [u8],
+}
+
+const F_MAJOR: Chord = Chord {
+    name: "F Major",
+    pitch_classes: &[5, 9, 0], // F, A, C
+};
+
+const C_MAJOR: Chord = Chord {
+    name: "C Major",
+    pitch_classes: &[0, 4, 7], // C, E, G
+};
+
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
@@ -70,7 +85,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut prev_x: Option<f64> = None;
     let mut window_width = 800.0;
     let mut is_mouse_down = false;
-    let mut f_major_mode = false;
+    let mut active_chord: Option<&'static Chord> = None;
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
@@ -86,9 +101,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                     WindowEvent::CloseRequested => elwt.exit(),
 
                     WindowEvent::KeyboardInput { event, .. } => {
-                        if event.logical_key == "a" && event.state == winit::event::ElementState::Pressed {
-                            f_major_mode = !f_major_mode;
-                            window.request_redraw();
+                        if event.state == winit::event::ElementState::Pressed {
+                            match event.logical_key.as_ref() {
+                                winit::keyboard::Key::Character("a") => {
+                                    active_chord = if active_chord.map_or(false, |c| c.name == F_MAJOR.name) {
+                                        None
+                                    } else {
+                                        Some(&F_MAJOR)
+                                    };
+                                    window.request_redraw();
+                                }
+                                winit::keyboard::Key::Character("s") => {
+                                    active_chord = if active_chord.map_or(false, |c| c.name == C_MAJOR.name) {
+                                        None
+                                    } else {
+                                        Some(&C_MAJOR)
+                                    };
+                                    window.request_redraw();
+                                }
+                                _ => {}
+                            }
                         }
                     }
                     
@@ -100,7 +132,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         window_width = physical_size.width as f64;
                         
                         // Redraw lines on resize
-                        draw_strings(&mut surface, physical_size.width, physical_size.height, f_major_mode);
+                        draw_strings(&mut surface, physical_size.width, physical_size.height, &active_chord);
                     }
 
                     WindowEvent::MouseInput { state, button, .. } => {
@@ -115,7 +147,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if is_mouse_down {
                             if let Some(last_x) = prev_x {
                                 // High-priority: Check for string crossings immediately
-                                check_pluck(last_x, curr_x, window_width, &mut midi_connection, f_major_mode);
+                                check_pluck(last_x, curr_x, window_width, &mut midi_connection, &active_chord);
                             }
                         }
 
@@ -125,7 +157,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     WindowEvent::RedrawRequested => {
                          // Initial draw if needed, though Resized usually handles it on startup
                          let size = window.inner_size();
-                         draw_strings(&mut surface, size.width, size.height, f_major_mode);
+                         draw_strings(&mut surface, size.width, size.height, &active_chord);
                     }
                     
                     _ => {}
@@ -138,17 +170,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Returns true if a string's note is in the F-major chord (F, A, C).
-fn is_in_f_major(string_index: usize) -> bool {
-    let note = START_NOTE + string_index as u8;
-    let pitch_class = note % 12;
-    // F=5, A=9, C=0
-    matches!(pitch_class, 5 | 9 | 0)
+/// Returns true if a string's note is in the provided chord.
+fn is_note_in_chord(string_index: usize, chord: &Option<&'static Chord>) -> bool {
+    if let Some(chord) = chord {
+        let note = START_NOTE + string_index as u8;
+        let pitch_class = note % 12;
+        chord.pitch_classes.contains(&pitch_class)
+    } else {
+        // If no chord is active, all notes are "in"
+        true
+    }
 }
 
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
 /// We calculate the string positions dynamically based on window width.
-fn check_pluck(x1: f64, x2: f64, width: f64, conn: &mut Option<MidiOutputConnection>, f_major_mode: bool) {
+fn check_pluck(x1: f64, x2: f64, width: f64, conn: &mut Option<MidiOutputConnection>, active_chord: &Option<&'static Chord>) {
     if conn.is_none() { return; }
     
     // Divide width into NUM_STRINGS + 1 segments to evenly space them
@@ -165,7 +201,7 @@ fn check_pluck(x1: f64, x2: f64, width: f64, conn: &mut Option<MidiOutputConnect
         
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
-            if !f_major_mode || is_in_f_major(i) {
+            if is_note_in_chord(i, active_chord) {
                 play_note(conn, i);
             }
         }
@@ -189,7 +225,7 @@ fn play_note(conn: &mut Option<MidiOutputConnection>, string_index: usize) {
 
 /// Minimalist drawing function.
 /// Fills buffer with black and draws white vertical lines.
-fn draw_strings(surface: &mut Surface<Rc<Window>, Rc<Window>>, width: u32, height: u32, f_major_mode: bool) {
+fn draw_strings(surface: &mut Surface<Rc<Window>, Rc<Window>>, width: u32, height: u32, active_chord: &Option<&'static Chord>) {
     let mut buffer = surface.buffer_mut().unwrap();
     
     // Fill with black (0x000000)
@@ -200,7 +236,7 @@ fn draw_strings(surface: &mut Surface<Rc<Window>, Rc<Window>>, width: u32, heigh
     for i in 0..NUM_STRINGS {
         let x = (spacing * (i as f64 + 1.0)) as u32;
         
-        let color = if f_major_mode && !is_in_f_major(i) {
+        let color = if active_chord.is_some() && !is_note_in_chord(i, active_chord) {
             0x404040 // Dark Grey for inactive strings
         } else {
             0xFFFFFF // White for active strings
