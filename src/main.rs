@@ -14,6 +14,7 @@
 use midir::{MidiOutput, MidiOutputConnection};
 use midir::os::unix::VirtualOutput;
 use softbuffer::{Context, Surface};
+use std::collections::HashSet;
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -86,6 +87,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut window_width = 800.0;
     let mut is_mouse_down = false;
     let mut active_chord: Option<&'static Chord> = None;
+    let mut active_notes = HashSet::new();
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
@@ -111,8 +113,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                             };
 
                             if old_chord.map(|c| c.name) != new_chord.map(|c| c.name) {
+                                // Stop any playing notes that are not in the new chord
+                                if let Some(new) = new_chord {
+                                    let notes_to_stop: Vec<u8> = active_notes
+                                        .iter()
+                                        .filter(|&&note| !new.pitch_classes.contains(&(note % 12)))
+                                        .cloned()
+                                        .collect();
+                                    
+                                    for note in notes_to_stop {
+                                        stop_note(&mut midi_connection, note, &mut active_notes);
+                                    }
+                                }
+                                
                                 active_chord = new_chord;
-                                send_note_offs_for_old_chord(&mut midi_connection, old_chord, active_chord);
                                 window.request_redraw();
                             }
                         }
@@ -141,7 +155,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if is_mouse_down {
                             if let Some(last_x) = prev_x {
                                 // High-priority: Check for string crossings immediately
-                                check_pluck(last_x, curr_x, window_width, &mut midi_connection, &active_chord);
+                                check_pluck(last_x, curr_x, window_width, &mut midi_connection, &active_chord, &mut active_notes);
                             }
                         }
 
@@ -178,7 +192,14 @@ fn is_note_in_chord(string_index: usize, chord: &Option<&'static Chord>) -> bool
 
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
 /// We calculate the string positions dynamically based on window width.
-fn check_pluck(x1: f64, x2: f64, width: f64, conn: &mut Option<MidiOutputConnection>, active_chord: &Option<&'static Chord>) {
+fn check_pluck(
+    x1: f64,
+    x2: f64,
+    width: f64,
+    conn: &mut Option<MidiOutputConnection>,
+    active_chord: &Option<&'static Chord>,
+    active_notes: &mut HashSet<u8>,
+) {
     if conn.is_none() { return; }
     
     // Divide width into NUM_STRINGS + 1 segments to evenly space them
@@ -196,13 +217,13 @@ fn check_pluck(x1: f64, x2: f64, width: f64, conn: &mut Option<MidiOutputConnect
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             if is_note_in_chord(i, active_chord) {
-                play_note(conn, i);
+                play_note(conn, i, active_notes);
             }
         }
     }
 }
 
-fn play_note(conn: &mut Option<MidiOutputConnection>, string_index: usize) {
+fn play_note(conn: &mut Option<MidiOutputConnection>, string_index: usize, active_notes: &mut HashSet<u8>) {
     if let Some(c) = conn {
         let note = START_NOTE + string_index as u8;
         // Send Note On (Channel 0)
@@ -210,6 +231,7 @@ fn play_note(conn: &mut Option<MidiOutputConnection>, string_index: usize) {
         // note = 0-127
         // VELOCITY = 100
         let _ = c.send(&[0x90, note, VELOCITY]);
+        active_notes.insert(note);
         
         // Note: We are not sending Note Off to keep logic lock-free and minimal latency.
         // Most "pluck" synth patches decay naturally. If you need Note Off,
@@ -217,32 +239,11 @@ fn play_note(conn: &mut Option<MidiOutputConnection>, string_index: usize) {
     }
 }
 
-/// Sends MIDI Note Off messages for notes that were in the old chord but not the new one.
-fn send_note_offs_for_old_chord(
-    conn: &mut Option<MidiOutputConnection>,
-    old_chord: Option<&'static Chord>,
-    new_chord: Option<&'static Chord>,
-) {
+fn stop_note(conn: &mut Option<MidiOutputConnection>, note: u8, active_notes: &mut HashSet<u8>) {
     if let Some(c) = conn {
-        if let Some(old) = old_chord {
-            for i in 0..NUM_STRINGS {
-                let note = START_NOTE + i as u8;
-                let pitch_class = note % 12;
-                let note_was_in_old_chord = old.pitch_classes.contains(&pitch_class);
-
-                if note_was_in_old_chord {
-                    let note_is_in_new_chord = match new_chord {
-                        Some(new) => new.pitch_classes.contains(&pitch_class),
-                        None => false, // If no new chord, no notes are in it
-                    };
-
-                    if !note_is_in_new_chord {
-                        // Send Note Off (0x80) for the note
-                        let _ = c.send(&[0x80, note, 0]);
-                    }
-                }
-            }
-        }
+        // Send Note Off (Channel 0)
+        let _ = c.send(&[0x80, note, 0]);
+        active_notes.remove(&note);
     }
 }
 
