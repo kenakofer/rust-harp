@@ -102,16 +102,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     WindowEvent::KeyboardInput { event, .. } => {
                         if event.state == winit::event::ElementState::Pressed {
-                            match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => {
-                                    active_chord = Some(&F_MAJOR);
-                                    window.request_redraw();
-                                }
-                                winit::keyboard::Key::Character("s") => {
-                                    active_chord = Some(&C_MAJOR);
-                                    window.request_redraw();
-                                }
-                                _ => {}
+                            let old_chord = active_chord;
+
+                            let new_chord = match event.logical_key.as_ref() {
+                                winit::keyboard::Key::Character("a") => Some(&F_MAJOR),
+                                winit::keyboard::Key::Character("s") => Some(&C_MAJOR),
+                                _ => old_chord, // No change
+                            };
+
+                            if old_chord.map(|c| c.name) != new_chord.map(|c| c.name) {
+                                active_chord = new_chord;
+                                send_note_offs_for_old_chord(&mut midi_connection, old_chord, active_chord);
+                                window.request_redraw();
                             }
                         }
                     }
@@ -212,6 +214,35 @@ fn play_note(conn: &mut Option<MidiOutputConnection>, string_index: usize) {
         // Note: We are not sending Note Off to keep logic lock-free and minimal latency.
         // Most "pluck" synth patches decay naturally. If you need Note Off,
         // it would require a timer or thread which adds complexity/latency overhead.
+    }
+}
+
+/// Sends MIDI Note Off messages for notes that were in the old chord but not the new one.
+fn send_note_offs_for_old_chord(
+    conn: &mut Option<MidiOutputConnection>,
+    old_chord: Option<&'static Chord>,
+    new_chord: Option<&'static Chord>,
+) {
+    if let Some(c) = conn {
+        if let Some(old) = old_chord {
+            for i in 0..NUM_STRINGS {
+                let note = START_NOTE + i as u8;
+                let pitch_class = note % 12;
+                let note_was_in_old_chord = old.pitch_classes.contains(&pitch_class);
+
+                if note_was_in_old_chord {
+                    let note_is_in_new_chord = match new_chord {
+                        Some(new) => new.pitch_classes.contains(&pitch_class),
+                        None => false, // If no new chord, no notes are in it
+                    };
+
+                    if !note_is_in_new_chord {
+                        // Send Note Off (0x80) for the note
+                        let _ = c.send(&[0x80, note, 0]);
+                    }
+                }
+            }
+        }
     }
 }
 
