@@ -100,7 +100,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         match event {
             Event::WindowEvent { window_id, event } if window_id == window.id() => {
                 match event {
-                    WindowEvent::CloseRequested => elwt.exit(),
+                    WindowEvent::CloseRequested => {
+                        // Turn off all active notes before closing
+                        let notes_to_stop: Vec<u8> = active_notes.iter().cloned().collect();
+                        for note in notes_to_stop {
+                            stop_note(&mut midi_connection, note, &mut active_notes);
+                        }
+                        elwt.exit();
+                    }
 
                     WindowEvent::KeyboardInput { event, .. } => {
                         if event.state == winit::event::ElementState::Pressed {
