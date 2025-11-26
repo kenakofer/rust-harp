@@ -23,9 +23,9 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-const NUM_STRINGS: usize = 24;
-// MIDI Note 48 is C3. 24 strings = 2 octaves.
-const START_NOTE: u8 = 48; 
+const NUM_STRINGS: usize = 48;
+// MIDI Note 48 is C3. 48 strings = 4 octaves.
+const START_NOTE: u8 = 41; 
 const VELOCITY: u8 = 100;
 
 struct Chord {
