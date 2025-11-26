@@ -70,11 +70,44 @@ const I7_MAJOR: Chord = Chord {
     pitch_classes: &[0, 4, 7, 10],
 };
 
+const VI_MINOR: Chord = Chord {
+    name: "vi",
+    pitch_classes: &[9, 0, 4],
+};
+
+const VI7_MAJOR: Chord = Chord {
+    name: "VI7",
+    pitch_classes: &[9, 1, 4, 7],
+};
+
+const III_MINOR: Chord = Chord {
+    name: "iii",
+    pitch_classes: &[4, 7, 11],
+};
+
+const III7_MAJOR: Chord = Chord {
+    name: "III7",
+    pitch_classes: &[4, 8, 11, 2],
+};
+
+const VII_DIM: Chord = Chord {
+    name: "vii",
+    pitch_classes: &[11, 2, 5],
+};
+
+const VII7_MAJOR: Chord = Chord {
+    name: "VII7",
+    pitch_classes: &[11, 3, 6, 9],
+};
+
 // Named button identifiers for key tracking
 const IV_BUTTON: &str = "IV_BUTTON";
 const I_BUTTON: &str = "I_BUTTON";
 const V_BUTTON: &str = "V_BUTTON";
 const II_BUTTON: &str = "II_BUTTON";
+const VI_BUTTON: &str = "VI_BUTTON";
+const III_BUTTON: &str = "III_BUTTON";
+const VII_BUTTON: &str = "VII_BUTTON";
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -152,6 +185,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 winit::keyboard::Key::Character("s") => { keys_down.insert(I_BUTTON); },
                                 winit::keyboard::Key::Character("d") => { keys_down.insert(V_BUTTON); },
                                 winit::keyboard::Key::Character("f") => { keys_down.insert(II_BUTTON); },
+                                winit::keyboard::Key::Character("z") => { keys_down.insert(VI_BUTTON); },
+                                winit::keyboard::Key::Character("x") => { keys_down.insert(III_BUTTON); },
+                                winit::keyboard::Key::Character("c") => { keys_down.insert(VII_BUTTON); },
                                 _ => {}
                             }
                         } else {
@@ -160,6 +196,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 winit::keyboard::Key::Character("s") => { keys_down.remove(I_BUTTON); },
                                 winit::keyboard::Key::Character("d") => { keys_down.remove(V_BUTTON); },
                                 winit::keyboard::Key::Character("f") => { keys_down.remove(II_BUTTON); },
+                                winit::keyboard::Key::Character("z") => { keys_down.remove(VI_BUTTON); },
+                                winit::keyboard::Key::Character("x") => { keys_down.remove(III_BUTTON); },
+                                winit::keyboard::Key::Character("c") => { keys_down.remove(VII_BUTTON); },
                                 _ => {}
                             }
                         }
@@ -247,6 +286,15 @@ fn is_note_in_chord(string_index: usize, chord: &Option<&'static Chord>) -> bool
 // Decide chord from current keys_down and previous chord state.
 fn decide_chord(old_chord: Option<&'static Chord>, keys_down: &HashSet<&'static str>, prev_keys_count: usize) -> Option<&'static Chord> {
     // Pair combos first (higher precedence)
+    if keys_down.contains(VI_BUTTON) && keys_down.contains(II_BUTTON) {
+        return Some(&VI7_MAJOR);
+    }
+    if keys_down.contains(III_BUTTON) && keys_down.contains(VI_BUTTON) {
+        return Some(&III7_MAJOR);
+    }
+    if keys_down.contains(VII_BUTTON) && keys_down.contains(III_BUTTON) {
+        return Some(&VII7_MAJOR);
+    }
     if keys_down.contains(IV_BUTTON) && keys_down.contains(I_BUTTON) {
         return Some(&I7_MAJOR);
     }
@@ -285,6 +333,17 @@ fn decide_chord(old_chord: Option<&'static Chord>, keys_down: &HashSet<&'static 
         } else {
             return Some(&II_MINOR);
         }
+    }
+
+    // Additional single-key minors/diminished
+    if keys_down.contains(VI_BUTTON) {
+        return Some(&VI_MINOR);
+    }
+    if keys_down.contains(III_BUTTON) {
+        return Some(&III_MINOR);
+    }
+    if keys_down.contains(VII_BUTTON) {
+        return Some(&VII_DIM);
     }
 
     // No keys down: preserve chord if we just went from 1 -> 0
