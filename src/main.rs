@@ -335,15 +335,27 @@ fn decide_chord(old_chord: Option<&'static Chord>, keys_down: &HashSet<&'static 
         }
     }
 
-    // Additional single-key minors/diminished
+    // Additional single-key minors/diminished (preserve 7ths)
     if keys_down.contains(VI_BUTTON) {
-        return Some(&VI_MINOR);
+        if old_chord == Some(&VI7_MAJOR) {
+            return old_chord;
+        } else {
+            return Some(&VI_MINOR);
+        }
     }
     if keys_down.contains(III_BUTTON) {
-        return Some(&III_MINOR);
+        if old_chord == Some(&III7_MAJOR) {
+            return old_chord;
+        } else {
+            return Some(&III_MINOR);
+        }
     }
     if keys_down.contains(VII_BUTTON) {
-        return Some(&VII_DIM);
+        if old_chord == Some(&VII7_MAJOR) {
+            return old_chord;
+        } else {
+            return Some(&VII_DIM);
+        }
     }
 
     // No keys down: preserve chord if we just went from 1 -> 0
