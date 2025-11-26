@@ -1,4 +1,5 @@
 use midir::{MidiOutput, MidiOutputConnection};
+use midir::os::unix::VirtualOutput;
 use softbuffer::{Context, Surface};
 use std::error::Error;
 use std::num::NonZeroU32;
@@ -6,7 +7,6 @@ use std::rc::Rc;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    keyboard::NamedKey,
     window::{Window, WindowBuilder},
 };
 
