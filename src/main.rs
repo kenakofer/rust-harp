@@ -1,3 +1,16 @@
+//! # Rust MIDI Harp
+//!
+//! A low-latency, windowed MIDI controller application designed for Linux.
+//!
+//! ## Functionality
+//! * **Interaction**: Moving the mouse cursor across a line triggers a MIDI Note On event.
+//! * **Sound**: Acts as a virtual MIDI device (ALSA sequencer) named "Rust Harp Output".
+//!     Connect this output to any DAW or synthesizer to produce sound.
+//! * **Latency**: Prioritizes low-latency input handling by processing events directly
+//!     in the `winit` event loop without waiting for frame redraws.
+//! * **Visuals**: Super low priority. Displays a window with evenly spaced vertical lines
+//!     representing strings.
+
 use midir::{MidiOutput, MidiOutputConnection};
 use midir::os::unix::VirtualOutput;
 use softbuffer::{Context, Surface};
@@ -24,7 +37,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut conn_out: Option<MidiOutputConnection> = None;
 
     // Attempt to create a virtual port. 
-    // If that fails (e.g. not on Linux/ALSA), we prompt to connect to a hardware port.
     match midi_out.create_virtual("Rust Harp Output") {
         Ok(conn) => {
             println!("Created virtual MIDI port: 'Rust Harp Output'");
@@ -57,7 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Application State
     let mut prev_x: Option<f64> = None;
     let mut window_width = 800.0;
-    
+
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
