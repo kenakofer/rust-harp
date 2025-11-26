@@ -29,6 +29,7 @@ const NUM_STRINGS: usize = 48;
 const START_NOTE: u8 = 41; 
 const VELOCITY: u8 = 100;
 
+#[derive(PartialEq)]
 struct Chord {
     name: &'static str,
     pitch_classes: &'static [u8],
@@ -59,6 +60,11 @@ const II7_MAJOR: Chord = Chord {
     pitch_classes: &[2, 6, 9, 0],
 };
 
+// Named button identifiers for key tracking
+const IV_BUTTON: &str = "IV_BUTTON";
+const I_BUTTON: &str = "I_BUTTON";
+const V_BUTTON: &str = "V_BUTTON";
+const II_BUTTON: &str = "II_BUTTON";
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -105,13 +111,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut active_chord: Option<&'static Chord> = None;
     let mut active_notes = HashSet::new();
     // Key tracking using named buttons
-    const IV_BUTTON: &str = "IV_BUTTON";
-    const I_BUTTON: &str = "I_BUTTON";
-    const V_BUTTON: &str = "V_BUTTON";
-    const II_BUTTON: &str = "II_BUTTON";
     let mut keys_down: HashSet<&'static str> = HashSet::new();
     let mut prev_keys_count: usize = 0;
-    let mut combo_active: bool = false;
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
@@ -154,45 +155,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         let old_chord = active_chord;
-                        let mut new_chord: Option<&'static Chord> = old_chord;
-
-                        // Combo logic using keys_down set
-                        if keys_down.contains(V_BUTTON) && keys_down.contains(II_BUTTON) {
-                            new_chord = Some(&II7_MAJOR);
-                            combo_active = true;
-                        } else if combo_active {
-                            // Combo was active
-                            if !keys_down.contains(II_BUTTON) {
-                                // F (II) lifted => go to V if still down
-                                if keys_down.contains(V_BUTTON) {
-                                    new_chord = Some(&V_MAJOR);
-                                } else {
-                                    new_chord = None;
-                                }
-                                combo_active = false;
-                            } else {
-                                // D lifted but F remains down => stay on II7
-                                new_chord = Some(&II7_MAJOR);
-                            }
-                        } else {
-                            // Single-key priority: IV > I > V > ii
-                            if keys_down.contains(IV_BUTTON) {
-                                new_chord = Some(&IV_MAJOR);
-                            } else if keys_down.contains(I_BUTTON) {
-                                new_chord = Some(&I_MAJOR);
-                            } else if keys_down.contains(V_BUTTON) {
-                                new_chord = Some(&V_MAJOR);
-                            } else if keys_down.contains(II_BUTTON) {
-                                new_chord = Some(&II_MINOR);
-                            } else {
-                                // Special rule: if going from 1 -> 0 keys, keep old chord
-                                if prev_keys_count == 1 && keys_down.len() == 0 {
-                                    new_chord = old_chord;
-                                } else {
-                                    new_chord = None;
-                                }
-                            }
-                        }
+                        let new_chord = decide_chord(old_chord, &keys_down, prev_keys_count);
 
                         if old_chord.map(|c| c.name) != new_chord.map(|c| c.name) {
                             // Stop any playing notes that are not in the new chord
@@ -269,6 +232,39 @@ fn is_note_in_chord(string_index: usize, chord: &Option<&'static Chord>) -> bool
         // If no chord is active, all notes are "in"
         true
     }
+}
+
+// Decide chord from current keys_down and previous chord state.
+fn decide_chord(old_chord: Option<&'static Chord>, keys_down: &HashSet<&'static str>, prev_keys_count: usize) -> Option<&'static Chord> {
+    // Combo: V + II => II7
+    if keys_down.contains(V_BUTTON) && keys_down.contains(II_BUTTON) {
+        return Some(&II7_MAJOR);
+    }
+
+    // Priority mapping: IV > I > V > ii
+    if keys_down.contains(IV_BUTTON) {
+        return Some(&IV_MAJOR);
+    }
+    if keys_down.contains(I_BUTTON) {
+        return Some(&I_MAJOR);
+    }
+    if keys_down.contains(V_BUTTON) {
+        return Some(&V_MAJOR);
+    }
+    if keys_down.contains(II_BUTTON) {
+        if old_chord == Some(&II7_MAJOR) {
+            return old_chord;
+        } else {
+            return Some(&II_MINOR);
+        }
+    }
+
+    // No keys down: preserve chord if we just went from 1 -> 0
+    if keys_down.len() == 0 && prev_keys_count == 1 {
+        return old_chord;
+    }
+
+    None
 }
 
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
