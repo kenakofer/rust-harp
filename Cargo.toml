@@ -1,0 +1,15 @@
+[package]
+name = "rust-harp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Winit 0.29 is a stable choice for window creation
+winit = "0.29"
+# Softbuffer allows writing to the window buffer without heavy GPU overhead
+softbuffer = "0.4"
+# Midir for cross-platform MIDI handling. On Linux, this uses ALSA.
+midir = "0.9"
+# Log is used to output errors without crashing
+log = "0.4"
+env_logger = "0.11"
