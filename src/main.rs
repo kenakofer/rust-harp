@@ -50,6 +50,11 @@ const V_MAJOR: Chord = Chord {
     pitch_classes: &[7, 11, 2],
 };
 
+const V7_MAJOR: Chord = Chord {
+    name: "V7",
+    pitch_classes: &[7, 11, 2, 5],
+};
+
 const II_MINOR: Chord = Chord {
     name: "ii",
     pitch_classes: &[2, 5, 9],
@@ -58,6 +63,11 @@ const II_MINOR: Chord = Chord {
 const II7_MAJOR: Chord = Chord {
     name: "II7",
     pitch_classes: &[2, 6, 9, 0],
+};
+
+const I7_MAJOR: Chord = Chord {
+    name: "I7",
+    pitch_classes: &[0, 4, 7, 10],
 };
 
 // Named button identifiers for key tracking
@@ -236,7 +246,14 @@ fn is_note_in_chord(string_index: usize, chord: &Option<&'static Chord>) -> bool
 
 // Decide chord from current keys_down and previous chord state.
 fn decide_chord(old_chord: Option<&'static Chord>, keys_down: &HashSet<&'static str>, prev_keys_count: usize) -> Option<&'static Chord> {
-    // Combo: V + II => II7
+    // Pair combos first (higher precedence)
+    if keys_down.contains(IV_BUTTON) && keys_down.contains(I_BUTTON) {
+        return Some(&I7_MAJOR);
+    }
+    if keys_down.contains(I_BUTTON) && keys_down.contains(V_BUTTON) {
+        return Some(&V7_MAJOR);
+    }
+    // Existing combo: V + II => II7
     if keys_down.contains(V_BUTTON) && keys_down.contains(II_BUTTON) {
         return Some(&II7_MAJOR);
     }
@@ -246,12 +263,23 @@ fn decide_chord(old_chord: Option<&'static Chord>, keys_down: &HashSet<&'static 
         return Some(&IV_MAJOR);
     }
     if keys_down.contains(I_BUTTON) {
-        return Some(&I_MAJOR);
+        // Preserve I7 if it was previously active
+        if old_chord == Some(&I7_MAJOR) {
+            return old_chord;
+        } else {
+            return Some(&I_MAJOR);
+        }
     }
     if keys_down.contains(V_BUTTON) {
-        return Some(&V_MAJOR);
+        // Preserve V7 if it was previously active
+        if old_chord == Some(&V7_MAJOR) {
+            return old_chord;
+        } else {
+            return Some(&V_MAJOR);
+        }
     }
     if keys_down.contains(II_BUTTON) {
+        // Preserve II7 if that was the previous chord
         if old_chord == Some(&II7_MAJOR) {
             return old_chord;
         } else {
