@@ -34,15 +34,26 @@ struct Chord {
     pitch_classes: &'static [u8],
 }
 
-const F_MAJOR: Chord = Chord {
-    name: "F Major",
-    pitch_classes: &[5, 9, 0], // F, A, C
+const IV_MAJOR: Chord = Chord {
+    name: "IV",
+    pitch_classes: &[5, 9, 0],
 };
 
-const C_MAJOR: Chord = Chord {
-    name: "C Major",
-    pitch_classes: &[0, 4, 7], // C, E, G
+const I_MAJOR: Chord = Chord {
+    name: "I",
+    pitch_classes: &[0, 4, 7],
 };
+
+const V_MAJOR: Chord = Chord {
+    name: "V",
+    pitch_classes: &[7, 11, 2],
+};
+
+const II_MINOR: Chord = Chord {
+    name: "ii",
+    pitch_classes: &[2, 5, 9],
+};
+
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -114,8 +125,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let old_chord = active_chord;
 
                             let new_chord = match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => Some(&F_MAJOR),
-                                winit::keyboard::Key::Character("s") => Some(&C_MAJOR),
+                                winit::keyboard::Key::Character("a") => Some(&IV_MAJOR),
+                                winit::keyboard::Key::Character("s") => Some(&I_MAJOR),
+                                winit::keyboard::Key::Character("d") => Some(&V_MAJOR),
+                                winit::keyboard::Key::Character("f") => Some(&II_MINOR),
                                 _ => old_chord, // No change
                             };
 
