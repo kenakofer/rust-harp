@@ -34,80 +34,77 @@ struct Chord {
     name: &'static str,
     pitch_classes: &'static [u8],
 }
-const VIIb_MAJOR: Chord = Chord {
-    name: "VIIb",
-    pitch_classes: &[10, 2, 5],
-};
 
-const IV_MAJOR: Chord = Chord {
-    name: "IV",
-    pitch_classes: &[5, 9, 0],
-};
+#[derive(Clone)]
+struct BuiltChord {
+    name: &'static str,
+    root: u8,
+    relative_mask: u16, // bits 0..11
+}
 
-const I_MAJOR: Chord = Chord {
-    name: "I",
-    pitch_classes: &[0, 4, 7],
-};
+fn build_from_static(sc: &Chord) -> BuiltChord {
+    let root = sc.pitch_classes[0];
+    let mut mask: u16 = 0;
+    for &n in sc.pitch_classes.iter() {
+        let rel = ((12 + n as i32 - root as i32) % 12) as usize;
+        mask |= 1u16 << rel;
+    }
+    BuiltChord { name: sc.name, root, relative_mask: mask }
+}
 
-const V_MAJOR: Chord = Chord {
-    name: "V",
-    pitch_classes: &[7, 11, 2],
-};
+fn build_with(root: u8, rels: &[u8], name: &'static str) -> BuiltChord {
+    let mut mask: u16 = 0;
+    for &r in rels.iter() {
+        let rel = (r as usize) % 12;
+        mask |= 1u16 << rel;
+    }
+    BuiltChord { name, root, relative_mask: mask }
+}
 
-const V7_MAJOR: Chord = Chord {
-    name: "V7",
-    pitch_classes: &[7, 11, 2, 5],
-};
+// Runtime root constants and builders
+const ROOT_VIIb: u8 = 10;
+const ROOT_IV: u8 = 5;
+const ROOT_I: u8 = 0;
+const ROOT_V: u8 = 7;
+const ROOT_II: u8 = 2;
+const ROOT_VI: u8 = 9;
+const ROOT_III: u8 = 4;
+const ROOT_VII: u8 = 11;
 
-const II_MINOR: Chord = Chord {
-    name: "ii",
-    pitch_classes: &[2, 5, 9],
-};
+fn major_triad(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,4,7], name) }
+fn minor_triad(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,3,7], name) }
+fn major_minor_7(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,4,7,10], name) }
+fn diminished_tri(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,3,6], name) }
 
-const II7_MAJOR: Chord = Chord {
-    name: "II7",
-    pitch_classes: &[2, 6, 9, 0],
-};
+// Removed static chords; now built at runtime
 
-const IV7_MAJOR: Chord = Chord {
-    name: "IV7",
-    pitch_classes: &[5, 9, 0, 3],
-};
+// Removed static IV_MAJOR; runtime-built from root
 
-const I7_MAJOR: Chord = Chord {
-    name: "I7",
-    pitch_classes: &[0, 4, 7, 10],
-};
+// Removed static I_MAJOR; runtime-built from root
 
-const VI_MINOR: Chord = Chord {
-    name: "vi",
-    pitch_classes: &[9, 0, 4],
-};
+// Removed static V_MAJOR; runtime-built from root
 
-const VI7_MAJOR: Chord = Chord {
-    name: "VI7",
-    pitch_classes: &[9, 1, 4, 7],
-};
+// Removed static V7_MAJOR; runtime-built from root
 
-const III_MINOR: Chord = Chord {
-    name: "iii",
-    pitch_classes: &[4, 7, 11],
-};
+// Removed static II_MINOR; runtime-built from root
 
-const III7_MAJOR: Chord = Chord {
-    name: "III7",
-    pitch_classes: &[4, 8, 11, 2],
-};
+// Removed static II7_MAJOR; runtime-built from root
 
-const VII_DIM: Chord = Chord {
-    name: "vii",
-    pitch_classes: &[11, 2, 5],
-};
+// Removed static IV7_MAJOR; runtime-built from root
 
-const VII7_MAJOR: Chord = Chord {
-    name: "VII7",
-    pitch_classes: &[11, 3, 6, 9],
-};
+// Removed static I7_MAJOR; runtime-built from root
+
+// Removed static VI_MINOR; runtime-built from root
+
+// Removed static VI7_MAJOR; runtime-built from root
+
+// Removed static III_MINOR; runtime-built from root
+
+// Removed static III7_MAJOR; runtime-built from root
+
+// Removed static VII_DIM; runtime-built from root
+
+// Removed static VII7_MAJOR; runtime-built from root
 
 // Named button identifiers for key tracking
 const VIIb_BUTTON: &str = "VIIb_BUTTON";
@@ -161,7 +158,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut prev_x: Option<f64> = None;
     let mut window_width = 800.0;
     let mut is_mouse_down = false;
-    let mut active_chord: Option<&'static Chord> = None;
+    let mut active_chord: Option<BuiltChord> = None;
     let mut active_notes = HashSet::new();
     // Key tracking using named buttons
     let mut keys_down: HashSet<&'static str> = HashSet::new();
@@ -215,15 +212,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
 
-                        let old_chord = active_chord;
+                        let old_chord = active_chord.as_ref();
                         let new_chord = decide_chord(old_chord, &keys_down, prev_keys_count);
 
-                        if old_chord.map(|c| c.name) != new_chord.map(|c| c.name) {
+                        if old_chord.map(|c| c.name) != new_chord.as_ref().map(|c| c.name) {
                             // Stop any playing notes that are not in the new chord
-                            if let Some(new) = new_chord {
+                            if let Some(new) = new_chord.as_ref() {
                                 let notes_to_stop: Vec<u8> = active_notes
                                     .iter()
-                                    .filter(|&&note| !new.pitch_classes.contains(&(note % 12)))
+                                    .filter(|&&note| {
+                                        let pc = note % 12;
+                                        let rel = ((12 + pc as i32 - new.root as i32) % 12) as usize;
+                                        (new.relative_mask & (1u16 << rel)) == 0
+                                    })
                                     .cloned()
                                     .collect();
                                 for note in notes_to_stop {
@@ -284,11 +285,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 /// Returns true if a string's note is in the provided chord.
-fn is_note_in_chord(string_index: usize, chord: &Option<&'static Chord>) -> bool {
+fn is_note_in_chord(string_index: usize, chord: &Option<BuiltChord>) -> bool {
     if let Some(chord) = chord {
         let note = START_NOTE + string_index as u8;
         let pitch_class = note % 12;
-        chord.pitch_classes.contains(&pitch_class)
+        let rel = ((12 + pitch_class as i32 - chord.root as i32) % 12) as usize;
+        (chord.relative_mask & (1u16 << rel)) != 0
     } else {
         // If no chord is active, all notes are "in"
         true
@@ -296,92 +298,72 @@ fn is_note_in_chord(string_index: usize, chord: &Option<&'static Chord>) -> bool
 }
 
 // Decide chord from current keys_down and previous chord state.
-fn decide_chord(old_chord: Option<&'static Chord>, keys_down: &HashSet<&'static str>, prev_keys_count: usize) -> Option<&'static Chord> {
+fn decide_chord(old_chord: Option<&BuiltChord>, keys_down: &HashSet<&'static str>, prev_keys_count: usize) -> Option<BuiltChord> {
     // Pair combos first (higher precedence)
     if keys_down.contains(VI_BUTTON) && keys_down.contains(II_BUTTON) {
-        return Some(&VI7_MAJOR);
+        return Some(major_minor_7(ROOT_VI, "VI7"));
     }
     if keys_down.contains(III_BUTTON) && keys_down.contains(VI_BUTTON) {
-        return Some(&III7_MAJOR);
+        return Some(major_minor_7(ROOT_III, "III7"));
     }
     if keys_down.contains(VII_BUTTON) && keys_down.contains(III_BUTTON) {
-        return Some(&VII7_MAJOR);
+        return Some(major_minor_7(ROOT_VII, "VII7"));
     }
     if keys_down.contains(IV_BUTTON) && keys_down.contains(I_BUTTON) {
-        return Some(&I7_MAJOR);
+        return Some(major_minor_7(ROOT_I, "I7"));
     }
     if keys_down.contains(IV_BUTTON) && keys_down.contains(VIIb_BUTTON) {
-        return Some(&IV7_MAJOR);
+        return Some(major_minor_7(ROOT_IV, "IV7"));
     }
     if keys_down.contains(I_BUTTON) && keys_down.contains(V_BUTTON) {
-        return Some(&V7_MAJOR);
+        return Some(major_minor_7(ROOT_V, "V7"));
     }
     // Existing combo: V + II => II7
     if keys_down.contains(V_BUTTON) && keys_down.contains(II_BUTTON) {
-        return Some(&II7_MAJOR);
+        return Some(major_minor_7(ROOT_II, "II7"));
     }
 
     if keys_down.contains(VIIb_BUTTON) {
-        return Some(&VIIb_MAJOR);
+        return Some(diminished_tri(ROOT_VIIb, "VIIb"));
     }
     if keys_down.contains(IV_BUTTON) {
-        if old_chord == Some(&IV7_MAJOR) {
-            return old_chord;
-        } else {
-            return Some(&IV_MAJOR);
-        }
+        if let Some(old) = old_chord { if old.name == "IV7" { return Some(old.clone()); } }
+        return Some(major_triad(ROOT_IV, "IV"));
     }
     if keys_down.contains(I_BUTTON) {
         // Preserve I7 if it was previously active
-        if old_chord == Some(&I7_MAJOR) {
-            return old_chord;
-        } else {
-            return Some(&I_MAJOR);
-        }
+        if let Some(old) = old_chord { if old.name == "I7" { return Some(old.clone()); } }
+        return Some(major_triad(ROOT_I, "I"));
     }
     if keys_down.contains(V_BUTTON) {
         // Preserve V7 if it was previously active
-        if old_chord == Some(&V7_MAJOR) {
-            return old_chord;
-        } else {
-            return Some(&V_MAJOR);
-        }
+        if let Some(old) = old_chord { if old.name == "V7" { return Some(old.clone()); } }
+        return Some(major_triad(ROOT_V, "V"));
     }
     if keys_down.contains(II_BUTTON) {
         // Preserve II7 if that was the previous chord
-        if old_chord == Some(&II7_MAJOR) {
-            return old_chord;
-        } else {
-            return Some(&II_MINOR);
-        }
+        if let Some(old) = old_chord { if old.name == "II7" { return Some(old.clone()); } }
+        return Some(minor_triad(ROOT_II, "ii"));
     }
 
     // Additional single-key minors/diminished (preserve 7ths)
     if keys_down.contains(VI_BUTTON) {
-        if old_chord == Some(&VI7_MAJOR) {
-            return old_chord;
-        } else {
-            return Some(&VI_MINOR);
-        }
+        if let Some(old) = old_chord { if old.name == "VI7" { return Some(old.clone()); } }
+        return Some(minor_triad(ROOT_VI, "vi"));
     }
     if keys_down.contains(III_BUTTON) {
-        if old_chord == Some(&III7_MAJOR) {
-            return old_chord;
-        } else {
-            return Some(&III_MINOR);
-        }
+        if let Some(old) = old_chord { if old.name == "III7" { return Some(old.clone()); } }
+        return Some(minor_triad(ROOT_III, "iii"));
     }
     if keys_down.contains(VII_BUTTON) {
-        if old_chord == Some(&VII7_MAJOR) {
-            return old_chord;
-        } else {
-            return Some(&VII_DIM);
-        }
+        if let Some(old) = old_chord { if old.name == "VII7" { return Some(old.clone()); } }
+        return Some(diminished_tri(ROOT_VII, "vii"));
     }
 
     // No keys down: preserve chord if we just went from 1 -> 0
     if keys_down.len() == 0 && prev_keys_count == 1 {
-        return old_chord;
+        if let Some(old) = old_chord { return Some(old.clone()); }
+        return None;
     }
 
     None
@@ -394,7 +376,7 @@ fn check_pluck(
     x2: f64,
     width: f64,
     conn: &mut Option<MidiOutputConnection>,
-    active_chord: &Option<&'static Chord>,
+    active_chord: &Option<BuiltChord>,
     active_notes: &mut HashSet<u8>,
 ) {
     if conn.is_none() { return; }
@@ -446,7 +428,7 @@ fn stop_note(conn: &mut Option<MidiOutputConnection>, note: u8, active_notes: &m
 
 /// Minimalist drawing function.
 /// Fills buffer with black and draws white vertical lines.
-fn draw_strings(surface: &mut Surface<Rc<Window>, Rc<Window>>, width: u32, height: u32, active_chord: &Option<&'static Chord>) {
+fn draw_strings(surface: &mut Surface<Rc<Window>, Rc<Window>>, width: u32, height: u32, active_chord: &Option<BuiltChord>) {
     let mut buffer = surface.buffer_mut().unwrap();
     
     // Fill with black (0x000000)
