@@ -11,8 +11,8 @@
 //! * **Visuals**: Super low priority. Displays a window with evenly spaced vertical lines
 //!     representing strings.
 
-use midir::{MidiOutput, MidiOutputConnection};
 use midir::os::unix::VirtualOutput;
+use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
 use std::collections::HashSet;
 use std::error::Error;
@@ -26,7 +26,7 @@ use winit::{
 
 const NUM_STRINGS: usize = 48;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
-const START_NOTE: u8 = 41; 
+const START_NOTE: u8 = 41;
 const VELOCITY: u8 = 100;
 
 #[derive(Clone)]
@@ -42,7 +42,11 @@ fn build_with(root: u8, rels: &[u8], name: &'static str) -> BuiltChord {
         let rel = (r as usize) % 12;
         mask |= 1u16 << rel;
     }
-    BuiltChord { name, root, relative_mask: mask }
+    BuiltChord {
+        name,
+        root,
+        relative_mask: mask,
+    }
 }
 
 // Runtime root constants and builders
@@ -55,10 +59,18 @@ const ROOT_VI: u8 = 9;
 const ROOT_III: u8 = 4;
 const ROOT_VII: u8 = 11;
 
-fn major_tri(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,4,7], name) }
-fn minor_tri(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,3,7], name) }
-fn major_minor_7(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,4,7,10], name) }
-fn diminished_tri(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,3,6], name) }
+fn major_tri(root: u8, name: &'static str) -> BuiltChord {
+    build_with(root, &[0, 4, 7], name)
+}
+fn minor_tri(root: u8, name: &'static str) -> BuiltChord {
+    build_with(root, &[0, 3, 7], name)
+}
+fn major_minor_7(root: u8, name: &'static str) -> BuiltChord {
+    build_with(root, &[0, 4, 7, 10], name)
+}
+fn diminished_tri(root: u8, name: &'static str) -> BuiltChord {
+    build_with(root, &[0, 3, 6], name)
+}
 
 // Named button identifiers for key tracking
 const VIIB_BUTTON: &str = "VIIB_BUTTON";
@@ -78,7 +90,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let midi_out = MidiOutput::new("Rust Harp Client")?;
     let mut conn_out: Option<MidiOutputConnection> = None;
 
-    // Attempt to create a virtual port. 
+    // Attempt to create a virtual port.
     match midi_out.create_virtual("Rust Harp Output") {
         Ok(conn) => {
             println!("Created virtual MIDI port: 'Rust Harp Output'");
@@ -89,7 +101,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             let midi_out = MidiOutput::new("Rust Harp Client")?;
             let ports = midi_out.ports();
             if let Some(port) = ports.first() {
-                println!("Virtual port failed. Connecting to first available hardware port: {}", midi_out.port_name(port)?);
+                println!(
+                    "Virtual port failed. Connecting to first available hardware port: {}",
+                    midi_out.port_name(port)?
+                );
                 conn_out = Some(midi_out.connect(port, "Rust Harp Connection")?);
             } else {
                 eprintln!("Warning: No MIDI ports found. Application will run visually but emit no sound.");
@@ -99,10 +114,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // 2. Setup Window
     let event_loop = EventLoop::new()?;
-    let window = Rc::new(WindowBuilder::new()
-        .with_title("Rust MIDI Harp")
-        .with_inner_size(winit::dpi::LogicalSize::new(800.0, 600.0))
-        .build(&event_loop)?);
+    let window = Rc::new(
+        WindowBuilder::new()
+            .with_title("Rust MIDI Harp")
+            .with_inner_size(winit::dpi::LogicalSize::new(800.0, 600.0))
+            .build(&event_loop)?,
+    );
 
     // 3. Setup Graphics Context
     let context = Context::new(window.clone()).expect("Failed to create graphics context");
@@ -139,34 +156,77 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::KeyboardInput { event, .. } => {
-                        // Map key presses/releases into named buttons set
+                        let mut old_chord = active_chord.as_ref();
+
+                        // Map key presses/releases into named buttons set. We don't want to
+                        // remember old_chord if there's a new chord button pressed. We only want
+                        // to remember it for releases and mod presses.
                         if event.state == winit::event::ElementState::Pressed {
                             match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => { keys_down.insert(VIIB_BUTTON); },
-                                winit::keyboard::Key::Character("s") => { keys_down.insert(IV_BUTTON); },
-                                winit::keyboard::Key::Character("d") => { keys_down.insert(I_BUTTON); },
-                                winit::keyboard::Key::Character("f") => { keys_down.insert(V_BUTTON); },
-                                winit::keyboard::Key::Character("z") => { keys_down.insert(II_BUTTON); },
-                                winit::keyboard::Key::Character("x") => { keys_down.insert(VI_BUTTON); },
-                                winit::keyboard::Key::Character("c") => { keys_down.insert(III_BUTTON); },
-                                winit::keyboard::Key::Character("v") => { keys_down.insert(VII_BUTTON); },
+                                winit::keyboard::Key::Character("a") => {
+                                    keys_down.insert(VIIB_BUTTON);
+                                    old_chord = None
+                                }
+                                winit::keyboard::Key::Character("s") => {
+                                    keys_down.insert(IV_BUTTON);
+                                    old_chord = None
+                                }
+                                winit::keyboard::Key::Character("d") => {
+                                    keys_down.insert(I_BUTTON);
+                                    old_chord = None
+                                }
+                                winit::keyboard::Key::Character("f") => {
+                                    keys_down.insert(V_BUTTON);
+                                    old_chord = None
+                                }
+                                winit::keyboard::Key::Character("z") => {
+                                    keys_down.insert(II_BUTTON);
+                                    old_chord = None
+                                }
+                                winit::keyboard::Key::Character("x") => {
+                                    keys_down.insert(VI_BUTTON);
+                                    old_chord = None
+                                }
+                                winit::keyboard::Key::Character("c") => {
+                                    keys_down.insert(III_BUTTON);
+                                    old_chord = None
+                                }
+                                winit::keyboard::Key::Character("v") => {
+                                    keys_down.insert(VII_BUTTON);
+                                    old_chord = None
+                                }
                                 _ => {}
                             }
                         } else {
                             match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => { keys_down.remove(VIIB_BUTTON); },
-                                winit::keyboard::Key::Character("s") => { keys_down.remove(IV_BUTTON); },
-                                winit::keyboard::Key::Character("d") => { keys_down.remove(I_BUTTON); },
-                                winit::keyboard::Key::Character("f") => { keys_down.remove(V_BUTTON); },
-                                winit::keyboard::Key::Character("z") => { keys_down.remove(II_BUTTON); },
-                                winit::keyboard::Key::Character("x") => { keys_down.remove(VI_BUTTON); },
-                                winit::keyboard::Key::Character("c") => { keys_down.remove(III_BUTTON); },
-                                winit::keyboard::Key::Character("v") => { keys_down.remove(VII_BUTTON); },
+                                winit::keyboard::Key::Character("a") => {
+                                    keys_down.remove(VIIB_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("s") => {
+                                    keys_down.remove(IV_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("d") => {
+                                    keys_down.remove(I_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("f") => {
+                                    keys_down.remove(V_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("z") => {
+                                    keys_down.remove(II_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("x") => {
+                                    keys_down.remove(VI_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("c") => {
+                                    keys_down.remove(III_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("v") => {
+                                    keys_down.remove(VII_BUTTON);
+                                }
                                 _ => {}
                             }
                         }
 
-                        let old_chord = active_chord.as_ref();
                         let new_chord = decide_chord(old_chord, &keys_down, prev_keys_count);
 
                         if old_chord.map(|c| c.name) != new_chord.as_ref().map(|c| c.name) {
@@ -176,7 +236,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     .iter()
                                     .filter(|&&note| {
                                         let pc = note % 12;
-                                        let rel = ((12 + pc as i32 - new.root as i32) % 12) as usize;
+                                        let rel =
+                                            ((12 + pc as i32 - new.root as i32) % 12) as usize;
                                         (new.relative_mask & (1u16 << rel)) == 0
                                     })
                                     .cloned()
@@ -193,14 +254,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::Resized(physical_size) => {
-                        surface.resize(
-                            NonZeroU32::new(physical_size.width).unwrap(),
-                            NonZeroU32::new(physical_size.height).unwrap(),
-                        ).unwrap();
+                        surface
+                            .resize(
+                                NonZeroU32::new(physical_size.width).unwrap(),
+                                NonZeroU32::new(physical_size.height).unwrap(),
+                            )
+                            .unwrap();
                         window_width = physical_size.width as f64;
 
                         // Redraw lines on resize
-                        draw_strings(&mut surface, physical_size.width, physical_size.height, &active_chord);
+                        draw_strings(
+                            &mut surface,
+                            physical_size.width,
+                            physical_size.height,
+                            &active_chord,
+                        );
                     }
 
                     WindowEvent::MouseInput { state, button, .. } => {
@@ -215,7 +283,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if is_mouse_down {
                             if let Some(last_x) = prev_x {
                                 // High-priority: Check for string crossings immediately
-                                check_pluck(last_x, curr_x, window_width, &mut midi_connection, &active_chord, &mut active_notes);
+                                check_pluck(
+                                    last_x,
+                                    curr_x,
+                                    window_width,
+                                    &mut midi_connection,
+                                    &active_chord,
+                                    &mut active_notes,
+                                );
                             }
                         }
 
@@ -223,9 +298,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::RedrawRequested => {
-                         // Initial draw if needed, though Resized usually handles it on startup
-                         let size = window.inner_size();
-                         draw_strings(&mut surface, size.width, size.height, &active_chord);
+                        // Initial draw if needed, though Resized usually handles it on startup
+                        let size = window.inner_size();
+                        draw_strings(&mut surface, size.width, size.height, &active_chord);
                     }
 
                     _ => {}
@@ -252,7 +327,11 @@ fn is_note_in_chord(string_index: usize, chord: &Option<BuiltChord>) -> bool {
 }
 
 // Decide chord from current keys_down and previous chord state.
-fn decide_chord(old_chord: Option<&BuiltChord>, keys_down: &HashSet<&'static str>, prev_keys_count: usize) -> Option<BuiltChord> {
+fn decide_chord(
+    old_chord: Option<&BuiltChord>,
+    keys_down: &HashSet<&'static str>,
+    prev_keys_count: usize,
+) -> Option<BuiltChord> {
     // Pair combos first (higher precedence)
     if keys_down.contains(VI_BUTTON) && keys_down.contains(II_BUTTON) {
         return Some(major_minor_7(ROOT_VI, "VI7"));
@@ -281,42 +360,72 @@ fn decide_chord(old_chord: Option<&BuiltChord>, keys_down: &HashSet<&'static str
         return Some(major_tri(ROOT_VIIB, "VIIb"));
     }
     if keys_down.contains(IV_BUTTON) {
-        if let Some(old) = old_chord { if old.name == "IV7" { return Some(old.clone()); } }
+        if let Some(old) = old_chord {
+            if old.name == "IV7" {
+                return Some(old.clone());
+            }
+        }
         return Some(major_tri(ROOT_IV, "IV"));
     }
     if keys_down.contains(I_BUTTON) {
         // Preserve I7 if it was previously active
-        if let Some(old) = old_chord { if old.name == "I7" { return Some(old.clone()); } }
+        if let Some(old) = old_chord {
+            if old.name == "I7" {
+                return Some(old.clone());
+            }
+        }
         return Some(major_tri(ROOT_I, "I"));
     }
     if keys_down.contains(V_BUTTON) {
         // Preserve V7 if it was previously active
-        if let Some(old) = old_chord { if old.name == "V7" { return Some(old.clone()); } }
+        if let Some(old) = old_chord {
+            if old.name == "V7" {
+                return Some(old.clone());
+            }
+        }
         return Some(major_tri(ROOT_V, "V"));
     }
     if keys_down.contains(II_BUTTON) {
         // Preserve II7 if that was the previous chord
-        if let Some(old) = old_chord { if old.name == "II7" { return Some(old.clone()); } }
+        if let Some(old) = old_chord {
+            if old.name == "II7" {
+                return Some(old.clone());
+            }
+        }
         return Some(minor_tri(ROOT_II, "ii"));
     }
 
     // Additional single-key minors/diminished (preserve 7ths)
     if keys_down.contains(VI_BUTTON) {
-        if let Some(old) = old_chord { if old.name == "VI7" { return Some(old.clone()); } }
+        if let Some(old) = old_chord {
+            if old.name == "VI7" {
+                return Some(old.clone());
+            }
+        }
         return Some(minor_tri(ROOT_VI, "vi"));
     }
     if keys_down.contains(III_BUTTON) {
-        if let Some(old) = old_chord { if old.name == "III7" { return Some(old.clone()); } }
+        if let Some(old) = old_chord {
+            if old.name == "III7" {
+                return Some(old.clone());
+            }
+        }
         return Some(minor_tri(ROOT_III, "iii"));
     }
     if keys_down.contains(VII_BUTTON) {
-        if let Some(old) = old_chord { if old.name == "VII7" { return Some(old.clone()); } }
+        if let Some(old) = old_chord {
+            if old.name == "VII7" {
+                return Some(old.clone());
+            }
+        }
         return Some(diminished_tri(ROOT_VII, "vii"));
     }
 
     // No keys down: preserve chord if we just went from 1 -> 0
     if keys_down.len() == 0 && prev_keys_count == 1 {
-        if let Some(old) = old_chord { return Some(old.clone()); }
+        if let Some(old) = old_chord {
+            return Some(old.clone());
+        }
         return None;
     }
 
@@ -333,7 +442,9 @@ fn check_pluck(
     active_chord: &Option<BuiltChord>,
     active_notes: &mut HashSet<u8>,
 ) {
-    if conn.is_none() { return; }
+    if conn.is_none() {
+        return;
+    }
 
     // Divide width into NUM_STRINGS + 1 segments to evenly space them
     // Spacing logic:  |  s1  |  s2  | ...
@@ -356,7 +467,11 @@ fn check_pluck(
     }
 }
 
-fn play_note(conn: &mut Option<MidiOutputConnection>, string_index: usize, active_notes: &mut HashSet<u8>) {
+fn play_note(
+    conn: &mut Option<MidiOutputConnection>,
+    string_index: usize,
+    active_notes: &mut HashSet<u8>,
+) {
     if let Some(c) = conn {
         let note = START_NOTE + string_index as u8;
         // Send Note On (Channel 0)
@@ -377,7 +492,12 @@ fn stop_note(conn: &mut Option<MidiOutputConnection>, note: u8, active_notes: &m
 
 /// Minimalist drawing function.
 /// Fills buffer with black and draws white vertical lines.
-fn draw_strings(surface: &mut Surface<Rc<Window>, Rc<Window>>, width: u32, height: u32, active_chord: &Option<BuiltChord>) {
+fn draw_strings(
+    surface: &mut Surface<Rc<Window>, Rc<Window>>,
+    width: u32,
+    height: u32,
+    active_chord: &Option<BuiltChord>,
+) {
     let mut buffer = surface.buffer_mut().unwrap();
 
     // Fill with black (0x000000)
