@@ -29,27 +29,11 @@ const NUM_STRINGS: usize = 48;
 const START_NOTE: u8 = 41; 
 const VELOCITY: u8 = 100;
 
-#[derive(PartialEq)]
-struct Chord {
-    name: &'static str,
-    pitch_classes: &'static [u8],
-}
-
 #[derive(Clone)]
 struct BuiltChord {
     name: &'static str,
     root: u8,
     relative_mask: u16, // bits 0..11
-}
-
-fn build_from_static(sc: &Chord) -> BuiltChord {
-    let root = sc.pitch_classes[0];
-    let mut mask: u16 = 0;
-    for &n in sc.pitch_classes.iter() {
-        let rel = ((12 + n as i32 - root as i32) % 12) as usize;
-        mask |= 1u16 << rel;
-    }
-    BuiltChord { name: sc.name, root, relative_mask: mask }
 }
 
 fn build_with(root: u8, rels: &[u8], name: &'static str) -> BuiltChord {
@@ -62,7 +46,7 @@ fn build_with(root: u8, rels: &[u8], name: &'static str) -> BuiltChord {
 }
 
 // Runtime root constants and builders
-const ROOT_VIIb: u8 = 10;
+const ROOT_VIIB: u8 = 10;
 const ROOT_IV: u8 = 5;
 const ROOT_I: u8 = 0;
 const ROOT_V: u8 = 7;
@@ -71,43 +55,13 @@ const ROOT_VI: u8 = 9;
 const ROOT_III: u8 = 4;
 const ROOT_VII: u8 = 11;
 
-fn major_triad(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,4,7], name) }
-fn minor_triad(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,3,7], name) }
+fn major_tri(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,4,7], name) }
+fn minor_tri(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,3,7], name) }
 fn major_minor_7(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,4,7,10], name) }
 fn diminished_tri(root: u8, name: &'static str) -> BuiltChord { build_with(root, &[0,3,6], name) }
 
-// Removed static chords; now built at runtime
-
-// Removed static IV_MAJOR; runtime-built from root
-
-// Removed static I_MAJOR; runtime-built from root
-
-// Removed static V_MAJOR; runtime-built from root
-
-// Removed static V7_MAJOR; runtime-built from root
-
-// Removed static II_MINOR; runtime-built from root
-
-// Removed static II7_MAJOR; runtime-built from root
-
-// Removed static IV7_MAJOR; runtime-built from root
-
-// Removed static I7_MAJOR; runtime-built from root
-
-// Removed static VI_MINOR; runtime-built from root
-
-// Removed static VI7_MAJOR; runtime-built from root
-
-// Removed static III_MINOR; runtime-built from root
-
-// Removed static III7_MAJOR; runtime-built from root
-
-// Removed static VII_DIM; runtime-built from root
-
-// Removed static VII7_MAJOR; runtime-built from root
-
 // Named button identifiers for key tracking
-const VIIb_BUTTON: &str = "VIIb_BUTTON";
+const VIIB_BUTTON: &str = "VIIB_BUTTON";
 const IV_BUTTON: &str = "IV_BUTTON";
 const I_BUTTON: &str = "I_BUTTON";
 const V_BUTTON: &str = "V_BUTTON";
@@ -188,7 +142,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // Map key presses/releases into named buttons set
                         if event.state == winit::event::ElementState::Pressed {
                             match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => { keys_down.insert(VIIb_BUTTON); },
+                                winit::keyboard::Key::Character("a") => { keys_down.insert(VIIB_BUTTON); },
                                 winit::keyboard::Key::Character("s") => { keys_down.insert(IV_BUTTON); },
                                 winit::keyboard::Key::Character("d") => { keys_down.insert(I_BUTTON); },
                                 winit::keyboard::Key::Character("f") => { keys_down.insert(V_BUTTON); },
@@ -200,7 +154,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         } else {
                             match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => { keys_down.remove(VIIb_BUTTON); },
+                                winit::keyboard::Key::Character("a") => { keys_down.remove(VIIB_BUTTON); },
                                 winit::keyboard::Key::Character("s") => { keys_down.remove(IV_BUTTON); },
                                 winit::keyboard::Key::Character("d") => { keys_down.remove(I_BUTTON); },
                                 winit::keyboard::Key::Character("f") => { keys_down.remove(V_BUTTON); },
@@ -237,14 +191,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                         prev_keys_count = keys_down.len();
                     }
-                    
+
                     WindowEvent::Resized(physical_size) => {
                         surface.resize(
                             NonZeroU32::new(physical_size.width).unwrap(),
                             NonZeroU32::new(physical_size.height).unwrap(),
                         ).unwrap();
                         window_width = physical_size.width as f64;
-                        
+
                         // Redraw lines on resize
                         draw_strings(&mut surface, physical_size.width, physical_size.height, &active_chord);
                     }
@@ -273,7 +227,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                          let size = window.inner_size();
                          draw_strings(&mut surface, size.width, size.height, &active_chord);
                     }
-                    
+
                     _ => {}
                 }
             }
@@ -312,7 +266,7 @@ fn decide_chord(old_chord: Option<&BuiltChord>, keys_down: &HashSet<&'static str
     if keys_down.contains(IV_BUTTON) && keys_down.contains(I_BUTTON) {
         return Some(major_minor_7(ROOT_I, "I7"));
     }
-    if keys_down.contains(IV_BUTTON) && keys_down.contains(VIIb_BUTTON) {
+    if keys_down.contains(IV_BUTTON) && keys_down.contains(VIIB_BUTTON) {
         return Some(major_minor_7(ROOT_IV, "IV7"));
     }
     if keys_down.contains(I_BUTTON) && keys_down.contains(V_BUTTON) {
@@ -323,37 +277,37 @@ fn decide_chord(old_chord: Option<&BuiltChord>, keys_down: &HashSet<&'static str
         return Some(major_minor_7(ROOT_II, "II7"));
     }
 
-    if keys_down.contains(VIIb_BUTTON) {
-        return Some(diminished_tri(ROOT_VIIb, "VIIb"));
+    if keys_down.contains(VIIB_BUTTON) {
+        return Some(major_tri(ROOT_VIIB, "VIIb"));
     }
     if keys_down.contains(IV_BUTTON) {
         if let Some(old) = old_chord { if old.name == "IV7" { return Some(old.clone()); } }
-        return Some(major_triad(ROOT_IV, "IV"));
+        return Some(major_tri(ROOT_IV, "IV"));
     }
     if keys_down.contains(I_BUTTON) {
         // Preserve I7 if it was previously active
         if let Some(old) = old_chord { if old.name == "I7" { return Some(old.clone()); } }
-        return Some(major_triad(ROOT_I, "I"));
+        return Some(major_tri(ROOT_I, "I"));
     }
     if keys_down.contains(V_BUTTON) {
         // Preserve V7 if it was previously active
         if let Some(old) = old_chord { if old.name == "V7" { return Some(old.clone()); } }
-        return Some(major_triad(ROOT_V, "V"));
+        return Some(major_tri(ROOT_V, "V"));
     }
     if keys_down.contains(II_BUTTON) {
         // Preserve II7 if that was the previous chord
         if let Some(old) = old_chord { if old.name == "II7" { return Some(old.clone()); } }
-        return Some(minor_triad(ROOT_II, "ii"));
+        return Some(minor_tri(ROOT_II, "ii"));
     }
 
     // Additional single-key minors/diminished (preserve 7ths)
     if keys_down.contains(VI_BUTTON) {
         if let Some(old) = old_chord { if old.name == "VI7" { return Some(old.clone()); } }
-        return Some(minor_triad(ROOT_VI, "vi"));
+        return Some(minor_tri(ROOT_VI, "vi"));
     }
     if keys_down.contains(III_BUTTON) {
         if let Some(old) = old_chord { if old.name == "III7" { return Some(old.clone()); } }
-        return Some(minor_triad(ROOT_III, "iii"));
+        return Some(minor_tri(ROOT_III, "iii"));
     }
     if keys_down.contains(VII_BUTTON) {
         if let Some(old) = old_chord { if old.name == "VII7" { return Some(old.clone()); } }
@@ -380,7 +334,7 @@ fn check_pluck(
     active_notes: &mut HashSet<u8>,
 ) {
     if conn.is_none() { return; }
-    
+
     // Divide width into NUM_STRINGS + 1 segments to evenly space them
     // Spacing logic:  |  s1  |  s2  | ...
     let spacing = width / (NUM_STRINGS as f64 + 1.0);
@@ -392,7 +346,7 @@ fn check_pluck(
     // Iterate through all string positions to see if one lies within the movement range
     for i in 0..NUM_STRINGS {
         let string_x = spacing * (i as f64 + 1.0);
-        
+
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             if is_note_in_chord(i, active_chord) {
@@ -408,13 +362,8 @@ fn play_note(conn: &mut Option<MidiOutputConnection>, string_index: usize, activ
         // Send Note On (Channel 0)
         // 0x90 = Note On, Channel 1
         // note = 0-127
-        // VELOCITY = 100
         let _ = c.send(&[0x90, note, VELOCITY]);
         active_notes.insert(note);
-        
-        // Note: We are not sending Note Off to keep logic lock-free and minimal latency.
-        // Most "pluck" synth patches decay naturally. If you need Note Off,
-        // it would require a timer or thread which adds complexity/latency overhead.
     }
 }
 
@@ -430,7 +379,7 @@ fn stop_note(conn: &mut Option<MidiOutputConnection>, note: u8, active_notes: &m
 /// Fills buffer with black and draws white vertical lines.
 fn draw_strings(surface: &mut Surface<Rc<Window>, Rc<Window>>, width: u32, height: u32, active_chord: &Option<BuiltChord>) {
     let mut buffer = surface.buffer_mut().unwrap();
-    
+
     // Fill with black (0x000000)
     buffer.fill(0);
 
@@ -438,7 +387,7 @@ fn draw_strings(surface: &mut Surface<Rc<Window>, Rc<Window>>, width: u32, heigh
 
     for i in 0..NUM_STRINGS {
         let x = (spacing * (i as f64 + 1.0)) as u32;
-        
+
         let color = if active_chord.is_some() && !is_note_in_chord(i, active_chord) {
             0x404040 // Dark Grey for inactive strings
         } else {
