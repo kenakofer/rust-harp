@@ -104,12 +104,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut is_mouse_down = false;
     let mut active_chord: Option<&'static Chord> = None;
     let mut active_notes = HashSet::new();
-    // Key state tracking for combos
-    let mut a_down = false;
-    let mut s_down = false;
-    let mut d_down = false;
-    let mut f_down = false;
-    let mut combo_active = false;
+    // Key tracking using named buttons
+    const IV_BUTTON: &str = "IV_BUTTON";
+    const I_BUTTON: &str = "I_BUTTON";
+    const V_BUTTON: &str = "V_BUTTON";
+    const II_BUTTON: &str = "II_BUTTON";
+    let mut keys_down: HashSet<&'static str> = HashSet::new();
+    let mut prev_keys_count: usize = 0;
+    let mut combo_active: bool = false;
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
@@ -132,21 +134,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::KeyboardInput { event, .. } => {
-                        // Update pressed/released state
+                        // Map key presses/releases into named buttons set
                         if event.state == winit::event::ElementState::Pressed {
                             match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => a_down = true,
-                                winit::keyboard::Key::Character("s") => s_down = true,
-                                winit::keyboard::Key::Character("d") => d_down = true,
-                                winit::keyboard::Key::Character("f") => f_down = true,
+                                winit::keyboard::Key::Character("a") => { keys_down.insert(IV_BUTTON); },
+                                winit::keyboard::Key::Character("s") => { keys_down.insert(I_BUTTON); },
+                                winit::keyboard::Key::Character("d") => { keys_down.insert(V_BUTTON); },
+                                winit::keyboard::Key::Character("f") => { keys_down.insert(II_BUTTON); },
                                 _ => {}
                             }
                         } else {
                             match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => a_down = false,
-                                winit::keyboard::Key::Character("s") => s_down = false,
-                                winit::keyboard::Key::Character("d") => d_down = false,
-                                winit::keyboard::Key::Character("f") => f_down = false,
+                                winit::keyboard::Key::Character("a") => { keys_down.remove(IV_BUTTON); },
+                                winit::keyboard::Key::Character("s") => { keys_down.remove(I_BUTTON); },
+                                winit::keyboard::Key::Character("d") => { keys_down.remove(V_BUTTON); },
+                                winit::keyboard::Key::Character("f") => { keys_down.remove(II_BUTTON); },
                                 _ => {}
                             }
                         }
@@ -154,38 +156,41 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let old_chord = active_chord;
                         let mut new_chord: Option<&'static Chord> = old_chord;
 
-                        // Combo logic per spec:
-                        // - When d and f are both depressed => II7
-                        // - Then, if f is lifted => go to V (if d still down)
-                        // - But, if d is lifted while f remains down => stay on II7
-                        if d_down && f_down {
+                        // Combo logic using keys_down set
+                        if keys_down.contains(V_BUTTON) && keys_down.contains(II_BUTTON) {
                             new_chord = Some(&II7_MAJOR);
                             combo_active = true;
                         } else if combo_active {
-                            if !f_down {
-                                // F lifted => go to V if D still down
-                                if d_down {
+                            // Combo was active
+                            if !keys_down.contains(II_BUTTON) {
+                                // F (II) lifted => go to V if still down
+                                if keys_down.contains(V_BUTTON) {
                                     new_chord = Some(&V_MAJOR);
                                 } else {
                                     new_chord = None;
                                 }
                                 combo_active = false;
                             } else {
-                                // D lifted but F still held => remain on II7
+                                // D lifted but F remains down => stay on II7
                                 new_chord = Some(&II7_MAJOR);
                             }
                         } else {
-                            // Regular single-key mapping priority
-                            if a_down {
+                            // Single-key priority: IV > I > V > ii
+                            if keys_down.contains(IV_BUTTON) {
                                 new_chord = Some(&IV_MAJOR);
-                            } else if s_down {
+                            } else if keys_down.contains(I_BUTTON) {
                                 new_chord = Some(&I_MAJOR);
-                            } else if d_down {
+                            } else if keys_down.contains(V_BUTTON) {
                                 new_chord = Some(&V_MAJOR);
-                            } else if f_down {
+                            } else if keys_down.contains(II_BUTTON) {
                                 new_chord = Some(&II_MINOR);
                             } else {
-                                new_chord = None;
+                                // Special rule: if going from 1 -> 0 keys, keep old chord
+                                if prev_keys_count == 1 && keys_down.len() == 0 {
+                                    new_chord = old_chord;
+                                } else {
+                                    new_chord = None;
+                                }
                             }
                         }
 
@@ -204,6 +209,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                             active_chord = new_chord;
                             window.request_redraw();
                         }
+
+                        prev_keys_count = keys_down.len();
                     }
                     
                     WindowEvent::Resized(physical_size) => {
