@@ -34,6 +34,10 @@ struct Chord {
     name: &'static str,
     pitch_classes: &'static [u8],
 }
+const VIIb_MAJOR: Chord = Chord {
+    name: "VIIb",
+    pitch_classes: &[10, 2, 5],
+};
 
 const IV_MAJOR: Chord = Chord {
     name: "IV",
@@ -63,6 +67,11 @@ const II_MINOR: Chord = Chord {
 const II7_MAJOR: Chord = Chord {
     name: "II7",
     pitch_classes: &[2, 6, 9, 0],
+};
+
+const IV7_MAJOR: Chord = Chord {
+    name: "IV7",
+    pitch_classes: &[5, 9, 0, 3],
 };
 
 const I7_MAJOR: Chord = Chord {
@@ -101,6 +110,7 @@ const VII7_MAJOR: Chord = Chord {
 };
 
 // Named button identifiers for key tracking
+const VIIb_BUTTON: &str = "VIIb_BUTTON";
 const IV_BUTTON: &str = "IV_BUTTON";
 const I_BUTTON: &str = "I_BUTTON";
 const V_BUTTON: &str = "V_BUTTON";
@@ -181,24 +191,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // Map key presses/releases into named buttons set
                         if event.state == winit::event::ElementState::Pressed {
                             match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => { keys_down.insert(IV_BUTTON); },
-                                winit::keyboard::Key::Character("s") => { keys_down.insert(I_BUTTON); },
-                                winit::keyboard::Key::Character("d") => { keys_down.insert(V_BUTTON); },
-                                winit::keyboard::Key::Character("f") => { keys_down.insert(II_BUTTON); },
-                                winit::keyboard::Key::Character("z") => { keys_down.insert(VI_BUTTON); },
-                                winit::keyboard::Key::Character("x") => { keys_down.insert(III_BUTTON); },
-                                winit::keyboard::Key::Character("c") => { keys_down.insert(VII_BUTTON); },
+                                winit::keyboard::Key::Character("a") => { keys_down.insert(VIIb_BUTTON); },
+                                winit::keyboard::Key::Character("s") => { keys_down.insert(IV_BUTTON); },
+                                winit::keyboard::Key::Character("d") => { keys_down.insert(I_BUTTON); },
+                                winit::keyboard::Key::Character("f") => { keys_down.insert(V_BUTTON); },
+                                winit::keyboard::Key::Character("z") => { keys_down.insert(II_BUTTON); },
+                                winit::keyboard::Key::Character("x") => { keys_down.insert(VI_BUTTON); },
+                                winit::keyboard::Key::Character("c") => { keys_down.insert(III_BUTTON); },
+                                winit::keyboard::Key::Character("v") => { keys_down.insert(VII_BUTTON); },
                                 _ => {}
                             }
                         } else {
                             match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => { keys_down.remove(IV_BUTTON); },
-                                winit::keyboard::Key::Character("s") => { keys_down.remove(I_BUTTON); },
-                                winit::keyboard::Key::Character("d") => { keys_down.remove(V_BUTTON); },
-                                winit::keyboard::Key::Character("f") => { keys_down.remove(II_BUTTON); },
-                                winit::keyboard::Key::Character("z") => { keys_down.remove(VI_BUTTON); },
-                                winit::keyboard::Key::Character("x") => { keys_down.remove(III_BUTTON); },
-                                winit::keyboard::Key::Character("c") => { keys_down.remove(VII_BUTTON); },
+                                winit::keyboard::Key::Character("a") => { keys_down.remove(VIIb_BUTTON); },
+                                winit::keyboard::Key::Character("s") => { keys_down.remove(IV_BUTTON); },
+                                winit::keyboard::Key::Character("d") => { keys_down.remove(I_BUTTON); },
+                                winit::keyboard::Key::Character("f") => { keys_down.remove(V_BUTTON); },
+                                winit::keyboard::Key::Character("z") => { keys_down.remove(II_BUTTON); },
+                                winit::keyboard::Key::Character("x") => { keys_down.remove(VI_BUTTON); },
+                                winit::keyboard::Key::Character("c") => { keys_down.remove(III_BUTTON); },
+                                winit::keyboard::Key::Character("v") => { keys_down.remove(VII_BUTTON); },
                                 _ => {}
                             }
                         }
@@ -298,6 +310,9 @@ fn decide_chord(old_chord: Option<&'static Chord>, keys_down: &HashSet<&'static 
     if keys_down.contains(IV_BUTTON) && keys_down.contains(I_BUTTON) {
         return Some(&I7_MAJOR);
     }
+    if keys_down.contains(IV_BUTTON) && keys_down.contains(VIIb_BUTTON) {
+        return Some(&IV7_MAJOR);
+    }
     if keys_down.contains(I_BUTTON) && keys_down.contains(V_BUTTON) {
         return Some(&V7_MAJOR);
     }
@@ -306,9 +321,15 @@ fn decide_chord(old_chord: Option<&'static Chord>, keys_down: &HashSet<&'static 
         return Some(&II7_MAJOR);
     }
 
-    // Priority mapping: IV > I > V > ii
+    if keys_down.contains(VIIb_BUTTON) {
+        return Some(&VIIb_MAJOR);
+    }
     if keys_down.contains(IV_BUTTON) {
-        return Some(&IV_MAJOR);
+        if old_chord == Some(&IV7_MAJOR) {
+            return old_chord;
+        } else {
+            return Some(&IV_MAJOR);
+        }
     }
     if keys_down.contains(I_BUTTON) {
         // Preserve I7 if it was previously active
