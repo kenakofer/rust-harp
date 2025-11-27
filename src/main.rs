@@ -33,6 +33,11 @@ const NUM_STRINGS: usize = 48;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
 const START_NOTE: u8 = 41;
 const VELOCITY: u8 = 100;
+const MICRO_STEPS_PER_OCTAVE: usize = 60;
+const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
+const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
+const MICRO_NOTE: u8 = 30; // middle C for micro-step trigger
+const MICRO_VELOCITY: u8 = 30; // quiet click
 
 #[derive(Clone)]
 struct BuiltChord {
@@ -128,6 +133,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 eprintln!("Warning: No MIDI ports found. Application will run visually but emit no sound.");
             }
         }
+    }
+
+    // If we have a virtual/hardware connection, set the instruments
+    if let Some(ref mut conn) = conn_out {
+        let _ = conn.send(&[0xC0 | (0x00), 0]); // Set channel 1 to program 0 (Acoustic Grand Piano)
+        // 0xC0 = Program Change; OR with MICRO_CHANNEL for desired channel
+        let _ = conn.send(&[0xC0 | (MICRO_CHANNEL & 0x0F), MICRO_PROGRAM]);
+        
     }
 
     // 2. Setup Window
@@ -737,6 +750,39 @@ fn check_pluck(
         if string_x > min_x && string_x <= max_x {
             if is_note_in_chord(i, active_chord) {
                 play_note(conn, i, active_notes, transpose);
+            }
+        }
+    }
+
+    // Micro-steps: map mouse movement to global micro indices across screen without loops
+    let num_octaves = NUM_STRINGS / 12; // integer octaves covered
+    if num_octaves > 0 {
+        let micros_total = num_octaves * MICRO_STEPS_PER_OCTAVE;
+        let micros_total_f = micros_total as f64;
+        // Map x to micro index (0..micros_total-1) by projecting x across the screen
+        let map_to_micro = |x: f64| -> isize {
+            // clamp x to [0, width]
+            let xc = if x < 0.0 { 0.0 } else if x > width { width } else { x };
+            let frac = xc / width;
+            let idx_f = (frac * micros_total_f).round();
+            let mut idx = idx_f as isize;
+            if idx < 0 { idx = 0 }
+            if idx >= micros_total as isize { idx = micros_total as isize - 1 }
+            idx
+        };
+
+        let prev_idx = map_to_micro(min_x);
+        let curr_idx = map_to_micro(max_x);
+        let diff = curr_idx - prev_idx;
+        if diff != 0 {
+            let count = diff.abs() as usize;
+            if let Some(ref mut c) = conn {
+                let on = 0x90 | (MICRO_CHANNEL & 0x0F);
+                let off = 0x80 | (MICRO_CHANNEL & 0x0F);
+                for _ in 0..count {
+                    let _ = c.send(&[on, MICRO_NOTE, MICRO_VELOCITY]);
+                    let _ = c.send(&[off, MICRO_NOTE, 0]);
+                }
             }
         }
     }
