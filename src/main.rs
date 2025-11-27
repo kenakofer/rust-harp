@@ -32,15 +32,19 @@ use winit::{
 const NUM_STRINGS: usize = 48;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
 const START_NOTE: u8 = 35;
-const VELOCITY: u8 = 100;
+const VELOCITY: u8 = 70;
 const MICRO_STEPS_PER_OCTAVE: usize = 60;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
 const MICRO_NOTE: u8 = 30; // middle C for micro-step trigger
-const MICRO_VELOCITY: u8 = 30; // quiet click
+const MICRO_VELOCITY: u8 = 20; // quiet click
 const MAIN_PROGRAM: u8 = 25; // Steel String Guitar (zero-based)
 const BASS_PROGRAM: u8 = 26; // Bass program
 const BASS_CHANNEL: u8 = 2; // MIDI channel 3 (0-based)
+// Float bass velocity
+const BASS_VELOCITY_MULTIPLIER: f64 = 1.2;
+const MAIN_BASS_BOTTOM: f64 = 35.0;
+const MAIN_BASS_TOP: f64 = 80.0;
 
 #[derive(Clone)]
 struct BuiltChord {
@@ -162,7 +166,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut surface = Surface::new(&context, window.clone()).expect("Failed to create surface");
 
     // Application State
-    let mut prev_pos: Option<(f64,f64)> = None;
+    let mut prev_pos: Option<(f64, f64)> = None;
     let mut window_width = 800.0;
     let mut window_height = 600.0;
     let mut is_mouse_down = false;
@@ -366,7 +370,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // Protect against unwanted mod enqueuements, esp. since this may have been
                         // a release event
                         if chord_keys_down.len() == 0 {
-                            return
+                            return;
                         }
 
                         let old_chord = if chord_was_pressed {
@@ -376,21 +380,25 @@ fn main() -> Result<(), Box<dyn Error>> {
                         };
                         let mut new_chord = decide_chord_base(old_chord, &chord_keys_down);
 
-
                         // If a chord key was just pressed, detect pair combos that imply a minor-7
                         // and enqueue the AddMinor7 modifier so it is applied via the existing
                         // modifier pipeline.
                         if chord_was_pressed {
                             // Pairs that imply minor 7: VI+II, III+VI, VII+III, IV+I, IV+VIIB, I+V, V+II
-                            if (chord_keys_down.contains(VI_BUTTON) && chord_keys_down.contains(II_BUTTON))
-                                || (chord_keys_down.contains(III_BUTTON) && chord_keys_down.contains(VI_BUTTON))
+                            if (chord_keys_down.contains(VI_BUTTON)
+                                && chord_keys_down.contains(II_BUTTON))
+                                || (chord_keys_down.contains(III_BUTTON)
+                                    && chord_keys_down.contains(VI_BUTTON))
                                 || (chord_keys_down.contains(VII_BUTTON)
                                     && chord_keys_down.contains(III_BUTTON))
-                                || (chord_keys_down.contains(IV_BUTTON) && chord_keys_down.contains(I_BUTTON))
+                                || (chord_keys_down.contains(IV_BUTTON)
+                                    && chord_keys_down.contains(I_BUTTON))
                                 || (chord_keys_down.contains(IV_BUTTON)
                                     && chord_keys_down.contains(VIIB_BUTTON))
-                                || (chord_keys_down.contains(I_BUTTON) && chord_keys_down.contains(V_BUTTON))
-                                || (chord_keys_down.contains(V_BUTTON) && chord_keys_down.contains(II_BUTTON))
+                                || (chord_keys_down.contains(I_BUTTON)
+                                    && chord_keys_down.contains(V_BUTTON))
+                                || (chord_keys_down.contains(V_BUTTON)
+                                    && chord_keys_down.contains(II_BUTTON))
                             {
                                 modifier_stage.insert(Modifier::AddMinor7);
                                 modifier_stage.insert(Modifier::Minor3ToMajor);
@@ -689,7 +697,11 @@ fn compute_string_positions(width: f64, active_chord: &Option<BuiltChord>) -> Ve
                 nonroot.sort();
 
                 let first_root = root_indices[0];
-                let left_group: Vec<usize> = nonroot.iter().cloned().filter(|&i| i < first_root).collect();
+                let left_group: Vec<usize> = nonroot
+                    .iter()
+                    .cloned()
+                    .filter(|&i| i < first_root)
+                    .collect();
                 if !left_group.is_empty() {
                     let m = left_group.len() as f64;
                     let spacing = (default_positions[first_root] - 0.0) / (m + 1.0);
@@ -703,7 +715,11 @@ fn compute_string_positions(width: f64, active_chord: &Option<BuiltChord>) -> Ve
                     let b = pair[1];
                     let apos = default_positions[a];
                     let bpos = default_positions[b];
-                    let group: Vec<usize> = nonroot.iter().cloned().filter(|&i| i > a && i < b).collect();
+                    let group: Vec<usize> = nonroot
+                        .iter()
+                        .cloned()
+                        .filter(|&i| i > a && i < b)
+                        .collect();
                     if !group.is_empty() {
                         let m = group.len() as f64;
                         let spacing = (bpos - apos) / (m + 1.0);
@@ -714,7 +730,8 @@ fn compute_string_positions(width: f64, active_chord: &Option<BuiltChord>) -> Ve
                 }
 
                 let last_root = *root_indices.last().unwrap();
-                let right_group: Vec<usize> = nonroot.iter().cloned().filter(|&i| i > last_root).collect();
+                let right_group: Vec<usize> =
+                    nonroot.iter().cloned().filter(|&i| i > last_root).collect();
                 if !right_group.is_empty() {
                     let m = right_group.len() as f64;
                     let spacing = (width - default_positions[last_root]) / (m + 1.0);
@@ -761,9 +778,17 @@ fn check_pluck(
         if string_x > min_x && string_x <= max_x {
             if is_note_in_chord(i, active_chord) {
                 // velocity scales from top (low) to bottom (high)
-                let mut vel_f = if window_height > 0.0 { (cursor_y / window_height) * 127.0 } else { VELOCITY as f64 };
-                if vel_f < 1.0 { vel_f = 1.0 }
-                if vel_f > 127.0 { vel_f = 127.0 }
+                let mut vel_f = if window_height > 0.0 {
+                    (cursor_y / window_height) * 127.0
+                } else {
+                    VELOCITY as f64
+                };
+                if vel_f < 1.0 {
+                    vel_f = 1.0
+                }
+                if vel_f > 127.0 {
+                    vel_f = 127.0
+                }
                 let vel = vel_f.round() as u8;
                 play_note(conn, i, active_notes, transpose, vel);
             }
@@ -778,12 +803,22 @@ fn check_pluck(
         // Map x to micro index (0..micros_total-1) by projecting x across the screen
         let map_to_micro = |x: f64| -> isize {
             // clamp x to [0, width]
-            let xc = if x < 0.0 { 0.0 } else if x > width { width } else { x };
+            let xc = if x < 0.0 {
+                0.0
+            } else if x > width {
+                width
+            } else {
+                x
+            };
             let frac = xc / width;
             let idx_f = (frac * micros_total_f).round();
             let mut idx = idx_f as isize;
-            if idx < 0 { idx = 0 }
-            if idx >= micros_total as isize { idx = micros_total as isize - 1 }
+            if idx < 0 {
+                idx = 0
+            }
+            if idx >= micros_total as isize {
+                idx = micros_total as isize - 1
+            }
             idx
         };
 
@@ -813,33 +848,48 @@ fn play_note(
 ) {
     if let Some(c) = conn {
         let mut note = START_NOTE as i32 + string_index as i32 + transpose;
-        if note < 0 { note = 0 }
-        if note > 127 { note = 127 }
+        if note < 0 {
+            note = 0
+        }
+        if note > 127 {
+            note = 127
+        }
         let note_u = note as u8;
 
-        // Crossfade between bass and main over [47..71]
-        let main_factor = if note_u as i32 <= 47 {
+        // Crossfade between bass and main
+        let main_factor = if note_u as f64 <= MAIN_BASS_BOTTOM {
             0.0
-        } else if note_u as i32 >= 71 {
+        } else if note_u as f64 >= MAIN_BASS_TOP {
             1.0
         } else {
-            (note_u as f64 - 47.0) / (71.0 - 47.0)
+            (note_u as f64 - MAIN_BASS_BOTTOM) / (MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
         };
         let bass_factor = 1.0 - main_factor;
 
         // Scale velocities
         let main_vel = ((velocity as f64) * main_factor).round() as u8;
-        let bass_vel = ((velocity as f64) * bass_factor).round() as u8;
+        let bass_vel = ((velocity as f64) * bass_factor * BASS_VELOCITY_MULTIPLIER).round() as u8;
+
+        // Clamp velocities to max
+        let main_vel = if main_vel > 127 { 127 } else { main_vel };
+        let bass_vel = if bass_vel > 127 { 127 } else { bass_vel };
 
         // Clamp small nonzero factors to at least velocity 1 so they are audible
         let mut main_vel = main_vel;
         let mut bass_vel = bass_vel;
-        if main_factor > 0.0 && main_vel == 0 { main_vel = 1 }
-        if bass_factor > 0.0 && bass_vel == 0 { bass_vel = 1 }
+        if main_factor > 0.0 && main_vel == 0 {
+            main_vel = 1
+        }
+        if bass_factor > 0.0 && bass_vel == 0 {
+            bass_vel = 1
+        }
 
         // Send to bass channel if bass_vel > 0 (Note On only)
         if bass_vel > 0 {
             let on_b = 0x90 | (BASS_CHANNEL & 0x0F);
+            let off_bass = 0x80 | (BASS_CHANNEL & 0x0F);
+            // Send an off first
+            let _ = c.send(&[off_bass, note_u, 0]);
             let _ = c.send(&[on_b, note_u, bass_vel]);
         }
 
@@ -886,13 +936,19 @@ fn draw_strings(
     for i in 0..NUM_STRINGS {
         let x_f = positions[i];
         let x = x_f as u32;
-        if x >= width { continue }
+        if x >= width {
+            continue;
+        }
 
         // Determine this string's color
         let this_color = if let Some(ch) = active_chord {
             if is_note_in_chord(i, &Some(ch.clone())) {
                 let note = START_NOTE + i as u8;
-                if note % 12 == ch.root { 0xFF0000 } else { 0xFFFFFF }
+                if note % 12 == ch.root {
+                    0xFF0000
+                } else {
+                    0xFFFFFF
+                }
             } else {
                 0x404040
             }
@@ -904,9 +960,13 @@ fn draw_strings(
         let merged = match x_colors.get(&x) {
             None => this_color,
             Some(&existing) => {
-                if existing == 0xFF0000 || this_color == 0xFF0000 { 0xFF0000 }
-                else if existing == 0xFFFFFF || this_color == 0xFFFFFF { 0xFFFFFF }
-                else { 0x404040 }
+                if existing == 0xFF0000 || this_color == 0xFF0000 {
+                    0xFF0000
+                } else if existing == 0xFFFFFF || this_color == 0xFFFFFF {
+                    0xFFFFFF
+                } else {
+                    0x404040
+                }
             }
         };
         x_colors.insert(x, merged);
@@ -926,8 +986,12 @@ fn draw_strings(
     for i in 0..NUM_STRINGS {
         let x_f = positions[i];
         let x = x_f as u32;
-        if x >= width { continue }
-        if x_colors.contains_key(&x) { continue }
+        if x >= width {
+            continue;
+        }
+        if x_colors.contains_key(&x) {
+            continue;
+        }
         // default grid color
         let color = 0xFFFFFFu32;
         for y in 0..height {
