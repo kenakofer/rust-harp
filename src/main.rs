@@ -43,6 +43,7 @@ struct BuiltChord {
 
 enum Modifier {
     AddMajor2,
+    AddMinor7,
 }
 
 fn build_with(root: u8, rels: &[u8]) -> BuiltChord {
@@ -233,8 +234,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("b") => {
-                                    // Space is AddMajor2 modifier
+                                    // 'b' is AddMajor2 modifier
                                     modifier_queue.push(Modifier::AddMajor2);
+                                    if keys_down.len() == 0 {
+                                        return
+                                    }
+                                }
+                                winit::keyboard::Key::Character("n") => {
+                                    // 'n' is AddMinor7 modifier
+                                    modifier_queue.push(Modifier::AddMinor7);
                                     if keys_down.len() == 0 {
                                         return
                                     }
@@ -278,6 +286,22 @@ fn main() -> Result<(), Box<dyn Error>> {
                         };
                         let mut new_chord = decide_chord(old_chord, &keys_down);
 
+                        // If a chord key was just pressed, detect pair combos that imply a minor-7
+                        // and enqueue the AddMinor7 modifier so it is applied via the existing
+                        // modifier pipeline.
+                        if chord_was_pressed {
+                            // Pairs that imply minor 7: VI+II, III+VI, VII+III, IV+I, IV+VIIB, I+V, V+II
+                            if (keys_down.contains(VI_BUTTON) && keys_down.contains(II_BUTTON)) ||
+                               (keys_down.contains(III_BUTTON) && keys_down.contains(VI_BUTTON)) ||
+                               (keys_down.contains(VII_BUTTON) && keys_down.contains(III_BUTTON)) ||
+                               (keys_down.contains(IV_BUTTON) && keys_down.contains(I_BUTTON)) ||
+                               (keys_down.contains(IV_BUTTON) && keys_down.contains(VIIB_BUTTON)) ||
+                               (keys_down.contains(I_BUTTON) && keys_down.contains(V_BUTTON)) ||
+                               (keys_down.contains(V_BUTTON) && keys_down.contains(II_BUTTON)) {
+                                modifier_queue.push(Modifier::AddMinor7);
+                            }
+                        }
+
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord and clear the queue.
                         if !modifier_queue.is_empty() && keys_down.len() > 0 {
@@ -286,6 +310,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     match m {
                                         Modifier::AddMajor2 => {
                                             nc.relative_mask |= 1u16 << 2;
+                                        }
+                                        Modifier::AddMinor7 => {
+                                            nc.relative_mask |= 1u16 << 10;
                                         }
                                     }
                                 }
@@ -397,28 +424,28 @@ fn decide_chord(
     old_chord: Option<&BuiltChord>,
     keys_down: &HashSet<&'static str>
 ) -> Option<BuiltChord> {
-    // Pair combos first (higher precedence)
+    // Pair combos first (higher precedence) — return base triad; 7ths are handled via modifiers
     if keys_down.contains(VI_BUTTON) && keys_down.contains(II_BUTTON) {
-        return Some(major_minor_7(ROOT_VI));
+        return Some(major_tri(ROOT_VI));
     }
     if keys_down.contains(III_BUTTON) && keys_down.contains(VI_BUTTON) {
-        return Some(major_minor_7(ROOT_III));
+        return Some(major_tri(ROOT_III));
     }
     if keys_down.contains(VII_BUTTON) && keys_down.contains(III_BUTTON) {
-        return Some(major_minor_7(ROOT_VII));
+        return Some(major_tri(ROOT_VII));
     }
     if keys_down.contains(IV_BUTTON) && keys_down.contains(I_BUTTON) {
-        return Some(major_minor_7(ROOT_I));
+        return Some(major_tri(ROOT_I));
     }
     if keys_down.contains(IV_BUTTON) && keys_down.contains(VIIB_BUTTON) {
-        return Some(major_minor_7(ROOT_IV));
+        return Some(major_tri(ROOT_IV));
     }
     if keys_down.contains(I_BUTTON) && keys_down.contains(V_BUTTON) {
-        return Some(major_minor_7(ROOT_V));
+        return Some(major_tri(ROOT_V));
     }
-    // Existing combo: V + II => II7
+    // Existing combo: V + II => II7 (handled via modifier)
     if keys_down.contains(V_BUTTON) && keys_down.contains(II_BUTTON) {
-        return Some(major_minor_7(ROOT_II));
+        return Some(major_tri(ROOT_II));
     }
 
     if keys_down.contains(VIIB_BUTTON) {
