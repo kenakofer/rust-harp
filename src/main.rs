@@ -11,9 +11,11 @@
 //! * **Visuals**: Super low priority. Displays a window with evenly spaced vertical lines
 //!     representing strings.
 
-// Ideas:
+// Ideas TODO:
 //   Evenly spread active lines/notes to even out strum
 //   Mouse capture that works with the wacom?
+//   Why doesn't space work for input? Should we do input differently?
+//
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
