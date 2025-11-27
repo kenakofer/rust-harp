@@ -312,12 +312,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
 
+                        // Protect against unwanted mod enqueuements, esp. since this may have been
+                        // a release event
+                        if chord_keys_down.len() == 0 {
+                            return
+                        }
+
                         let old_chord = if chord_was_pressed {
                             None
                         } else {
                             active_chord.as_ref()
                         };
                         let mut new_chord = decide_chord_base(old_chord, &chord_keys_down);
+
 
                         // If a chord key was just pressed, detect pair combos that imply a minor-7
                         // and enqueue the AddMinor7 modifier so it is applied via the existing
@@ -352,7 +359,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord, then remove it.
-                        if !modifier_stage.is_empty() && chord_keys_down.len() > 0 {
+                        if !modifier_stage.is_empty() {
                             if let Some(ref mut nc) = new_chord {
                                 for m in modifier_stage.drain() {
                                     match m {
