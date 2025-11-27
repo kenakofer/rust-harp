@@ -42,7 +42,7 @@ const MAIN_PROGRAM: u8 = 25; // Steel String Guitar (zero-based)
 const BASS_PROGRAM: u8 = 26; // Bass program
 const BASS_CHANNEL: u8 = 2; // MIDI channel 3 (0-based)
 // Float bass velocity
-const BASS_VELOCITY_MULTIPLIER: f64 = 1.2;
+const BASS_VELOCITY_MULTIPLIER: f64 = 1.0;
 const MAIN_BASS_BOTTOM: f64 = 35.0;
 const MAIN_BASS_TOP: f64 = 80.0;
 
@@ -60,6 +60,7 @@ enum Modifier {
     AddMinor7,
     AddMajor7,
     Minor3ToMajor,
+    RestorePerfect5,
     AddSus4,
     ChangeKey,
 }
@@ -168,7 +169,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Application State
     let mut prev_pos: Option<(f64, f64)> = None;
     let mut window_width = 800.0;
-    let mut window_height = 600.0;
+    let window_height = 600.0;
     let mut is_mouse_down = false;
     let mut active_chord: Option<BuiltChord> = None;
     let mut active_notes = HashSet::new();
@@ -402,6 +403,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             {
                                 modifier_stage.insert(Modifier::AddMinor7);
                                 modifier_stage.insert(Modifier::Minor3ToMajor);
+                                modifier_stage.insert(Modifier::RestorePerfect5);
                             }
                         }
 
@@ -451,6 +453,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         Modifier::AddMajor7 => {
                                             // Add major 7th (interval 11)
                                             nc.relative_mask |= 1u16 << 11;
+                                        }
+                                        Modifier::RestorePerfect5 => {
+                                            // Change minor 3rd to major 3rd if present
+                                            let p5_bit = 1u16 << 7;
+                                            let dim5_bit = 1u16 << 6;
+                                            let aug5_bit = 1u16 << 8;
+                                            nc.relative_mask &= !dim5_bit;
+                                            nc.relative_mask &= !aug5_bit;
+                                            nc.relative_mask |= p5_bit;
                                         }
                                         Modifier::ChangeKey => {
                                             // Set transpose to the chord's root
@@ -517,7 +528,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let curr_y = position.y;
 
                         if is_mouse_down {
-                            if let Some((last_x, last_y)) = prev_pos {
+                            if let Some((last_x, _)) = prev_pos {
                                 // High-priority: Check for string crossings immediately
                                 check_pluck(
                                     last_x,
