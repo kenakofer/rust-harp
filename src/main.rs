@@ -19,7 +19,7 @@
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
-use std::collections::{HashSet, HashMap};
+use std::collections::HashSet;
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -38,6 +38,7 @@ const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
 const MICRO_NOTE: u8 = 30; // middle C for micro-step trigger
 const MICRO_VELOCITY: u8 = 30; // quiet click
+const MAIN_PROGRAM: u8 = 46; // Acoustic Harp (zero-based)
 
 #[derive(Clone)]
 struct BuiltChord {
@@ -137,10 +138,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // If we have a virtual/hardware connection, set the instruments
     if let Some(ref mut conn) = conn_out {
-        let _ = conn.send(&[0xC0 | (0x00), 0]); // Set channel 1 to program 0 (Acoustic Grand Piano)
-        // 0xC0 = Program Change; OR with MICRO_CHANNEL for desired channel
+        // Set main channel (channel 0) to harp
+        let _ = conn.send(&[0xC0 | 0x00, MAIN_PROGRAM]);
+        // Set micro-step instrument on MICRO_CHANNEL
         let _ = conn.send(&[0xC0 | (MICRO_CHANNEL & 0x0F), MICRO_PROGRAM]);
-        
     }
 
     // 2. Setup Window
@@ -157,8 +158,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut surface = Surface::new(&context, window.clone()).expect("Failed to create surface");
 
     // Application State
-    let mut prev_x: Option<f64> = None;
+    let mut prev_pos: Option<(f64,f64)> = None;
     let mut window_width = 800.0;
+    let mut window_height = 600.0;
     let mut is_mouse_down = false;
     let mut active_chord: Option<BuiltChord> = None;
     let mut active_notes = HashSet::new();
@@ -500,9 +502,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     WindowEvent::CursorMoved { position, .. } => {
                         let curr_x = position.x;
+                        let curr_y = position.y;
 
                         if is_mouse_down {
-                            if let Some(last_x) = prev_x {
+                            if let Some((last_x, last_y)) = prev_pos {
                                 // High-priority: Check for string crossings immediately
                                 check_pluck(
                                     last_x,
@@ -512,11 +515,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     &active_chord,
                                     &mut active_notes,
                                     transpose,
+                                    curr_y,
+                                    window_height,
                                 );
                             }
                         }
 
-                        prev_x = Some(curr_x);
+                        prev_pos = Some((curr_x, curr_y));
                     }
 
                     WindowEvent::RedrawRequested => {
@@ -730,6 +735,8 @@ fn check_pluck(
     active_chord: &Option<BuiltChord>,
     active_notes: &mut HashSet<u8>,
     transpose: i32,
+    cursor_y: f64,
+    window_height: f64,
 ) {
     if conn.is_none() {
         return;
@@ -749,7 +756,12 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             if is_note_in_chord(i, active_chord) {
-                play_note(conn, i, active_notes, transpose);
+                // velocity scales from top (low) to bottom (high)
+                let mut vel_f = if window_height > 0.0 { (cursor_y / window_height) * 127.0 } else { VELOCITY as f64 };
+                if vel_f < 1.0 { vel_f = 1.0 }
+                if vel_f > 127.0 { vel_f = 127.0 }
+                let vel = vel_f.round() as u8;
+                play_note(conn, i, active_notes, transpose, vel);
             }
         }
     }
@@ -793,6 +805,7 @@ fn play_note(
     string_index: usize,
     active_notes: &mut HashSet<u8>,
     transpose: i32,
+    velocity: u8,
 ) {
     if let Some(c) = conn {
         let mut note = START_NOTE as i32 + string_index as i32 + transpose;
@@ -800,9 +813,7 @@ fn play_note(
         if note > 127 { note = 127 }
         let note_u = note as u8;
         // Send Note On (Channel 0)
-        // 0x90 = Note On, Channel 1
-        // note = 0-127
-        let _ = c.send(&[0x90, note_u, VELOCITY]);
+        let _ = c.send(&[0x90, note_u, velocity]);
         active_notes.insert(note_u);
     }
 }
