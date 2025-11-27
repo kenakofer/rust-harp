@@ -46,8 +46,10 @@ struct BuiltChord {
 enum Modifier {
     AddMajor2,
     AddMinor7,
+    AddMajor7,
     Minor3ToMajor,
     AddSus4,
+    ChangeKey,
 }
 
 fn build_with(root: u8, rels: &[u8]) -> BuiltChord {
@@ -94,7 +96,9 @@ const VII_BUTTON: &str = "VII_BUTTON";
 
 const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
 const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
+const MAJOR_7_BUTTON: &str = "MAJOR_7_BUTTON";
 const SUS4_BUTTON: &str = "SUS4_BUTTON";
+const CHANGE_KEY_BUTTON: &str = "CHANGE_KEY_BUTTON";
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -150,6 +154,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut mod_keys_down: HashSet<&'static str> = HashSet::new();
     // Modifier queue: modifiers queued and applied on next chord key press
     let mut modifier_stage: HashSet<Modifier> = HashSet::new();
+    // Transpose in semitones (0-11) applied to played notes
+    let mut transpose: i32 = 0;
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
@@ -250,6 +256,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         return;
                                     }
                                 }
+                                winit::keyboard::Key::Character("b") => {
+                                    if mod_keys_down.contains(MAJOR_7_BUTTON) {
+                                        return;
+                                    }
+                                    mod_keys_down.insert(MAJOR_7_BUTTON);
+                                    modifier_stage.insert(Modifier::AddMajor7);
+                                    if chord_keys_down.len() == 0 {
+                                        return;
+                                    }
+                                }
                                 winit::keyboard::Key::Character("6") => {
                                     if mod_keys_down.contains(MINOR_7_BUTTON) {
                                         return;
@@ -267,6 +283,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     }
                                     mod_keys_down.insert(SUS4_BUTTON);
                                     modifier_stage.insert(Modifier::AddSus4);
+                                    if chord_keys_down.len() == 0 {
+                                        return;
+                                    }
+                                }
+                                winit::keyboard::Key::Character("1") => {
+                                    if mod_keys_down.contains(CHANGE_KEY_BUTTON) {
+                                        return;
+                                    }
+                                    mod_keys_down.insert(CHANGE_KEY_BUTTON);
+                                    modifier_stage.insert(Modifier::ChangeKey);
                                     if chord_keys_down.len() == 0 {
                                         return;
                                     }
@@ -307,6 +333,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 }
                                 winit::keyboard::Key::Character("3") => {
                                     mod_keys_down.remove(SUS4_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("1") => {
+                                    mod_keys_down.remove(CHANGE_KEY_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("b") => {
+                                    mod_keys_down.remove(MAJOR_7_BUTTON);
                                 }
                                 _ => {}
                             }
@@ -356,6 +388,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if mod_keys_down.contains(SUS4_BUTTON) {
                             modifier_stage.insert(Modifier::AddSus4);
                         }
+                        if mod_keys_down.contains(MAJOR_7_BUTTON) {
+                            modifier_stage.insert(Modifier::AddMajor7);
+                        }
+                        if mod_keys_down.contains(CHANGE_KEY_BUTTON) {
+                            modifier_stage.insert(Modifier::ChangeKey);
+                        }
 
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord, then remove it.
@@ -382,6 +420,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             nc.relative_mask &= !(1u16 << 3);
                                             nc.relative_mask &= !(1u16 << 4);
                                             nc.relative_mask |= 1u16 << 5;
+                                        }
+                                        Modifier::AddMajor7 => {
+                                            // Add major 7th (interval 11)
+                                            nc.relative_mask |= 1u16 << 11;
+                                        }
+                                        Modifier::ChangeKey => {
+                                            // Set transpose to the chord's root
+                                            transpose = nc.root as i32;
                                         }
                                     }
                                 }
@@ -452,6 +498,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     &mut midi_connection,
                                     &active_chord,
                                     &mut active_notes,
+                                    transpose,
                                 );
                             }
                         }
@@ -585,6 +632,7 @@ fn check_pluck(
     conn: &mut Option<MidiOutputConnection>,
     active_chord: &Option<BuiltChord>,
     active_notes: &mut HashSet<u8>,
+    transpose: i32,
 ) {
     if conn.is_none() {
         return;
@@ -632,7 +680,7 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             if is_note_in_chord(i, active_chord) {
-                play_note(conn, i, active_notes);
+                play_note(conn, i, active_notes, transpose);
             }
         }
     }
@@ -642,14 +690,18 @@ fn play_note(
     conn: &mut Option<MidiOutputConnection>,
     string_index: usize,
     active_notes: &mut HashSet<u8>,
+    transpose: i32,
 ) {
     if let Some(c) = conn {
-        let note = START_NOTE + string_index as u8;
+        let mut note = START_NOTE as i32 + string_index as i32 + transpose;
+        if note < 0 { note = 0 }
+        if note > 127 { note = 127 }
+        let note_u = note as u8;
         // Send Note On (Channel 0)
         // 0x90 = Note On, Channel 1
         // note = 0-127
-        let _ = c.send(&[0x90, note, VELOCITY]);
-        active_notes.insert(note);
+        let _ = c.send(&[0x90, note_u, VELOCITY]);
+        active_notes.insert(note_u);
     }
 }
 
