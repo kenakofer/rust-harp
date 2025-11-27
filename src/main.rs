@@ -41,7 +41,7 @@ const MICRO_VELOCITY: u8 = 20; // quiet click
 const MAIN_PROGRAM: u8 = 25; // Steel String Guitar (zero-based)
 const BASS_PROGRAM: u8 = 26; // Bass program
 const BASS_CHANNEL: u8 = 2; // MIDI channel 3 (0-based)
-// Float bass velocity
+                            // Float bass velocity
 const BASS_VELOCITY_MULTIPLIER: f64 = 1.0;
 const MAIN_BASS_BOTTOM: f64 = 35.0;
 const MAIN_BASS_TOP: f64 = 80.0;
@@ -62,6 +62,7 @@ enum Modifier {
     Minor3ToMajor,
     RestorePerfect5,
     AddSus4,
+    SwitchMinorMajor,
     ChangeKey,
 }
 
@@ -111,6 +112,7 @@ const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
 const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
 const MAJOR_7_BUTTON: &str = "MAJOR_7_BUTTON";
 const SUS4_BUTTON: &str = "SUS4_BUTTON";
+const MINOR_MAJOR_BUTTON: &str = "MINOR_MAJOR_BUTTON";
 const CHANGE_KEY_BUTTON: &str = "CHANGE_KEY_BUTTON";
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -311,6 +313,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         return;
                                     }
                                 }
+                                winit::keyboard::Key::Character("4") => {
+                                    if mod_keys_down.contains(MINOR_MAJOR_BUTTON) {
+                                        return;
+                                    }
+                                    mod_keys_down.insert(MINOR_MAJOR_BUTTON);
+                                    modifier_stage.insert(Modifier::SwitchMinorMajor);
+                                    if chord_keys_down.len() == 0 {
+                                        return;
+                                    }
+                                }
                                 winit::keyboard::Key::Character("1") => {
                                     if mod_keys_down.contains(CHANGE_KEY_BUTTON) {
                                         return;
@@ -357,6 +369,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 }
                                 winit::keyboard::Key::Character("3") => {
                                     mod_keys_down.remove(SUS4_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("4") => {
+                                    mod_keys_down.remove(MINOR_MAJOR_BUTTON);
                                 }
                                 winit::keyboard::Key::Character("1") => {
                                     mod_keys_down.remove(CHANGE_KEY_BUTTON);
@@ -417,6 +432,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if mod_keys_down.contains(SUS4_BUTTON) {
                             modifier_stage.insert(Modifier::AddSus4);
                         }
+                        if mod_keys_down.contains(MINOR_MAJOR_BUTTON) {
+                            modifier_stage.insert(Modifier::SwitchMinorMajor);
+                        }
                         if mod_keys_down.contains(MAJOR_7_BUTTON) {
                             modifier_stage.insert(Modifier::AddMajor7);
                         }
@@ -453,6 +471,24 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         Modifier::AddMajor7 => {
                                             // Add major 7th (interval 11)
                                             nc.relative_mask |= 1u16 << 11;
+                                        }
+                                        Modifier::SwitchMinorMajor => {
+                                            // Based on root to be stable on multiple runs
+                                            if nc.root == ROOT_II
+                                                || nc.root == ROOT_III
+                                                || nc.root == ROOT_VI
+                                                || nc.root == ROOT_VII
+                                            {
+                                                // Change minor tri to major tri
+                                                let minor_3rd_bit = 1u16 << 3;
+                                                nc.relative_mask &= !minor_3rd_bit;
+                                                nc.relative_mask |= 1u16 << 4;
+                                            } else {
+                                                // Change major tri to minor tri
+                                                let major_3rd_bit = 1u16 << 4;
+                                                nc.relative_mask &= !major_3rd_bit;
+                                                nc.relative_mask |= 1u16 << 3;
+                                            }
                                         }
                                         Modifier::RestorePerfect5 => {
                                             // Change minor 3rd to major 3rd if present
