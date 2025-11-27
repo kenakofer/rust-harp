@@ -41,6 +41,7 @@ struct BuiltChord {
     relative_mask: u16, // bits 0..11
 }
 
+#[derive(Eq, Hash, PartialEq)]
 enum Modifier {
     AddMajor2,
     AddMinor7,
@@ -88,6 +89,9 @@ const II_BUTTON: &str = "II_BUTTON";
 const VI_BUTTON: &str = "VI_BUTTON";
 const III_BUTTON: &str = "III_BUTTON";
 const VII_BUTTON: &str = "VII_BUTTON";
+
+const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
+const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -140,8 +144,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut active_notes = HashSet::new();
     // Key tracking using named buttons
     let mut chord_keys_down: HashSet<&'static str> = HashSet::new();
+    let mut mod_keys_down: HashSet<&'static str> = HashSet::new();
     // Modifier queue: modifiers queued and applied on next chord key press
-    let mut modifier_queue: Vec<Modifier> = Vec::new();
+    let mut modifier_stage: HashSet<Modifier> = HashSet::new();
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
@@ -232,15 +237,23 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("b") => {
-                                    // 'b' is AddMajor2 modifier
-                                    modifier_queue.push(Modifier::AddMajor2);
+                                    if mod_keys_down.contains(MAJOR_2_BUTTON) {
+                                        return;
+                                    }
+                                    mod_keys_down.insert(MAJOR_2_BUTTON);
+                                    // inserting here supports sequentially input mods
+                                    modifier_stage.insert(Modifier::AddMajor2);
                                     if chord_keys_down.len() == 0 {
                                         return;
                                     }
                                 }
                                 winit::keyboard::Key::Character("n") => {
-                                    // 'n' is AddMinor7 modifier
-                                    modifier_queue.push(Modifier::AddMinor7);
+                                    if mod_keys_down.contains(MINOR_7_BUTTON) {
+                                        return;
+                                    }
+                                    mod_keys_down.insert(MINOR_7_BUTTON);
+                                    // inserting here supports sequentially input mods
+                                    modifier_stage.insert(Modifier::AddMinor7);
                                     if chord_keys_down.len() == 0 {
                                         return;
                                     }
@@ -273,6 +286,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 winit::keyboard::Key::Character("v") => {
                                     chord_keys_down.remove(VII_BUTTON);
                                 }
+                                winit::keyboard::Key::Character("b") => {
+                                    mod_keys_down.remove(MAJOR_2_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("n") => {
+                                    mod_keys_down.remove(MINOR_7_BUTTON);
+                                }
                                 _ => {}
                             }
                         }
@@ -299,16 +318,24 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 || (chord_keys_down.contains(I_BUTTON) && chord_keys_down.contains(V_BUTTON))
                                 || (chord_keys_down.contains(V_BUTTON) && chord_keys_down.contains(II_BUTTON))
                             {
-                                modifier_queue.push(Modifier::AddMinor7);
-                                modifier_queue.push(Modifier::Minor3ToMajor);
+                                modifier_stage.insert(Modifier::AddMinor7);
+                                modifier_stage.insert(Modifier::Minor3ToMajor);
                             }
                         }
 
+                        // Inserting here supports held mods
+                        if mod_keys_down.contains(MAJOR_2_BUTTON) {
+                            modifier_stage.insert(Modifier::AddMajor2);
+                        }
+                        if mod_keys_down.contains(MINOR_7_BUTTON) {
+                            modifier_stage.insert(Modifier::AddMinor7);
+                        }
+
                         // If there are modifiers queued and a chord key is down, apply them now to
-                        // the freshly constructed chord and clear the queue.
-                        if !modifier_queue.is_empty() && chord_keys_down.len() > 0 {
+                        // the freshly constructed chord, then remove it.
+                        if !modifier_stage.is_empty() && chord_keys_down.len() > 0 {
                             if let Some(ref mut nc) = new_chord {
-                                for m in modifier_queue.drain(..) {
+                                for m in modifier_stage.drain() {
                                     match m {
                                         Modifier::AddMajor2 => {
                                             nc.relative_mask |= 1u16 << 2;
