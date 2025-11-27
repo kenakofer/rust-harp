@@ -47,6 +47,7 @@ enum Modifier {
     AddMajor2,
     AddMinor7,
     Minor3ToMajor,
+    AddSus4,
 }
 
 fn build_with(root: u8, rels: &[u8]) -> BuiltChord {
@@ -93,6 +94,7 @@ const VII_BUTTON: &str = "VII_BUTTON";
 
 const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
 const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
+const SUS4_BUTTON: &str = "SUS4_BUTTON";
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -259,6 +261,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         return;
                                     }
                                 }
+                                winit::keyboard::Key::Character("3") => {
+                                    if mod_keys_down.contains(SUS4_BUTTON) {
+                                        return;
+                                    }
+                                    mod_keys_down.insert(SUS4_BUTTON);
+                                    modifier_stage.insert(Modifier::AddSus4);
+                                    if chord_keys_down.len() == 0 {
+                                        return;
+                                    }
+                                }
                                 _ => {}
                             }
                         } else {
@@ -292,6 +304,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 }
                                 winit::keyboard::Key::Character("6") => {
                                     mod_keys_down.remove(MINOR_7_BUTTON);
+                                }
+                                winit::keyboard::Key::Character("3") => {
+                                    mod_keys_down.remove(SUS4_BUTTON);
                                 }
                                 _ => {}
                             }
@@ -331,6 +346,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if mod_keys_down.contains(MINOR_7_BUTTON) {
                             modifier_stage.insert(Modifier::AddMinor7);
                         }
+                        if mod_keys_down.contains(SUS4_BUTTON) {
+                            modifier_stage.insert(Modifier::AddSus4);
+                        }
 
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord, then remove it.
@@ -351,6 +369,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                                                 nc.relative_mask &= !minor_3rd_bit;
                                                 nc.relative_mask |= 1u16 << 4;
                                             }
+                                        }
+                                        Modifier::AddSus4 => {
+                                            // Remove major/minor third (bits 3 and 4) and add perfect 4th (bit 5)
+                                            nc.relative_mask &= !(1u16 << 3);
+                                            nc.relative_mask &= !(1u16 << 4);
+                                            nc.relative_mask |= 1u16 << 5;
                                         }
                                     }
                                 }
