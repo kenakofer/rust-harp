@@ -12,7 +12,6 @@
 //!     representing strings.
 
 // Ideas TODO:
-//   Evenly spread active lines/notes to even out strum
 //   Mouse capture that works with the wacom?
 //   Why doesn't space work for input? Should we do input differently?
 //
@@ -555,9 +554,36 @@ fn check_pluck(
         return;
     }
 
-    // Divide width into NUM_STRINGS + 1 segments to evenly space them
-    // Spacing logic:  |  s1  |  s2  | ...
-    let spacing = width / (NUM_STRINGS as f64 + 1.0);
+    // Default spacing
+    let default_spacing = width / (NUM_STRINGS as f64 + 1.0);
+
+    // Compute active indices and their trigger positions (must match drawing logic)
+    let mut active_indices: Vec<usize> = Vec::new();
+    if let Some(ch) = active_chord {
+        for i in 0..NUM_STRINGS {
+            if is_note_in_chord(i, &Some(ch.clone())) {
+                active_indices.push(i);
+            }
+        }
+    }
+    let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
+    if active_indices.len() > 0 {
+        let spacing_active = width / (active_indices.len() as f64 + 1.0);
+        for (j, &idx) in active_indices.iter().enumerate() {
+            positions[idx] = spacing_active * (j as f64 + 1.0);
+        }
+        // Fill inactive strings with default grid positions
+        for i in 0..NUM_STRINGS {
+            if positions[i] == 0.0 {
+                positions[i] = default_spacing * (i as f64 + 1.0);
+            }
+        }
+    } else {
+        // default grid
+        for i in 0..NUM_STRINGS {
+            positions[i] = default_spacing * (i as f64 + 1.0);
+        }
+    }
 
     // Determine the range of movement
     let min_x = x1.min(x2);
@@ -565,7 +591,7 @@ fn check_pluck(
 
     // Iterate through all string positions to see if one lies within the movement range
     for i in 0..NUM_STRINGS {
-        let string_x = spacing * (i as f64 + 1.0);
+        let string_x = positions[i];
 
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
@@ -612,15 +638,41 @@ fn draw_strings(
     // Fill with black (0x000000)
     buffer.fill(0);
 
-    let spacing = width as f64 / (NUM_STRINGS as f64 + 1.0);
+    // Default spacing for inactive strings
+    let default_spacing = width as f64 / (NUM_STRINGS as f64 + 1.0);
+
+    // Compute active indices and their evenly spaced positions
+    let mut active_indices: Vec<usize> = Vec::new();
+    if let Some(ch) = active_chord {
+        for i in 0..NUM_STRINGS {
+            if is_note_in_chord(i, &Some(ch.clone())) {
+                active_indices.push(i);
+            }
+        }
+    }
+    let mut active_positions: Vec<Option<f64>> = vec![None; NUM_STRINGS];
+    if active_indices.len() > 0 {
+        let spacing_active = width as f64 / (active_indices.len() as f64 + 1.0);
+        for (j, &idx) in active_indices.iter().enumerate() {
+            active_positions[idx] = Some(spacing_active * (j as f64 + 1.0));
+        }
+    }
 
     for i in 0..NUM_STRINGS {
-        let x = (spacing * (i as f64 + 1.0)) as u32;
+        // Use active position if present, otherwise default grid
+        let x_f = active_positions[i].unwrap_or(default_spacing * (i as f64 + 1.0));
+        let x = x_f as u32;
 
-        let color = if active_chord.is_some() && !is_note_in_chord(i, active_chord) {
-            0x404040 // Dark Grey for inactive strings
+        let color = if let Some(ch) = active_chord {
+            if is_note_in_chord(i, &Some(ch.clone())) {
+                // active string: root is red, others white
+                let note = START_NOTE + i as u8;
+                if note % 12 == ch.root { 0xFF0000 } else { 0xFFFFFF }
+            } else {
+                0x404040
+            }
         } else {
-            0xFFFFFF // White for active strings
+            0xFFFFFF
         };
 
         // Simple vertical line drawing
