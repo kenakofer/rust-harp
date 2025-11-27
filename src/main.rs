@@ -36,6 +36,10 @@ struct BuiltChord {
     relative_mask: u16, // bits 0..11
 }
 
+enum Modifier {
+    AddMajor2,
+}
+
 fn build_with(root: u8, rels: &[u8], name: &'static str) -> BuiltChord {
     let mut mask: u16 = 0;
     for &r in rels.iter() {
@@ -134,6 +138,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Key tracking using named buttons
     let mut keys_down: HashSet<&'static str> = HashSet::new();
     let mut prev_keys_count: usize = 0;
+    // Modifier queue: modifiers queued and applied on next chord key press
+    let mut modifier_queue: Vec<Modifier> = Vec::new();
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
@@ -156,7 +162,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::KeyboardInput { event, .. } => {
-                        let mut old_chord = active_chord.as_ref();
+                        // Track if a chord key was pressed in this event so old_chord is cleared
+                        // when deciding the new chord. Avoid borrowing active_chord across
+                        // mutation by computing old_chord after handling the key event.
+                        let mut chord_was_pressed = false;
 
                         // Map key presses/releases into named buttons set. We don't want to
                         // remember old_chord if there's a new chord button pressed. We only want
@@ -164,36 +173,65 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if event.state == winit::event::ElementState::Pressed {
                             match event.logical_key.as_ref() {
                                 winit::keyboard::Key::Character("a") => {
+                                    // Prevent held presses from re-adding or removing mods
+                                    if keys_down.contains(VIIB_BUTTON) {
+                                        return;
+                                    }
                                     keys_down.insert(VIIB_BUTTON);
-                                    old_chord = None
+                                    chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("s") => {
+                                    if keys_down.contains(IV_BUTTON) {
+                                        return;
+                                    }
                                     keys_down.insert(IV_BUTTON);
-                                    old_chord = None
+                                    chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("d") => {
+                                    if keys_down.contains(I_BUTTON) {
+                                        return;
+                                    }
                                     keys_down.insert(I_BUTTON);
-                                    old_chord = None
+                                    chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("f") => {
+                                    if keys_down.contains(V_BUTTON) {
+                                        return;
+                                    }
                                     keys_down.insert(V_BUTTON);
-                                    old_chord = None
+                                    chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("z") => {
+                                    if keys_down.contains(II_BUTTON) {
+                                        return;
+                                    }
                                     keys_down.insert(II_BUTTON);
-                                    old_chord = None
+                                    chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("x") => {
+                                    if keys_down.contains(VI_BUTTON) {
+                                        return;
+                                    }
                                     keys_down.insert(VI_BUTTON);
-                                    old_chord = None
+                                    chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("c") => {
+                                    if keys_down.contains(III_BUTTON) {
+                                        return;
+                                    }
                                     keys_down.insert(III_BUTTON);
-                                    old_chord = None
+                                    chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("v") => {
+                                    if keys_down.contains(VII_BUTTON) {
+                                        return;
+                                    }
                                     keys_down.insert(VII_BUTTON);
-                                    old_chord = None
+                                    chord_was_pressed = true;
+                                }
+                                winit::keyboard::Key::Character("b") => {
+                                    // Space is AddMajor2 modifier
+                                    modifier_queue.push(Modifier::AddMajor2);
                                 }
                                 _ => {}
                             }
@@ -227,7 +265,26 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
 
-                        let new_chord = decide_chord(old_chord, &keys_down, prev_keys_count);
+                        let old_chord = if chord_was_pressed {
+                            None
+                        } else {
+                            active_chord.as_ref()
+                        };
+                        let mut new_chord = decide_chord(old_chord, &keys_down, prev_keys_count);
+
+                        // If there are modifiers queued and a chord key is down, apply them now to
+                        // the freshly constructed chord and clear the queue.
+                        if !modifier_queue.is_empty() && keys_down.len() > 0 {
+                            if let Some(ref mut nc) = new_chord {
+                                for m in modifier_queue.drain(..) {
+                                    match m {
+                                        Modifier::AddMajor2 => {
+                                            nc.relative_mask |= 1u16 << 2;
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         if old_chord.map(|c| c.name) != new_chord.as_ref().map(|c| c.name) {
                             // Stop any playing notes that are not in the new chord
