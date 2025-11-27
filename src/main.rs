@@ -237,7 +237,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     chord_keys_down.insert(VII_BUTTON);
                                     chord_was_pressed = true;
                                 }
-                                winit::keyboard::Key::Character("b") => {
+                                winit::keyboard::Key::Character("5") => {
                                     if mod_keys_down.contains(MAJOR_2_BUTTON) {
                                         return;
                                     }
@@ -248,7 +248,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         return;
                                     }
                                 }
-                                winit::keyboard::Key::Character("n") => {
+                                winit::keyboard::Key::Character("6") => {
                                     if mod_keys_down.contains(MINOR_7_BUTTON) {
                                         return;
                                     }
@@ -287,10 +287,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 winit::keyboard::Key::Character("v") => {
                                     chord_keys_down.remove(VII_BUTTON);
                                 }
-                                winit::keyboard::Key::Character("b") => {
+                                winit::keyboard::Key::Character("5") => {
                                     mod_keys_down.remove(MAJOR_2_BUTTON);
                                 }
-                                winit::keyboard::Key::Character("n") => {
+                                winit::keyboard::Key::Character("6") => {
                                     mod_keys_down.remove(MINOR_7_BUTTON);
                                 }
                                 _ => {}
