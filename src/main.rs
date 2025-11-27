@@ -75,9 +75,6 @@ fn major_tri(root: u8) -> BuiltChord {
 fn minor_tri(root: u8) -> BuiltChord {
     build_with(root, &[0, 3, 7])
 }
-fn major_minor_7(root: u8) -> BuiltChord {
-    build_with(root, &[0, 4, 7, 10])
-}
 fn diminished_tri(root: u8) -> BuiltChord {
     build_with(root, &[0, 3, 6])
 }
@@ -142,7 +139,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut active_chord: Option<BuiltChord> = None;
     let mut active_notes = HashSet::new();
     // Key tracking using named buttons
-    let mut keys_down: HashSet<&'static str> = HashSet::new();
+    let mut chord_keys_down: HashSet<&'static str> = HashSet::new();
     // Modifier queue: modifiers queued and applied on next chord key press
     let mut modifier_queue: Vec<Modifier> = Vec::new();
     // We move conn_out into the event loop
@@ -179,72 +176,72 @@ fn main() -> Result<(), Box<dyn Error>> {
                             match event.logical_key.as_ref() {
                                 winit::keyboard::Key::Character("a") => {
                                     // Prevent held presses from re-adding or removing mods
-                                    if keys_down.contains(VIIB_BUTTON) {
+                                    if chord_keys_down.contains(VIIB_BUTTON) {
                                         return;
                                     }
-                                    keys_down.insert(VIIB_BUTTON);
+                                    chord_keys_down.insert(VIIB_BUTTON);
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("s") => {
-                                    if keys_down.contains(IV_BUTTON) {
+                                    if chord_keys_down.contains(IV_BUTTON) {
                                         return;
                                     }
-                                    keys_down.insert(IV_BUTTON);
+                                    chord_keys_down.insert(IV_BUTTON);
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("d") => {
-                                    if keys_down.contains(I_BUTTON) {
+                                    if chord_keys_down.contains(I_BUTTON) {
                                         return;
                                     }
-                                    keys_down.insert(I_BUTTON);
+                                    chord_keys_down.insert(I_BUTTON);
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("f") => {
-                                    if keys_down.contains(V_BUTTON) {
+                                    if chord_keys_down.contains(V_BUTTON) {
                                         return;
                                     }
-                                    keys_down.insert(V_BUTTON);
+                                    chord_keys_down.insert(V_BUTTON);
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("z") => {
-                                    if keys_down.contains(II_BUTTON) {
+                                    if chord_keys_down.contains(II_BUTTON) {
                                         return;
                                     }
-                                    keys_down.insert(II_BUTTON);
+                                    chord_keys_down.insert(II_BUTTON);
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("x") => {
-                                    if keys_down.contains(VI_BUTTON) {
+                                    if chord_keys_down.contains(VI_BUTTON) {
                                         return;
                                     }
-                                    keys_down.insert(VI_BUTTON);
+                                    chord_keys_down.insert(VI_BUTTON);
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("c") => {
-                                    if keys_down.contains(III_BUTTON) {
+                                    if chord_keys_down.contains(III_BUTTON) {
                                         return;
                                     }
-                                    keys_down.insert(III_BUTTON);
+                                    chord_keys_down.insert(III_BUTTON);
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("v") => {
-                                    if keys_down.contains(VII_BUTTON) {
+                                    if chord_keys_down.contains(VII_BUTTON) {
                                         return;
                                     }
-                                    keys_down.insert(VII_BUTTON);
+                                    chord_keys_down.insert(VII_BUTTON);
                                     chord_was_pressed = true;
                                 }
                                 winit::keyboard::Key::Character("b") => {
                                     // 'b' is AddMajor2 modifier
                                     modifier_queue.push(Modifier::AddMajor2);
-                                    if keys_down.len() == 0 {
+                                    if chord_keys_down.len() == 0 {
                                         return;
                                     }
                                 }
                                 winit::keyboard::Key::Character("n") => {
                                     // 'n' is AddMinor7 modifier
                                     modifier_queue.push(Modifier::AddMinor7);
-                                    if keys_down.len() == 0 {
+                                    if chord_keys_down.len() == 0 {
                                         return;
                                     }
                                 }
@@ -253,28 +250,28 @@ fn main() -> Result<(), Box<dyn Error>> {
                         } else {
                             match event.logical_key.as_ref() {
                                 winit::keyboard::Key::Character("a") => {
-                                    keys_down.remove(VIIB_BUTTON);
+                                    chord_keys_down.remove(VIIB_BUTTON);
                                 }
                                 winit::keyboard::Key::Character("s") => {
-                                    keys_down.remove(IV_BUTTON);
+                                    chord_keys_down.remove(IV_BUTTON);
                                 }
                                 winit::keyboard::Key::Character("d") => {
-                                    keys_down.remove(I_BUTTON);
+                                    chord_keys_down.remove(I_BUTTON);
                                 }
                                 winit::keyboard::Key::Character("f") => {
-                                    keys_down.remove(V_BUTTON);
+                                    chord_keys_down.remove(V_BUTTON);
                                 }
                                 winit::keyboard::Key::Character("z") => {
-                                    keys_down.remove(II_BUTTON);
+                                    chord_keys_down.remove(II_BUTTON);
                                 }
                                 winit::keyboard::Key::Character("x") => {
-                                    keys_down.remove(VI_BUTTON);
+                                    chord_keys_down.remove(VI_BUTTON);
                                 }
                                 winit::keyboard::Key::Character("c") => {
-                                    keys_down.remove(III_BUTTON);
+                                    chord_keys_down.remove(III_BUTTON);
                                 }
                                 winit::keyboard::Key::Character("v") => {
-                                    keys_down.remove(VII_BUTTON);
+                                    chord_keys_down.remove(VII_BUTTON);
                                 }
                                 _ => {}
                             }
@@ -285,22 +282,22 @@ fn main() -> Result<(), Box<dyn Error>> {
                         } else {
                             active_chord.as_ref()
                         };
-                        let mut new_chord = decide_chord_base(old_chord, &keys_down);
+                        let mut new_chord = decide_chord_base(old_chord, &chord_keys_down);
 
                         // If a chord key was just pressed, detect pair combos that imply a minor-7
                         // and enqueue the AddMinor7 modifier so it is applied via the existing
                         // modifier pipeline.
                         if chord_was_pressed {
                             // Pairs that imply minor 7: VI+II, III+VI, VII+III, IV+I, IV+VIIB, I+V, V+II
-                            if (keys_down.contains(VI_BUTTON) && keys_down.contains(II_BUTTON))
-                                || (keys_down.contains(III_BUTTON) && keys_down.contains(VI_BUTTON))
-                                || (keys_down.contains(VII_BUTTON)
-                                    && keys_down.contains(III_BUTTON))
-                                || (keys_down.contains(IV_BUTTON) && keys_down.contains(I_BUTTON))
-                                || (keys_down.contains(IV_BUTTON)
-                                    && keys_down.contains(VIIB_BUTTON))
-                                || (keys_down.contains(I_BUTTON) && keys_down.contains(V_BUTTON))
-                                || (keys_down.contains(V_BUTTON) && keys_down.contains(II_BUTTON))
+                            if (chord_keys_down.contains(VI_BUTTON) && chord_keys_down.contains(II_BUTTON))
+                                || (chord_keys_down.contains(III_BUTTON) && chord_keys_down.contains(VI_BUTTON))
+                                || (chord_keys_down.contains(VII_BUTTON)
+                                    && chord_keys_down.contains(III_BUTTON))
+                                || (chord_keys_down.contains(IV_BUTTON) && chord_keys_down.contains(I_BUTTON))
+                                || (chord_keys_down.contains(IV_BUTTON)
+                                    && chord_keys_down.contains(VIIB_BUTTON))
+                                || (chord_keys_down.contains(I_BUTTON) && chord_keys_down.contains(V_BUTTON))
+                                || (chord_keys_down.contains(V_BUTTON) && chord_keys_down.contains(II_BUTTON))
                             {
                                 modifier_queue.push(Modifier::AddMinor7);
                                 modifier_queue.push(Modifier::Minor3ToMajor);
@@ -309,7 +306,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord and clear the queue.
-                        if !modifier_queue.is_empty() && keys_down.len() > 0 {
+                        if !modifier_queue.is_empty() && chord_keys_down.len() > 0 {
                             if let Some(ref mut nc) = new_chord {
                                 for m in modifier_queue.drain(..) {
                                     match m {
@@ -432,12 +429,12 @@ fn is_note_in_chord(string_index: usize, chord: &Option<BuiltChord>) -> bool {
     }
 }
 
-// Decide chord from current keys_down and previous chord state.
+// Decide chord from current chord_keys_down and previous chord state.
 fn decide_chord_base(
     old_chord: Option<&BuiltChord>,
-    keys_down: &HashSet<&'static str>,
+    chord_keys_down: &HashSet<&'static str>,
 ) -> Option<BuiltChord> {
-    if keys_down.contains(VII_BUTTON) {
+    if chord_keys_down.contains(VII_BUTTON) {
         if let Some(old) = old_chord {
             if old.root == ROOT_VII {
                 return Some(old.clone());
@@ -446,7 +443,7 @@ fn decide_chord_base(
         return Some(diminished_tri(ROOT_VII));
     }
 
-    if keys_down.contains(III_BUTTON) {
+    if chord_keys_down.contains(III_BUTTON) {
         if let Some(old) = old_chord {
             if old.root == ROOT_III {
                 return Some(old.clone());
@@ -455,7 +452,7 @@ fn decide_chord_base(
         return Some(minor_tri(ROOT_III));
     }
 
-    if keys_down.contains(VI_BUTTON) {
+    if chord_keys_down.contains(VI_BUTTON) {
         if let Some(old) = old_chord {
             if old.root == ROOT_VI {
                 return Some(old.clone());
@@ -464,7 +461,7 @@ fn decide_chord_base(
         return Some(minor_tri(ROOT_VI));
     }
 
-    if keys_down.contains(II_BUTTON) {
+    if chord_keys_down.contains(II_BUTTON) {
         // Preserve II7 if that was the previous chord
         if let Some(old) = old_chord {
             if old.root == ROOT_II {
@@ -474,7 +471,7 @@ fn decide_chord_base(
         return Some(minor_tri(ROOT_II));
     }
 
-    if keys_down.contains(V_BUTTON) {
+    if chord_keys_down.contains(V_BUTTON) {
         // Preserve V7 if it was previously active
         if let Some(old) = old_chord {
             if old.root == ROOT_V {
@@ -484,7 +481,7 @@ fn decide_chord_base(
         return Some(major_tri(ROOT_V));
     }
 
-    if keys_down.contains(I_BUTTON) {
+    if chord_keys_down.contains(I_BUTTON) {
         // Preserve I7 if it was previously active
         if let Some(old) = old_chord {
             if old.root == ROOT_I {
@@ -494,7 +491,7 @@ fn decide_chord_base(
         return Some(major_tri(ROOT_I));
     }
 
-    if keys_down.contains(IV_BUTTON) {
+    if chord_keys_down.contains(IV_BUTTON) {
         if let Some(old) = old_chord {
             if old.root == ROOT_I {
                 return Some(old.clone());
@@ -503,7 +500,7 @@ fn decide_chord_base(
         return Some(major_tri(ROOT_IV));
     }
 
-    if keys_down.contains(VIIB_BUTTON) {
+    if chord_keys_down.contains(VIIB_BUTTON) {
         return Some(major_tri(ROOT_VIIB));
     }
 
