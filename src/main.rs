@@ -552,7 +552,7 @@ fn decide_chord_base(
 
     if chord_keys_down.contains(IV_BUTTON) {
         if let Some(old) = old_chord {
-            if old.root == ROOT_I {
+            if old.root == ROOT_IV {
                 return Some(old.clone());
             }
         }
@@ -560,6 +560,11 @@ fn decide_chord_base(
     }
 
     if chord_keys_down.contains(VIIB_BUTTON) {
+        if let Some(old) = old_chord {
+            if old.root == ROOT_VIIB {
+                return Some(old.clone());
+            }
+        }
         return Some(major_tri(ROOT_VIIB));
     }
 
