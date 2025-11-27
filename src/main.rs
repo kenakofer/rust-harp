@@ -63,6 +63,7 @@ enum Modifier {
     RestorePerfect5,
     AddSus4,
     SwitchMinorMajor,
+    No3,
     ChangeKey,
 }
 
@@ -113,6 +114,7 @@ const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
 const MAJOR_7_BUTTON: &str = "MAJOR_7_BUTTON";
 const SUS4_BUTTON: &str = "SUS4_BUTTON";
 const MINOR_MAJOR_BUTTON: &str = "MINOR_MAJOR_BUTTON";
+const NO_3_BUTTON: &str = "MINOR_MAJOR_BUTTON";
 const CHANGE_KEY_BUTTON: &str = "CHANGE_KEY_BUTTON";
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -323,6 +325,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         return;
                                     }
                                 }
+                                winit::keyboard::Key::Character(".") => {
+                                    if mod_keys_down.contains(NO_3_BUTTON) {
+                                        return;
+                                    }
+                                    mod_keys_down.insert(NO_3_BUTTON);
+                                    modifier_stage.insert(Modifier::No3);
+                                    if chord_keys_down.len() == 0 {
+                                        return;
+                                    }
+                                }
                                 winit::keyboard::Key::Character("1") => {
                                     if mod_keys_down.contains(CHANGE_KEY_BUTTON) {
                                         return;
@@ -372,6 +384,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 }
                                 winit::keyboard::Key::Character("4") => {
                                     mod_keys_down.remove(MINOR_MAJOR_BUTTON);
+                                }
+                                winit::keyboard::Key::Character(".") => {
+                                    mod_keys_down.remove(NO_3_BUTTON);
                                 }
                                 winit::keyboard::Key::Character("1") => {
                                     mod_keys_down.remove(CHANGE_KEY_BUTTON);
@@ -435,6 +450,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if mod_keys_down.contains(MINOR_MAJOR_BUTTON) {
                             modifier_stage.insert(Modifier::SwitchMinorMajor);
                         }
+                        if mod_keys_down.contains(NO_3_BUTTON) {
+                            modifier_stage.insert(Modifier::RestorePerfect5);
+                        }
                         if mod_keys_down.contains(MAJOR_7_BUTTON) {
                             modifier_stage.insert(Modifier::AddMajor7);
                         }
@@ -489,6 +507,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                                                 nc.relative_mask &= !major_3rd_bit;
                                                 nc.relative_mask |= 1u16 << 3;
                                             }
+                                        }
+                                        Modifier::No3 => {
+                                            // Remove both major and minor 3rd
+                                            nc.relative_mask &= !(1u16 << 3);
+                                            nc.relative_mask &= !(1u16 << 4);
                                         }
                                         Modifier::RestorePerfect5 => {
                                             // Change minor 3rd to major 3rd if present
