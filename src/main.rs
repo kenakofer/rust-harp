@@ -19,7 +19,7 @@
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -623,6 +623,90 @@ fn decide_chord_base(
     None
 }
 
+/// Compute x positions for each string given the window width and active chord.
+fn compute_string_positions(width: f64, active_chord: &Option<BuiltChord>) -> Vec<f64> {
+    let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
+    let default_spacing = width / (NUM_STRINGS as f64 + 1.0);
+    let mut default_positions: Vec<f64> = vec![0.0; NUM_STRINGS];
+    for i in 0..NUM_STRINGS {
+        default_positions[i] = default_spacing * (i as f64 + 1.0);
+        positions[i] = default_positions[i];
+    }
+
+    if let Some(ch) = active_chord {
+        let mut active_indices: Vec<usize> = Vec::new();
+        for i in 0..NUM_STRINGS {
+            if is_note_in_chord(i, &Some(ch.clone())) {
+                active_indices.push(i);
+            }
+        }
+
+        if !active_indices.is_empty() {
+            let mut root_indices: Vec<usize> = active_indices
+                .iter()
+                .cloned()
+                .filter(|&i| ((START_NOTE + i as u8) % 12) == ch.root)
+                .collect();
+            root_indices.sort();
+
+            if root_indices.is_empty() {
+                let spacing_active = width / (active_indices.len() as f64 + 1.0);
+                for (j, &idx) in active_indices.iter().enumerate() {
+                    positions[idx] = spacing_active * (j as f64 + 1.0);
+                }
+            } else {
+                for &ri in &root_indices {
+                    positions[ri] = default_positions[ri];
+                }
+
+                let mut nonroot: Vec<usize> = active_indices
+                    .iter()
+                    .cloned()
+                    .filter(|i| !root_indices.contains(i))
+                    .collect();
+                nonroot.sort();
+
+                let first_root = root_indices[0];
+                let left_group: Vec<usize> = nonroot.iter().cloned().filter(|&i| i < first_root).collect();
+                if !left_group.is_empty() {
+                    let m = left_group.len() as f64;
+                    let spacing = (default_positions[first_root] - 0.0) / (m + 1.0);
+                    for (j, &idx) in left_group.iter().enumerate() {
+                        positions[idx] = spacing * (j as f64 + 1.0);
+                    }
+                }
+
+                for pair in root_indices.windows(2) {
+                    let a = pair[0];
+                    let b = pair[1];
+                    let apos = default_positions[a];
+                    let bpos = default_positions[b];
+                    let group: Vec<usize> = nonroot.iter().cloned().filter(|&i| i > a && i < b).collect();
+                    if !group.is_empty() {
+                        let m = group.len() as f64;
+                        let spacing = (bpos - apos) / (m + 1.0);
+                        for (j, &idx) in group.iter().enumerate() {
+                            positions[idx] = apos + spacing * (j as f64 + 1.0);
+                        }
+                    }
+                }
+
+                let last_root = *root_indices.last().unwrap();
+                let right_group: Vec<usize> = nonroot.iter().cloned().filter(|&i| i > last_root).collect();
+                if !right_group.is_empty() {
+                    let m = right_group.len() as f64;
+                    let spacing = (width - default_positions[last_root]) / (m + 1.0);
+                    for (j, &idx) in right_group.iter().enumerate() {
+                        positions[idx] = default_positions[last_root] + spacing * (j as f64 + 1.0);
+                    }
+                }
+            }
+        }
+    }
+
+    positions
+}
+
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
 /// We calculate the string positions dynamically based on window width.
 fn check_pluck(
@@ -638,36 +722,8 @@ fn check_pluck(
         return;
     }
 
-    // Default spacing
-    let default_spacing = width / (NUM_STRINGS as f64 + 1.0);
-
-    // Compute active indices and their trigger positions (must match drawing logic)
-    let mut active_indices: Vec<usize> = Vec::new();
-    if let Some(ch) = active_chord {
-        for i in 0..NUM_STRINGS {
-            if is_note_in_chord(i, &Some(ch.clone())) {
-                active_indices.push(i);
-            }
-        }
-    }
-    let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
-    if active_indices.len() > 0 {
-        let spacing_active = width / (active_indices.len() as f64 + 1.0);
-        for (j, &idx) in active_indices.iter().enumerate() {
-            positions[idx] = spacing_active * (j as f64 + 1.0);
-        }
-        // Fill inactive strings with default grid positions
-        for i in 0..NUM_STRINGS {
-            if positions[i] == 0.0 {
-                positions[i] = default_spacing * (i as f64 + 1.0);
-            }
-        }
-    } else {
-        // default grid
-        for i in 0..NUM_STRINGS {
-            positions[i] = default_spacing * (i as f64 + 1.0);
-        }
-    }
+    // Use shared compute function to get positions
+    let positions = compute_string_positions(width, active_chord);
 
     // Determine the range of movement
     let min_x = x1.min(x2);
@@ -726,34 +782,20 @@ fn draw_strings(
     // Fill with black (0x000000)
     buffer.fill(0);
 
-    // Default spacing for inactive strings
-    let default_spacing = width as f64 / (NUM_STRINGS as f64 + 1.0);
+    // Use shared compute function for positions
+    let positions = compute_string_positions(width as f64, active_chord);
+    use std::collections::HashMap;
 
-    // Compute active indices and their evenly spaced positions
-    let mut active_indices: Vec<usize> = Vec::new();
-    if let Some(ch) = active_chord {
-        for i in 0..NUM_STRINGS {
-            if is_note_in_chord(i, &Some(ch.clone())) {
-                active_indices.push(i);
-            }
-        }
-    }
-    let mut active_positions: Vec<Option<f64>> = vec![None; NUM_STRINGS];
-    if active_indices.len() > 0 {
-        let spacing_active = width as f64 / (active_indices.len() as f64 + 1.0);
-        for (j, &idx) in active_indices.iter().enumerate() {
-            active_positions[idx] = Some(spacing_active * (j as f64 + 1.0));
-        }
-    }
-
+    // Aggregate per-x colors so multiple strings mapping to same x don't overwrite incorrectly
+    let mut x_colors: HashMap<u32, u32> = HashMap::new();
     for i in 0..NUM_STRINGS {
-        // Use active position if present, otherwise default grid
-        let x_f = active_positions[i].unwrap_or(default_spacing * (i as f64 + 1.0));
+        let x_f = positions[i];
         let x = x_f as u32;
+        if x >= width { continue }
 
-        let color = if let Some(ch) = active_chord {
+        // Determine this string's color
+        let this_color = if let Some(ch) = active_chord {
             if is_note_in_chord(i, &Some(ch.clone())) {
-                // active string: root is red, others white
                 let note = START_NOTE + i as u8;
                 if note % 12 == ch.root { 0xFF0000 } else { 0xFFFFFF }
             } else {
@@ -763,13 +805,40 @@ fn draw_strings(
             0xFFFFFF
         };
 
-        // Simple vertical line drawing
-        if x < width {
-            for y in 0..height {
-                let index = (y * width + x) as usize;
-                if index < buffer.len() {
-                    buffer[index] = color;
-                }
+        // Merge with existing color at this x with precedence: root red > active white > inactive gray > default white
+        let merged = match x_colors.get(&x) {
+            None => this_color,
+            Some(&existing) => {
+                if existing == 0xFF0000 || this_color == 0xFF0000 { 0xFF0000 }
+                else if existing == 0xFFFFFF || this_color == 0xFFFFFF { 0xFFFFFF }
+                else { 0x404040 }
+            }
+        };
+        x_colors.insert(x, merged);
+    }
+
+    // Draw vertical lines using aggregated x_colors; fallback to default if missing
+    for (x, &color) in x_colors.iter() {
+        for y in 0..height {
+            let index = (y * width + x) as usize;
+            if index < buffer.len() {
+                buffer[index] = color;
+            }
+        }
+    }
+
+    // Optionally draw default lines where no active mapping exists
+    for i in 0..NUM_STRINGS {
+        let x_f = positions[i];
+        let x = x_f as u32;
+        if x >= width { continue }
+        if x_colors.contains_key(&x) { continue }
+        // default grid color
+        let color = 0xFFFFFFu32;
+        for y in 0..height {
+            let index = (y * width + x) as usize;
+            if index < buffer.len() {
+                buffer[index] = color;
             }
         }
     }
