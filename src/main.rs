@@ -11,6 +11,10 @@
 //! * **Visuals**: Super low priority. Displays a window with evenly spaced vertical lines
 //!     representing strings.
 
+// Ideas:
+//   Evenly spread active lines/notes to even out strum
+//   Mouse capture that works with the wacom?
+
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
@@ -31,7 +35,8 @@ const VELOCITY: u8 = 100;
 
 #[derive(Clone)]
 struct BuiltChord {
-    name: &'static str,
+    // Disable name for now, since this will be better as a debugging tool rather than crucial logic
+    //name: &'static str, 
     root: u8,
     relative_mask: u16, // bits 0..11
 }
@@ -40,14 +45,13 @@ enum Modifier {
     AddMajor2,
 }
 
-fn build_with(root: u8, rels: &[u8], name: &'static str) -> BuiltChord {
+fn build_with(root: u8, rels: &[u8]) -> BuiltChord {
     let mut mask: u16 = 0;
     for &r in rels.iter() {
         let rel = (r as usize) % 12;
         mask |= 1u16 << rel;
     }
     BuiltChord {
-        name,
         root,
         relative_mask: mask,
     }
@@ -63,17 +67,17 @@ const ROOT_VI: u8 = 9;
 const ROOT_III: u8 = 4;
 const ROOT_VII: u8 = 11;
 
-fn major_tri(root: u8, name: &'static str) -> BuiltChord {
-    build_with(root, &[0, 4, 7], name)
+fn major_tri(root: u8) -> BuiltChord {
+    build_with(root, &[0, 4, 7])
 }
-fn minor_tri(root: u8, name: &'static str) -> BuiltChord {
-    build_with(root, &[0, 3, 7], name)
+fn minor_tri(root: u8) -> BuiltChord {
+    build_with(root, &[0, 3, 7])
 }
-fn major_minor_7(root: u8, name: &'static str) -> BuiltChord {
-    build_with(root, &[0, 4, 7, 10], name)
+fn major_minor_7(root: u8) -> BuiltChord {
+    build_with(root, &[0, 4, 7, 10])
 }
-fn diminished_tri(root: u8, name: &'static str) -> BuiltChord {
-    build_with(root, &[0, 3, 6], name)
+fn diminished_tri(root: u8) -> BuiltChord {
+    build_with(root, &[0, 3, 6])
 }
 
 // Named button identifiers for key tracking
@@ -137,7 +141,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut active_notes = HashSet::new();
     // Key tracking using named buttons
     let mut keys_down: HashSet<&'static str> = HashSet::new();
-    let mut prev_keys_count: usize = 0;
     // Modifier queue: modifiers queued and applied on next chord key press
     let mut modifier_queue: Vec<Modifier> = Vec::new();
     // We move conn_out into the event loop
@@ -232,6 +235,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 winit::keyboard::Key::Character("b") => {
                                     // Space is AddMajor2 modifier
                                     modifier_queue.push(Modifier::AddMajor2);
+                                    if keys_down.len() == 0 {
+                                        return
+                                    }
                                 }
                                 _ => {}
                             }
@@ -270,7 +276,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         } else {
                             active_chord.as_ref()
                         };
-                        let mut new_chord = decide_chord(old_chord, &keys_down, prev_keys_count);
+                        let mut new_chord = decide_chord(old_chord, &keys_down);
 
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord and clear the queue.
@@ -286,7 +292,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
 
-                        if old_chord.map(|c| c.name) != new_chord.as_ref().map(|c| c.name) {
+                        // If the notes aren't the same, do the switch
+                        if old_chord.map_or(true, |old| {
+                            new_chord.as_ref().map_or(true, |new| {
+                                old.root != new.root || old.relative_mask != new.relative_mask
+                            })
+                        }) {
                             // Stop any playing notes that are not in the new chord
                             if let Some(new) = new_chord.as_ref() {
                                 let notes_to_stop: Vec<u8> = active_notes
@@ -306,8 +317,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                             active_chord = new_chord;
                             window.request_redraw();
                         }
-
-                        prev_keys_count = keys_down.len();
                     }
 
                     WindowEvent::Resized(physical_size) => {
@@ -386,104 +395,100 @@ fn is_note_in_chord(string_index: usize, chord: &Option<BuiltChord>) -> bool {
 // Decide chord from current keys_down and previous chord state.
 fn decide_chord(
     old_chord: Option<&BuiltChord>,
-    keys_down: &HashSet<&'static str>,
-    prev_keys_count: usize,
+    keys_down: &HashSet<&'static str>
 ) -> Option<BuiltChord> {
     // Pair combos first (higher precedence)
     if keys_down.contains(VI_BUTTON) && keys_down.contains(II_BUTTON) {
-        return Some(major_minor_7(ROOT_VI, "VI7"));
+        return Some(major_minor_7(ROOT_VI));
     }
     if keys_down.contains(III_BUTTON) && keys_down.contains(VI_BUTTON) {
-        return Some(major_minor_7(ROOT_III, "III7"));
+        return Some(major_minor_7(ROOT_III));
     }
     if keys_down.contains(VII_BUTTON) && keys_down.contains(III_BUTTON) {
-        return Some(major_minor_7(ROOT_VII, "VII7"));
+        return Some(major_minor_7(ROOT_VII));
     }
     if keys_down.contains(IV_BUTTON) && keys_down.contains(I_BUTTON) {
-        return Some(major_minor_7(ROOT_I, "I7"));
+        return Some(major_minor_7(ROOT_I));
     }
     if keys_down.contains(IV_BUTTON) && keys_down.contains(VIIB_BUTTON) {
-        return Some(major_minor_7(ROOT_IV, "IV7"));
+        return Some(major_minor_7(ROOT_IV));
     }
     if keys_down.contains(I_BUTTON) && keys_down.contains(V_BUTTON) {
-        return Some(major_minor_7(ROOT_V, "V7"));
+        return Some(major_minor_7(ROOT_V));
     }
     // Existing combo: V + II => II7
     if keys_down.contains(V_BUTTON) && keys_down.contains(II_BUTTON) {
-        return Some(major_minor_7(ROOT_II, "II7"));
+        return Some(major_minor_7(ROOT_II));
     }
 
     if keys_down.contains(VIIB_BUTTON) {
-        return Some(major_tri(ROOT_VIIB, "VIIb"));
+        return Some(major_tri(ROOT_VIIB));
     }
     if keys_down.contains(IV_BUTTON) {
         if let Some(old) = old_chord {
-            if old.name == "IV7" {
+            if old.root == ROOT_I {
                 return Some(old.clone());
             }
         }
-        return Some(major_tri(ROOT_IV, "IV"));
+        return Some(major_tri(ROOT_IV));
     }
     if keys_down.contains(I_BUTTON) {
         // Preserve I7 if it was previously active
         if let Some(old) = old_chord {
-            if old.name == "I7" {
+            if old.root == ROOT_I {
                 return Some(old.clone());
             }
         }
-        return Some(major_tri(ROOT_I, "I"));
+        return Some(major_tri(ROOT_I));
     }
     if keys_down.contains(V_BUTTON) {
         // Preserve V7 if it was previously active
         if let Some(old) = old_chord {
-            if old.name == "V7" {
+            if old.root == ROOT_V {
                 return Some(old.clone());
             }
         }
-        return Some(major_tri(ROOT_V, "V"));
+        return Some(major_tri(ROOT_V));
     }
     if keys_down.contains(II_BUTTON) {
         // Preserve II7 if that was the previous chord
         if let Some(old) = old_chord {
-            if old.name == "II7" {
+            if old.root == ROOT_II {
                 return Some(old.clone());
             }
         }
-        return Some(minor_tri(ROOT_II, "ii"));
+        return Some(minor_tri(ROOT_II));
     }
 
     // Additional single-key minors/diminished (preserve 7ths)
     if keys_down.contains(VI_BUTTON) {
         if let Some(old) = old_chord {
-            if old.name == "VI7" {
+            if old.root == ROOT_VI {
                 return Some(old.clone());
             }
         }
-        return Some(minor_tri(ROOT_VI, "vi"));
+        return Some(minor_tri(ROOT_VI));
     }
     if keys_down.contains(III_BUTTON) {
         if let Some(old) = old_chord {
-            if old.name == "III7" {
+            if old.root == ROOT_III {
                 return Some(old.clone());
             }
         }
-        return Some(minor_tri(ROOT_III, "iii"));
+        return Some(minor_tri(ROOT_III));
     }
     if keys_down.contains(VII_BUTTON) {
         if let Some(old) = old_chord {
-            if old.name == "VII7" {
+            if old.root == ROOT_VII {
                 return Some(old.clone());
             }
         }
-        return Some(diminished_tri(ROOT_VII, "vii"));
+        return Some(diminished_tri(ROOT_VII));
     }
 
     // No keys down: preserve chord if we just went from 1 -> 0
-    if keys_down.len() == 0 && prev_keys_count == 1 {
-        if let Some(old) = old_chord {
-            return Some(old.clone());
-        }
-        return None;
+    if let Some(old) = old_chord {
+        return Some(old.clone());
     }
 
     None
