@@ -31,14 +31,16 @@ use winit::{
 
 const NUM_STRINGS: usize = 48;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
-const START_NOTE: u8 = 41;
+const START_NOTE: u8 = 35;
 const VELOCITY: u8 = 100;
 const MICRO_STEPS_PER_OCTAVE: usize = 60;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
 const MICRO_NOTE: u8 = 30; // middle C for micro-step trigger
 const MICRO_VELOCITY: u8 = 30; // quiet click
-const MAIN_PROGRAM: u8 = 46; // Acoustic Harp (zero-based)
+const MAIN_PROGRAM: u8 = 25; // Steel String Guitar (zero-based)
+const BASS_PROGRAM: u8 = 26; // Bass program
+const BASS_CHANNEL: u8 = 2; // MIDI channel 3 (0-based)
 
 #[derive(Clone)]
 struct BuiltChord {
@@ -138,8 +140,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // If we have a virtual/hardware connection, set the instruments
     if let Some(ref mut conn) = conn_out {
-        // Set main channel (channel 0) to harp
+        // Set main channel (channel 0) to main program
         let _ = conn.send(&[0xC0 | 0x00, MAIN_PROGRAM]);
+        // Set bass channel program
+        let _ = conn.send(&[0xC0 | (BASS_CHANNEL & 0x0F), BASS_PROGRAM]);
         // Set micro-step instrument on MICRO_CHANNEL
         let _ = conn.send(&[0xC0 | (MICRO_CHANNEL & 0x0F), MICRO_PROGRAM]);
     }
@@ -812,16 +816,50 @@ fn play_note(
         if note < 0 { note = 0 }
         if note > 127 { note = 127 }
         let note_u = note as u8;
-        // Send Note On (Channel 0)
-        let _ = c.send(&[0x90, note_u, velocity]);
+
+        // Crossfade between bass and main over [47..71]
+        let main_factor = if note_u as i32 <= 47 {
+            0.0
+        } else if note_u as i32 >= 71 {
+            1.0
+        } else {
+            (note_u as f64 - 47.0) / (71.0 - 47.0)
+        };
+        let bass_factor = 1.0 - main_factor;
+
+        // Scale velocities
+        let main_vel = ((velocity as f64) * main_factor).round() as u8;
+        let bass_vel = ((velocity as f64) * bass_factor).round() as u8;
+
+        // Clamp small nonzero factors to at least velocity 1 so they are audible
+        let mut main_vel = main_vel;
+        let mut bass_vel = bass_vel;
+        if main_factor > 0.0 && main_vel == 0 { main_vel = 1 }
+        if bass_factor > 0.0 && bass_vel == 0 { bass_vel = 1 }
+
+        // Send to bass channel if bass_vel > 0 (Note On only)
+        if bass_vel > 0 {
+            let on_b = 0x90 | (BASS_CHANNEL & 0x0F);
+            let _ = c.send(&[on_b, note_u, bass_vel]);
+        }
+
+        // Send to main channel if main_vel > 0 (Note On only)
+        if main_vel > 0 {
+            let on_m = 0x90 | 0x00;
+            let _ = c.send(&[on_m, note_u, main_vel]);
+        }
+
         active_notes.insert(note_u);
     }
 }
 
 fn stop_note(conn: &mut Option<MidiOutputConnection>, note: u8, active_notes: &mut HashSet<u8>) {
     if let Some(c) = conn {
-        // Send Note Off (Channel 0)
-        let _ = c.send(&[0x80, note, 0]);
+        // Send Note Off on both channels to ensure silence
+        let off_main = 0x80 | 0x00;
+        let off_bass = 0x80 | (BASS_CHANNEL & 0x0F);
+        let _ = c.send(&[off_main, note, 0]);
+        let _ = c.send(&[off_bass, note, 0]);
         active_notes.remove(&note);
     }
 }
