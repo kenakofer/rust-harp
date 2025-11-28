@@ -14,6 +14,11 @@
 // Ideas TODO:
 //   Mouse capture that works with the wacom?
 //   Why doesn't space work for input? Should we do input differently?
+//   Problem: Impossible to pluck a scale with evenly spaced actives. Solutions:
+//    - Stop evenly spacing (Strums should be fast anyway, while plucks should be precise)
+//    - Button to temporarily disable even spacing
+//    - Even spaced top half, original bottom half
+//    - Even spaced top half connects smoothly to original bottom half
 //
 
 use midir::os::unix::VirtualOutput;
