@@ -33,11 +33,11 @@ const NUM_STRINGS: usize = 48;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
 const START_NOTE: u8 = 35;
 const VELOCITY: u8 = 70;
-const MICRO_STEPS_PER_OCTAVE: usize = 60;
+const MICRO_STEPS_PER_OCTAVE: usize = 15;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
-const MICRO_NOTE: u8 = 30; // middle C for micro-step trigger
-const MICRO_VELOCITY: u8 = 20; // quiet click
+const MICRO_NOTE: u8 = 20; // middle C for micro-step trigger
+const MICRO_VELOCITY: u8 = 50; // quiet click
 const MAIN_PROGRAM: u8 = 25; // Steel String Guitar (zero-based)
 const BASS_PROGRAM: u8 = 26; // Bass program
 const BASS_CHANNEL: u8 = 2; // MIDI channel 3 (0-based)
