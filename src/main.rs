@@ -12,14 +12,7 @@
 //!     representing strings.
 
 // Ideas TODO:
-//   Mouse capture that works with the wacom?
 //   Why doesn't space work for input? Should we do input differently?
-//   Problem: Impossible to pluck a scale with evenly spaced actives. Solutions:
-//    - Stop evenly spacing (Strums should be fast anyway, while plucks should be precise)
-//    - Button to temporarily disable even spacing
-//    - Even spaced top half, original bottom half
-//    - Even spaced top half connects smoothly to original bottom half
-//
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
@@ -180,7 +173,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut window_width = 800.0;
     let window_height = 600.0;
     let mut is_mouse_down = false;
-    let mut active_chord: Option<BuiltChord> = None;
+    let mut active_chord: Option<BuiltChord> = Some(major_tri(ROOT_I));
+    if let Some(ref mut nc) = active_chord {
+        nc.relative_mask |= 1u16 << 2; // AddMajor2
+    }
+
     let mut active_notes = HashSet::new();
     // Key tracking using named buttons
     let mut chord_keys_down: HashSet<&'static str> = HashSet::new();
@@ -812,7 +809,8 @@ fn compute_string_positions(width: f64, active_chord: &Option<BuiltChord>) -> Ve
                     let m = right_group.len() as f64;
                     let spacing = (width - bottom_positions[last_root]) / (m + 1.0);
                     for (j, &idx) in right_group.iter().enumerate() {
-                        top_positions[idx] = bottom_positions[last_root] + spacing * (j as f64 + 1.0);
+                        top_positions[idx] =
+                            bottom_positions[last_root] + spacing * (j as f64 + 1.0);
                     }
                 }
             }
@@ -864,19 +862,7 @@ fn check_pluck(
         // Strict crossing check
         if string_x_at_y > min_x && string_x_at_y <= max_x {
             if is_note_in_chord(i, active_chord) {
-                // velocity scales from top (low) to bottom (high)
-                let mut vel_f = if window_height > 0.0 {
-                    (cursor_y / window_height) * 127.0
-                } else {
-                    VELOCITY as f64
-                };
-                if vel_f < 1.0 {
-                    vel_f = 1.0
-                }
-                if vel_f > 127.0 {
-                    vel_f = 127.0
-                }
-                let vel = vel_f.round() as u8;
+                let vel = VELOCITY as u8;
                 play_note(conn, i, active_notes, transpose, vel);
             }
         }
@@ -1032,10 +1018,10 @@ fn draw_strings(
                     (0xFFFFFF, 1) // White, medium priority
                 }
             } else {
-                (0x404040, 0) // Gray, low priority
+                continue; // Do not draw inactive notes
             }
         } else {
-            (0xFFFFFF, 1) // Default is white
+            continue; // Do not draw any strings if no chord is active
         };
         strings_to_draw.push((x_top, x_bottom, color, priority));
     }
