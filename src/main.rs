@@ -936,6 +936,9 @@ fn play_note(
         };
         let bass_factor = 1.0 - main_factor;
 
+        // On second thought, lets give main_factor twice as long of a fade
+        let main_factor = 1.0 - 0.5 * (1.0 - main_factor);
+
         // Scale velocities
         let main_vel = ((velocity as f64) * main_factor).round() as u8;
         let bass_vel = ((velocity as f64) * bass_factor * BASS_VELOCITY_MULTIPLIER).round() as u8;
