@@ -573,11 +573,23 @@ fn decide_chord_base(
     None
 }
 
-/// Compute x positions for each string using a piano-like layout.
+/// Compute x positions for each string using a piano-like layout with 5px padding on each side.
 
 fn compute_string_positions(width: f64) -> Vec<f64> {
 
     let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
+
+    let padding = 5.0;
+
+    let effective_width = width - (2.0 * padding);
+
+
+
+    if effective_width <= 0.0 {
+
+        return positions;
+
+    }
 
 
 
@@ -619,7 +631,7 @@ fn compute_string_positions(width: f64) -> Vec<f64> {
 
 
 
-    let scale_factor = width / total_conceptual_width;
+    let scale_factor = effective_width / total_conceptual_width;
 
 
 
@@ -629,7 +641,7 @@ fn compute_string_positions(width: f64) -> Vec<f64> {
 
         let unscaled_pos = get_unscaled_pos(note);
 
-        positions[i] = (unscaled_pos - first_pos) * scale_factor;
+        positions[i] = padding + (unscaled_pos - first_pos) * scale_factor;
 
     }
 
