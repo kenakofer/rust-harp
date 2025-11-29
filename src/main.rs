@@ -29,7 +29,7 @@ use winit::{
 
 const NUM_STRINGS: usize = 48;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
-const START_NOTE: u8 = 35;
+const START_NOTE: u8 = 33; // La in the active key
 const VELOCITY: u8 = 70;
 const MICRO_STEPS_PER_OCTAVE: usize = 15;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
