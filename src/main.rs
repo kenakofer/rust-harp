@@ -44,6 +44,9 @@ const BASS_VELOCITY_MULTIPLIER: f64 = 1.0;
 const MAIN_BASS_BOTTOM: f64 = 35.0;
 const MAIN_BASS_TOP: f64 = 80.0;
 
+const PIANO_LAYOUT: [f64; 12] = [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0];
+const OCTAVE_WIDTH: f64 = 7.0;
+
 #[derive(Clone)]
 struct BuiltChord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
@@ -570,19 +573,67 @@ fn decide_chord_base(
     None
 }
 
-/// Compute x positions for each string given the window width.
+/// Compute x positions for each string using a piano-like layout.
 
 fn compute_string_positions(width: f64) -> Vec<f64> {
 
     let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
 
-    let spacing = width / (NUM_STRINGS as f64 + 1.0);
+
+
+    let get_unscaled_pos = |note: i32| -> f64 {
+
+        let octave = (note / 12) as f64;
+
+        let pitch_class = (note.rem_euclid(12)) as usize;
+
+        octave * OCTAVE_WIDTH + PIANO_LAYOUT[pitch_class]
+
+    };
+
+
+
+    let first_note = START_NOTE as i32;
+
+    let last_note = START_NOTE as i32 + (NUM_STRINGS - 1) as i32;
+
+
+
+    let first_pos = get_unscaled_pos(first_note);
+
+    let last_pos = get_unscaled_pos(last_note);
+
+
+
+    let total_conceptual_width = last_pos - first_pos;
+
+
+
+    if total_conceptual_width <= 0.0 {
+
+        // Fallback for no width
+
+        return positions;
+
+    }
+
+
+
+    let scale_factor = width / total_conceptual_width;
+
+
 
     for i in 0..NUM_STRINGS {
 
-        positions[i] = spacing * (i as f64 + 1.0);
+        let note = START_NOTE as i32 + i as i32;
+
+        let unscaled_pos = get_unscaled_pos(note);
+
+        positions[i] = (unscaled_pos - first_pos) * scale_factor;
 
     }
+
+
 
     positions
 
