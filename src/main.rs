@@ -27,7 +27,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-const NUM_STRINGS: usize = 48;
+const NUM_STRINGS: usize = 44;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
 const START_NOTE: u8 = 33; // La in the active key
 const VELOCITY: u8 = 70;
@@ -106,6 +106,7 @@ const II_BUTTON: &str = "II_BUTTON";
 const VI_BUTTON: &str = "VI_BUTTON";
 const III_BUTTON: &str = "III_BUTTON";
 const VII_BUTTON: &str = "VII_BUTTON";
+const HEPTATONIC_MAJOR_BUTTON: &str = "HEPTATONIC_MAJOR_BUTTON";
 
 const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
 const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
@@ -275,6 +276,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     chord_keys_down.insert(VII_BUTTON);
                                     chord_was_pressed = true;
                                 }
+                                winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control) => {
+                                    if event.location == winit::keyboard::KeyLocation::Left {
+                                        if chord_keys_down.contains(HEPTATONIC_MAJOR_BUTTON) {
+                                            return;
+                                        }
+                                        chord_keys_down.insert(HEPTATONIC_MAJOR_BUTTON);
+                                        chord_was_pressed = true;
+                                    }
+                                }
                                 winit::keyboard::Key::Character("5") => {
                                     if mod_keys_down.contains(MAJOR_2_BUTTON) {
                                         return;
@@ -374,6 +384,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 }
                                 winit::keyboard::Key::Character("v") => {
                                     chord_keys_down.remove(VII_BUTTON);
+                                }
+                                winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control) => {
+                                    if event.location == winit::keyboard::KeyLocation::Left {
+                                        chord_keys_down.remove(HEPTATONIC_MAJOR_BUTTON);
+                                    }
                                 }
                                 winit::keyboard::Key::Character("5") => {
                                     mod_keys_down.remove(MAJOR_2_BUTTON);
@@ -643,6 +658,13 @@ fn decide_chord_base(
     old_chord: Option<&BuiltChord>,
     chord_keys_down: &HashSet<&'static str>,
 ) -> Option<BuiltChord> {
+    if chord_keys_down.contains(HEPTATONIC_MAJOR_BUTTON) {
+        return Some(build_with(
+            ROOT_I,
+            &[0, 2, 4, 5, 7, 9, 11],
+        ));
+    }
+
     if chord_keys_down.contains(VII_BUTTON) {
         if let Some(old) = old_chord {
             if old.root == ROOT_VII {
