@@ -171,7 +171,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Application State
     let mut prev_pos: Option<(f64, f64)> = None;
     let mut window_width = 800.0;
-    let window_height = 600.0;
+    let mut window_height = 600.0;
     let mut is_mouse_down = false;
     let mut active_chord: Option<BuiltChord> = Some(major_tri(ROOT_I));
     if let Some(ref mut nc) = active_chord {
@@ -568,6 +568,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             )
                             .unwrap();
                         window_width = physical_size.width as f64;
+                        window_height = physical_size.height as f64;
 
                         // Redraw lines on resize
                         draw_strings(
