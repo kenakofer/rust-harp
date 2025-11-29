@@ -17,7 +17,7 @@
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -52,7 +52,7 @@ struct BuiltChord {
     relative_mask: u16, // bits 0..11
 }
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq, Clone)]
 enum Modifier {
     AddMajor2,
     AddMinor7,
@@ -190,6 +190,54 @@ fn main() -> Result<(), Box<dyn Error>> {
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
+    let chord_key_map: HashMap<winit::keyboard::Key, &'static str> = [
+        (winit::keyboard::Key::Character("a".into()), VIIB_BUTTON),
+        (winit::keyboard::Key::Character("s".into()), IV_BUTTON),
+        (winit::keyboard::Key::Character("d".into()), I_BUTTON),
+        (winit::keyboard::Key::Character("f".into()), V_BUTTON),
+        (winit::keyboard::Key::Character("z".into()), II_BUTTON),
+        (winit::keyboard::Key::Character("x".into()), VI_BUTTON),
+        (winit::keyboard::Key::Character("c".into()), III_BUTTON),
+        (winit::keyboard::Key::Character("v".into()), VII_BUTTON),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+
+    let mod_key_map: HashMap<winit::keyboard::Key, (&'static str, Modifier)> = [
+        (
+            winit::keyboard::Key::Character("5".into()),
+            (MAJOR_2_BUTTON, Modifier::AddMajor2),
+        ),
+        (
+            winit::keyboard::Key::Character("b".into()),
+            (MAJOR_7_BUTTON, Modifier::AddMajor7),
+        ),
+        (
+            winit::keyboard::Key::Character("6".into()),
+            (MINOR_7_BUTTON, Modifier::AddMinor7),
+        ),
+        (
+            winit::keyboard::Key::Character("3".into()),
+            (SUS4_BUTTON, Modifier::AddSus4),
+        ),
+        (
+            winit::keyboard::Key::Character("4".into()),
+            (MINOR_MAJOR_BUTTON, Modifier::SwitchMinorMajor),
+        ),
+        (
+            winit::keyboard::Key::Character(".".into()),
+            (NO_3_BUTTON, Modifier::No3),
+        ),
+        (
+            winit::keyboard::Key::Character("1".into()),
+            (CHANGE_KEY_BUTTON, Modifier::ChangeKey),
+        ),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+
     // 4. Run Event Loop
     event_loop.run(move |event, elwt| {
         // Set ControlFlow to Wait. This is efficient; it sleeps until an event (like mouse move) arrives.
@@ -209,215 +257,47 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::KeyboardInput { event, .. } => {
-                        // Track if a chord key was pressed in this event so old_chord is cleared
-                        // when deciding the new chord. Avoid borrowing active_chord across
-                        // mutation by computing old_chord after handling the key event.
                         let mut chord_was_pressed = false;
 
-                        // Map key presses/releases into named buttons set. We don't want to
-                        // remember old_chord if there's a new chord button pressed. We only want
-                        // to remember it for releases and mod presses.
                         if event.state == winit::event::ElementState::Pressed {
-                            match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => {
-                                    // Prevent held presses from re-adding or removing mods
-                                    if chord_keys_down.contains(VIIB_BUTTON) {
-                                        return;
-                                    }
-                                    chord_keys_down.insert(VIIB_BUTTON);
+                            if let Some(button) = chord_key_map.get(&event.logical_key) {
+                                if !chord_keys_down.contains(button) {
+                                    chord_keys_down.insert(button);
                                     chord_was_pressed = true;
                                 }
-                                winit::keyboard::Key::Character("s") => {
-                                    if chord_keys_down.contains(IV_BUTTON) {
-                                        return;
-                                    }
-                                    chord_keys_down.insert(IV_BUTTON);
-                                    chord_was_pressed = true;
+                            } else if let Some((button, modifier)) = mod_key_map.get(&event.logical_key) {
+                                if !mod_keys_down.contains(button) {
+                                    mod_keys_down.insert(button);
+                                    modifier_stage.insert(modifier.clone());
                                 }
-                                winit::keyboard::Key::Character("d") => {
-                                    if chord_keys_down.contains(I_BUTTON) {
-                                        return;
-                                    }
-                                    chord_keys_down.insert(I_BUTTON);
-                                    chord_was_pressed = true;
-                                }
-                                winit::keyboard::Key::Character("f") => {
-                                    if chord_keys_down.contains(V_BUTTON) {
-                                        return;
-                                    }
-                                    chord_keys_down.insert(V_BUTTON);
-                                    chord_was_pressed = true;
-                                }
-                                winit::keyboard::Key::Character("z") => {
-                                    if chord_keys_down.contains(II_BUTTON) {
-                                        return;
-                                    }
-                                    chord_keys_down.insert(II_BUTTON);
-                                    chord_was_pressed = true;
-                                }
-                                winit::keyboard::Key::Character("x") => {
-                                    if chord_keys_down.contains(VI_BUTTON) {
-                                        return;
-                                    }
-                                    chord_keys_down.insert(VI_BUTTON);
-                                    chord_was_pressed = true;
-                                }
-                                winit::keyboard::Key::Character("c") => {
-                                    if chord_keys_down.contains(III_BUTTON) {
-                                        return;
-                                    }
-                                    chord_keys_down.insert(III_BUTTON);
-                                    chord_was_pressed = true;
-                                }
-                                winit::keyboard::Key::Character("v") => {
-                                    if chord_keys_down.contains(VII_BUTTON) {
-                                        return;
-                                    }
-                                    chord_keys_down.insert(VII_BUTTON);
-                                    chord_was_pressed = true;
-                                }
-                                winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control) => {
-                                    if event.location == winit::keyboard::KeyLocation::Left {
-                                        if chord_keys_down.contains(HEPTATONIC_MAJOR_BUTTON) {
-                                            return;
-                                        }
+                            } else if let winit::keyboard::Key::Named(
+                                winit::keyboard::NamedKey::Control,
+                            ) = event.logical_key
+                            {
+                                if event.location == winit::keyboard::KeyLocation::Left {
+                                    if !chord_keys_down.contains(HEPTATONIC_MAJOR_BUTTON) {
                                         chord_keys_down.insert(HEPTATONIC_MAJOR_BUTTON);
                                         chord_was_pressed = true;
                                     }
                                 }
-                                winit::keyboard::Key::Character("5") => {
-                                    if mod_keys_down.contains(MAJOR_2_BUTTON) {
-                                        return;
-                                    }
-                                    mod_keys_down.insert(MAJOR_2_BUTTON);
-                                    // inserting here supports sequentially input mods
-                                    modifier_stage.insert(Modifier::AddMajor2);
-                                    if chord_keys_down.len() == 0 {
-                                        return;
-                                    }
-                                }
-                                winit::keyboard::Key::Character("b") => {
-                                    if mod_keys_down.contains(MAJOR_7_BUTTON) {
-                                        return;
-                                    }
-                                    mod_keys_down.insert(MAJOR_7_BUTTON);
-                                    modifier_stage.insert(Modifier::AddMajor7);
-                                    if chord_keys_down.len() == 0 {
-                                        return;
-                                    }
-                                }
-                                winit::keyboard::Key::Character("6") => {
-                                    if mod_keys_down.contains(MINOR_7_BUTTON) {
-                                        return;
-                                    }
-                                    mod_keys_down.insert(MINOR_7_BUTTON);
-                                    // inserting here supports sequentially input mods
-                                    modifier_stage.insert(Modifier::AddMinor7);
-                                    if chord_keys_down.len() == 0 {
-                                        return;
-                                    }
-                                }
-                                winit::keyboard::Key::Character("3") => {
-                                    if mod_keys_down.contains(SUS4_BUTTON) {
-                                        return;
-                                    }
-                                    mod_keys_down.insert(SUS4_BUTTON);
-                                    modifier_stage.insert(Modifier::AddSus4);
-                                    if chord_keys_down.len() == 0 {
-                                        return;
-                                    }
-                                }
-                                winit::keyboard::Key::Character("4") => {
-                                    if mod_keys_down.contains(MINOR_MAJOR_BUTTON) {
-                                        return;
-                                    }
-                                    mod_keys_down.insert(MINOR_MAJOR_BUTTON);
-                                    modifier_stage.insert(Modifier::SwitchMinorMajor);
-                                    if chord_keys_down.len() == 0 {
-                                        return;
-                                    }
-                                }
-                                winit::keyboard::Key::Character(".") => {
-                                    if mod_keys_down.contains(NO_3_BUTTON) {
-                                        return;
-                                    }
-                                    mod_keys_down.insert(NO_3_BUTTON);
-                                    modifier_stage.insert(Modifier::No3);
-                                    if chord_keys_down.len() == 0 {
-                                        return;
-                                    }
-                                }
-                                winit::keyboard::Key::Character("1") => {
-                                    if mod_keys_down.contains(CHANGE_KEY_BUTTON) {
-                                        return;
-                                    }
-                                    mod_keys_down.insert(CHANGE_KEY_BUTTON);
-                                    modifier_stage.insert(Modifier::ChangeKey);
-                                    if chord_keys_down.len() == 0 {
-                                        return;
-                                    }
-                                }
-                                _ => {}
                             }
                         } else {
-                            match event.logical_key.as_ref() {
-                                winit::keyboard::Key::Character("a") => {
-                                    chord_keys_down.remove(VIIB_BUTTON);
+                            // Released
+                            if let Some(button) = chord_key_map.get(&event.logical_key) {
+                                chord_keys_down.remove(button);
+                            } else if let Some((button, _)) = mod_key_map.get(&event.logical_key) {
+                                mod_keys_down.remove(button);
+                            } else if let winit::keyboard::Key::Named(
+                                winit::keyboard::NamedKey::Control,
+                            ) = event.logical_key
+                            {
+                                if event.location == winit::keyboard::KeyLocation::Left {
+                                    chord_keys_down.remove(HEPTATONIC_MAJOR_BUTTON);
                                 }
-                                winit::keyboard::Key::Character("s") => {
-                                    chord_keys_down.remove(IV_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("d") => {
-                                    chord_keys_down.remove(I_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("f") => {
-                                    chord_keys_down.remove(V_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("z") => {
-                                    chord_keys_down.remove(II_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("x") => {
-                                    chord_keys_down.remove(VI_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("c") => {
-                                    chord_keys_down.remove(III_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("v") => {
-                                    chord_keys_down.remove(VII_BUTTON);
-                                }
-                                winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control) => {
-                                    if event.location == winit::keyboard::KeyLocation::Left {
-                                        chord_keys_down.remove(HEPTATONIC_MAJOR_BUTTON);
-                                    }
-                                }
-                                winit::keyboard::Key::Character("5") => {
-                                    mod_keys_down.remove(MAJOR_2_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("6") => {
-                                    mod_keys_down.remove(MINOR_7_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("3") => {
-                                    mod_keys_down.remove(SUS4_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("4") => {
-                                    mod_keys_down.remove(MINOR_MAJOR_BUTTON);
-                                }
-                                winit::keyboard::Key::Character(".") => {
-                                    mod_keys_down.remove(NO_3_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("1") => {
-                                    mod_keys_down.remove(CHANGE_KEY_BUTTON);
-                                }
-                                winit::keyboard::Key::Character("b") => {
-                                    mod_keys_down.remove(MAJOR_7_BUTTON);
-                                }
-                                _ => {}
                             }
                         }
 
-                        // Protect against unwanted mod enqueuements, esp. since this may have been
-                        // a release event
-                        if chord_keys_down.len() == 0 {
+                        if chord_keys_down.is_empty() {
                             return;
                         }
 
@@ -657,85 +537,29 @@ fn decide_chord_base(
     chord_keys_down: &HashSet<&'static str>,
 ) -> Option<BuiltChord> {
     if chord_keys_down.contains(HEPTATONIC_MAJOR_BUTTON) {
-        return Some(build_with(
-            ROOT_I,
-            &[0, 2, 4, 5, 7, 9, 11],
-        ));
+        return Some(build_with(ROOT_I, &[0, 2, 4, 5, 7, 9, 11]));
     }
 
-    if chord_keys_down.contains(VII_BUTTON) {
-        if let Some(old) = old_chord {
-            if old.root == ROOT_VII {
-                return Some(old.clone());
-            }
-        }
-        return Some(diminished_tri(ROOT_VII));
-    }
+    let chord_builders: Vec<(&'static str, u8, fn(u8) -> BuiltChord)> = vec![
+        (VII_BUTTON, ROOT_VII, diminished_tri),
+        (III_BUTTON, ROOT_III, minor_tri),
+        (VI_BUTTON, ROOT_VI, minor_tri),
+        (II_BUTTON, ROOT_II, minor_tri),
+        (V_BUTTON, ROOT_V, major_tri),
+        (I_BUTTON, ROOT_I, major_tri),
+        (IV_BUTTON, ROOT_IV, major_tri),
+        (VIIB_BUTTON, ROOT_VIIB, major_tri),
+    ];
 
-    if chord_keys_down.contains(III_BUTTON) {
-        if let Some(old) = old_chord {
-            if old.root == ROOT_III {
-                return Some(old.clone());
+    for (button, root, builder) in chord_builders {
+        if chord_keys_down.contains(button) {
+            if let Some(old) = old_chord {
+                if old.root == root {
+                    return Some(old.clone());
+                }
             }
+            return Some(builder(root));
         }
-        return Some(minor_tri(ROOT_III));
-    }
-
-    if chord_keys_down.contains(VI_BUTTON) {
-        if let Some(old) = old_chord {
-            if old.root == ROOT_VI {
-                return Some(old.clone());
-            }
-        }
-        return Some(minor_tri(ROOT_VI));
-    }
-
-    if chord_keys_down.contains(II_BUTTON) {
-        // Preserve II7 if that was the previous chord
-        if let Some(old) = old_chord {
-            if old.root == ROOT_II {
-                return Some(old.clone());
-            }
-        }
-        return Some(minor_tri(ROOT_II));
-    }
-
-    if chord_keys_down.contains(V_BUTTON) {
-        // Preserve V7 if it was previously active
-        if let Some(old) = old_chord {
-            if old.root == ROOT_V {
-                return Some(old.clone());
-            }
-        }
-        return Some(major_tri(ROOT_V));
-    }
-
-    if chord_keys_down.contains(I_BUTTON) {
-        // Preserve I7 if it was previously active
-        if let Some(old) = old_chord {
-            if old.root == ROOT_I {
-                return Some(old.clone());
-            }
-        }
-        return Some(major_tri(ROOT_I));
-    }
-
-    if chord_keys_down.contains(IV_BUTTON) {
-        if let Some(old) = old_chord {
-            if old.root == ROOT_IV {
-                return Some(old.clone());
-            }
-        }
-        return Some(major_tri(ROOT_IV));
-    }
-
-    if chord_keys_down.contains(VIIB_BUTTON) {
-        if let Some(old) = old_chord {
-            if old.root == ROOT_VIIB {
-                return Some(old.clone());
-            }
-        }
-        return Some(major_tri(ROOT_VIIB));
     }
 
     // No keys down: preserve chord if we just went from 1 -> 0
