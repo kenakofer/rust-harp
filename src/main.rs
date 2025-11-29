@@ -172,7 +172,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Application State
     let mut prev_pos: Option<(f64, f64)> = None;
     let mut window_width = 800.0;
-    let mut window_height = 600.0;
+
     let mut is_mouse_down = false;
     let mut active_chord: Option<BuiltChord> = Some(major_tri(ROOT_I));
     if let Some(ref mut nc) = active_chord {
@@ -583,7 +583,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             )
                             .unwrap();
                         window_width = physical_size.width as f64;
-                        window_height = physical_size.height as f64;
+
 
                         // Redraw lines on resize
                         draw_strings(
@@ -615,8 +615,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     &active_chord,
                                     &mut active_notes,
                                     transpose,
-                                    curr_y,
-                                    window_height,
                                 );
                             }
                         }
@@ -748,103 +746,22 @@ fn decide_chord_base(
     None
 }
 
-/// Compute x positions for each string given the window width and active chord.
-/// Returns a vec of (top_x, bottom_x) tuples for each string.
-fn compute_string_positions(width: f64, active_chord: &Option<BuiltChord>) -> Vec<(f64, f64)> {
-    let mut top_positions: Vec<f64> = vec![0.0; NUM_STRINGS];
-    let default_spacing = width / (NUM_STRINGS as f64 + 1.0);
-    let mut bottom_positions: Vec<f64> = vec![0.0; NUM_STRINGS];
+/// Compute x positions for each string given the window width.
+
+fn compute_string_positions(width: f64) -> Vec<f64> {
+
+    let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
+
+    let spacing = width / (NUM_STRINGS as f64 + 1.0);
+
     for i in 0..NUM_STRINGS {
-        bottom_positions[i] = default_spacing * (i as f64 + 1.0);
-        top_positions[i] = bottom_positions[i];
+
+        positions[i] = spacing * (i as f64 + 1.0);
+
     }
 
-    if let Some(ch) = active_chord {
-        let mut active_indices: Vec<usize> = Vec::new();
-        for i in 0..NUM_STRINGS {
-            if is_note_in_chord(i, &Some(ch.clone())) {
-                active_indices.push(i);
-            }
-        }
-
-        if !active_indices.is_empty() {
-            let mut root_indices: Vec<usize> = active_indices
-                .iter()
-                .cloned()
-                .filter(|&i| ((START_NOTE + i as u8) % 12) == ch.root)
-                .collect();
-            root_indices.sort();
-
-            if root_indices.is_empty() {
-                let spacing_active = width / (active_indices.len() as f64 + 1.0);
-                for (j, &idx) in active_indices.iter().enumerate() {
-                    top_positions[idx] = spacing_active * (j as f64 + 1.0);
-                }
-            } else {
-                for &ri in &root_indices {
-                    top_positions[ri] = bottom_positions[ri];
-                }
-
-                let mut nonroot: Vec<usize> = active_indices
-                    .iter()
-                    .cloned()
-                    .filter(|i| !root_indices.contains(i))
-                    .collect();
-                nonroot.sort();
-
-                let first_root = root_indices[0];
-                let left_group: Vec<usize> = nonroot
-                    .iter()
-                    .cloned()
-                    .filter(|&i| i < first_root)
-                    .collect();
-                if !left_group.is_empty() {
-                    let m = left_group.len() as f64;
-                    let spacing = (bottom_positions[first_root] - 0.0) / (m + 1.0);
-                    for (j, &idx) in left_group.iter().enumerate() {
-                        top_positions[idx] = spacing * (j as f64 + 1.0);
-                    }
-                }
-
-                for pair in root_indices.windows(2) {
-                    let a = pair[0];
-                    let b = pair[1];
-                    let apos = bottom_positions[a];
-                    let bpos = bottom_positions[b];
-                    let group: Vec<usize> = nonroot
-                        .iter()
-                        .cloned()
-                        .filter(|&i| i > a && i < b)
-                        .collect();
-                    if !group.is_empty() {
-                        let m = group.len() as f64;
-                        let spacing = (bpos - apos) / (m + 1.0);
-                        for (j, &idx) in group.iter().enumerate() {
-                            top_positions[idx] = apos + spacing * (j as f64 + 1.0);
-                        }
-                    }
-                }
-
-                let last_root = *root_indices.last().unwrap();
-                let right_group: Vec<usize> =
-                    nonroot.iter().cloned().filter(|&i| i > last_root).collect();
-                if !right_group.is_empty() {
-                    let m = right_group.len() as f64;
-                    let spacing = (width - bottom_positions[last_root]) / (m + 1.0);
-                    for (j, &idx) in right_group.iter().enumerate() {
-                        top_positions[idx] =
-                            bottom_positions[last_root] + spacing * (j as f64 + 1.0);
-                    }
-                }
-            }
-        }
-    }
-
-    let mut positions = Vec::with_capacity(NUM_STRINGS);
-    for i in 0..NUM_STRINGS {
-        positions.push((top_positions[i], bottom_positions[i]));
-    }
     positions
+
 }
 
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
@@ -857,15 +774,13 @@ fn check_pluck(
     active_chord: &Option<BuiltChord>,
     active_notes: &mut HashSet<u8>,
     transpose: i32,
-    cursor_y: f64,
-    window_height: f64,
 ) {
     if conn.is_none() {
         return;
     }
 
     // Use shared compute function to get positions
-    let positions = compute_string_positions(width, active_chord);
+    let positions = compute_string_positions(width);
 
     // Determine the range of movement
     let min_x = x1.min(x2);
@@ -873,17 +788,10 @@ fn check_pluck(
 
     // Iterate through all string positions to see if one lies within the movement range
     for i in 0..NUM_STRINGS {
-        let (x_top, x_bottom) = positions[i];
-
-        // Linear interpolation to find string's x at cursor_y
-        let string_x_at_y = if window_height > 0.0 {
-            x_top + (x_bottom - x_top) * (cursor_y / window_height)
-        } else {
-            x_top
-        };
+        let string_x = positions[i];
 
         // Strict crossing check
-        if string_x_at_y > min_x && string_x_at_y <= max_x {
+        if string_x > min_x && string_x <= max_x {
             if is_note_in_chord(i, active_chord) {
                 let vel = VELOCITY as u8;
                 play_note(conn, i, active_notes, transpose, vel);
@@ -1014,7 +922,7 @@ fn stop_note(conn: &mut Option<MidiOutputConnection>, note: u8, active_notes: &m
 }
 
 /// Minimalist drawing function.
-/// Fills buffer with black and draws diagonal lines for strings.
+/// Fills buffer with black and draws vertical lines for active strings.
 fn draw_strings(
     surface: &mut Surface<Rc<Window>, Rc<Window>>,
     width: u32,
@@ -1024,47 +932,28 @@ fn draw_strings(
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0); // Fill with black
 
-    let positions = compute_string_positions(width as f64, active_chord);
+    let positions = compute_string_positions(width as f64);
 
-    // To handle overlaps correctly, draw in layers: inactive, active, roots.
-    // A tuple of (x_top, x_bottom, color, priority)
-    let mut strings_to_draw: Vec<(f64, f64, u32, u8)> = Vec::new();
-
-    for i in 0..NUM_STRINGS {
-        let (x_top, x_bottom) = positions[i];
-        let (color, priority) = if let Some(ch) = active_chord {
-            if is_note_in_chord(i, &Some(ch.clone())) {
-                let note = START_NOTE + i as u8;
-                if note % 12 == ch.root {
-                    (0xFF0000, 2) // Red, highest priority
-                } else {
-                    (0xFFFFFF, 1) // White, medium priority
-                }
-            } else {
-                continue; // Do not draw inactive notes
-            }
-        } else {
-            continue; // Do not draw any strings if no chord is active
-        };
-        strings_to_draw.push((x_top, x_bottom, color, priority));
-    }
-
-    // Sort by priority to draw less important strings first
-    strings_to_draw.sort_by_key(|k| k.3);
-
-    let height_f = height as f64;
-    if height_f <= 0.0 {
+    if active_chord.is_none() {
+        buffer.present().unwrap();
         return;
     }
 
-    for (x_top, x_bottom, color, _) in strings_to_draw {
-        // Line drawing logic (DDA)
-        for y in 0..height {
-            let y_f = y as f64;
-            let x_f = x_top + (x_bottom - x_top) * (y_f / height_f);
-            let x = x_f.round() as u32;
+    for i in 0..NUM_STRINGS {
+        if is_note_in_chord(i, active_chord) {
+            let x = positions[i].round() as u32;
+            if x >= width {
+                continue;
+            }
 
-            if x < width {
+            let note = START_NOTE + i as u8;
+            let color = if note % 12 == active_chord.as_ref().unwrap().root {
+                0xFF0000 // Red for root
+            } else {
+                0xFFFFFF // White for other active notes
+            };
+
+            for y in 0..height {
                 let index = (y * width + x) as usize;
                 if index < buffer.len() {
                     buffer[index] = color;
