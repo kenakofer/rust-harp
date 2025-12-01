@@ -26,6 +26,9 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+const PADDING_TOTAL: f64 = 10.0;
+const PADDING_LEFT: f64 = 2.0;
+const PADDING_RIGHT: f64 = PADDING_TOTAL - PADDING_LEFT;
 
 const NUM_STRINGS: usize = 44;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
@@ -573,15 +576,13 @@ fn decide_chord_base(
     None
 }
 
-/// Compute x positions for each string using a piano-like layout with 5px padding on each side.
+/// Compute x positions for each string using a piano-like layout with padding on each side.
 
 fn compute_string_positions(width: f64) -> Vec<f64> {
 
     let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
 
-    let padding = 5.0;
-
-    let effective_width = width - (2.0 * padding);
+    let effective_width = width - PADDING_TOTAL;
 
 
 
@@ -641,7 +642,7 @@ fn compute_string_positions(width: f64) -> Vec<f64> {
 
         let unscaled_pos = get_unscaled_pos(note);
 
-        positions[i] = padding + (unscaled_pos - first_pos) * scale_factor;
+        positions[i] = PADDING_LEFT + (unscaled_pos - first_pos) * scale_factor;
 
     }
 
