@@ -11,9 +11,6 @@
 //! * **Visuals**: Super low priority. Displays a window with evenly spaced vertical lines
 //!     representing strings.
 
-// Ideas TODO:
-//   Why doesn't space work for input? Should we do input differently?
-
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
@@ -27,7 +24,6 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-const NUM_STRINGS: usize = 44;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
 const START_NOTE: u8 = 33; // La in the active key
 const VELOCITY: u8 = 70;
@@ -46,56 +42,41 @@ const MAIN_BASS_TOP: f64 = 80.0;
 
 
 // Pre-calculated unscaled relative x-positions for each string, ranging from 0.0 to 1.0.
-// These values are derived from PIANO_LAYOUT and OCTAVE_WIDTH,
 // ensuring string positions scale correctly with window resizing while
 // maintaining the musical interval spacing.
-#[allow(clippy::excessive_precision)] // Allow for precise float literals
-const UNSCALED_RELATIVE_X_POSITIONS: [f64; NUM_STRINGS] = [
-    0.00000000000000000e+00,
-    4.00000000000000022e-02,
-    8.00000000000000044e-02,
-    1.20000000000000006e-01,
-    1.60000000000000030e-01,
-    2.00000000000000033e-01,
-    2.40000000000000044e-01,
-    2.80000000000000055e-01,
-    3.20000000000000066e-01,
-    3.60000000000000077e-01,
-    4.00000000000000088e-01,
-    4.40000000000000100e-01,
-    4.80000000000000111e-01,
-    5.20000000000000122e-01,
-    5.60000000000000133e-01,
-    6.00000000000000144e-01,
-    6.40000000000000155e-01,
-    6.80000000000000166e-01,
-    7.20000000000000177e-01,
-    7.60000000000000188e-01,
-    8.00000000000000199e-01,
-    8.40000000000000210e-01,
-    8.80000000000000221e-01,
-    9.20000000000000232e-01,
-    9.60000000000000243e-01,
-    1.00000000000000000e+00,
-    1.04000000000000008e+00,
-    1.08000000000000016e+00,
-    1.12000000000000024e+00,
-    1.16000000000000032e+00,
-    1.20000000000000040e+00,
-    1.24000000000000048e+00,
-    1.28000000000000056e+00,
-    1.32000000000000064e+00,
-    1.36000000000000072e+00,
-    1.40000000000000080e+00,
-    1.44000000000000088e+00,
-    1.48000000000000096e+00,
-    1.52000000000000104e+00,
-    1.56000000000000112e+00,
-    1.60000000000000120e+00,
-    1.64000000000000128e+00,
-    1.68000000000000136e+00,
-    1.72000000000000144e+00,
+const UNSCALED_RELATIVE_X_POSITIONS: &[f64] = &[
+    2.03124999999999972e-02,
+    5.19531250000000028e-02,
+    9.02343750000000056e-02,
+    1.31445312499999994e-01,
+    1.63281249999999989e-01,
+    1.96289062500000000e-01,
+    2.33203125000000011e-01,
+    2.66015624999999978e-01,
+    3.05859374999999989e-01,
+    3.38867187500000000e-01,
+    3.75000000000000000e-01,
+    4.05468749999999989e-01,
+    4.49414062499999989e-01,
+    4.85546874999999989e-01,
+    5.20312499999999956e-01,
+    5.55273437499999911e-01,
+    5.92578124999999956e-01,
+    6.29687499999999956e-01,
+    6.65429687500000089e-01,
+    6.99999999999999956e-01,
+    7.34960937500000022e-01,
+    7.71289062499999956e-01,
+    8.07617187500000000e-01,
+    8.42773437500000000e-01,
+    8.80664062499999956e-01,
+    9.18359374999999978e-01,
+    9.49999999999999956e-01,
+    9.91796875000000022e-01,
 ];
+
+// Use length of array
+const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
 
 #[derive(Clone)]
 struct BuiltChord {
