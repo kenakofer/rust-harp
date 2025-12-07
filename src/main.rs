@@ -26,9 +26,6 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-const PADDING_TOTAL: f64 = 10.0;
-const PADDING_LEFT: f64 = 2.0;
-const PADDING_RIGHT: f64 = PADDING_TOTAL - PADDING_LEFT;
 
 const NUM_STRINGS: usize = 44;
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
@@ -47,8 +44,58 @@ const BASS_VELOCITY_MULTIPLIER: f64 = 1.0;
 const MAIN_BASS_BOTTOM: f64 = 35.0;
 const MAIN_BASS_TOP: f64 = 80.0;
 
-const PIANO_LAYOUT: [f64; 12] = [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0];
-const OCTAVE_WIDTH: f64 = 7.0;
+
+// Pre-calculated unscaled relative x-positions for each string, ranging from 0.0 to 1.0.
+// These values are derived from PIANO_LAYOUT and OCTAVE_WIDTH,
+// ensuring string positions scale correctly with window resizing while
+// maintaining the musical interval spacing.
+#[allow(clippy::excessive_precision)] // Allow for precise float literals
+const UNSCALED_RELATIVE_X_POSITIONS: [f64; NUM_STRINGS] = [
+    0.00000000000000000e+00,
+    4.00000000000000022e-02,
+    8.00000000000000044e-02,
+    1.20000000000000006e-01,
+    1.60000000000000030e-01,
+    2.00000000000000033e-01,
+    2.40000000000000044e-01,
+    2.80000000000000055e-01,
+    3.20000000000000066e-01,
+    3.60000000000000077e-01,
+    4.00000000000000088e-01,
+    4.40000000000000100e-01,
+    4.80000000000000111e-01,
+    5.20000000000000122e-01,
+    5.60000000000000133e-01,
+    6.00000000000000144e-01,
+    6.40000000000000155e-01,
+    6.80000000000000166e-01,
+    7.20000000000000177e-01,
+    7.60000000000000188e-01,
+    8.00000000000000199e-01,
+    8.40000000000000210e-01,
+    8.80000000000000221e-01,
+    9.20000000000000232e-01,
+    9.60000000000000243e-01,
+    1.00000000000000000e+00,
+    1.04000000000000008e+00,
+    1.08000000000000016e+00,
+    1.12000000000000024e+00,
+    1.16000000000000032e+00,
+    1.20000000000000040e+00,
+    1.24000000000000048e+00,
+    1.28000000000000056e+00,
+    1.32000000000000064e+00,
+    1.36000000000000072e+00,
+    1.40000000000000080e+00,
+    1.44000000000000088e+00,
+    1.48000000000000096e+00,
+    1.52000000000000104e+00,
+    1.56000000000000112e+00,
+    1.60000000000000120e+00,
+    1.64000000000000128e+00,
+    1.68000000000000136e+00,
+    1.72000000000000144e+00,
+];
 
 #[derive(Clone)]
 struct BuiltChord {
@@ -579,77 +626,13 @@ fn decide_chord_base(
 /// Compute x positions for each string using a piano-like layout with padding on each side.
 
 fn compute_string_positions(width: f64) -> Vec<f64> {
-
     let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
 
-    let effective_width = width - PADDING_TOTAL;
-
-
-
-    if effective_width <= 0.0 {
-
-        return positions;
-
-    }
-
-
-
-    let get_unscaled_pos = |note: i32| -> f64 {
-
-        let octave = (note / 12) as f64;
-
-        let pitch_class = (note.rem_euclid(12)) as usize;
-
-        octave * OCTAVE_WIDTH + PIANO_LAYOUT[pitch_class]
-
-    };
-
-
-
-    let first_note = START_NOTE as i32;
-
-    let last_note = START_NOTE as i32 + (NUM_STRINGS - 1) as i32;
-
-
-
-    let first_pos = get_unscaled_pos(first_note);
-
-    let last_pos = get_unscaled_pos(last_note);
-
-
-
-    let total_conceptual_width = last_pos - first_pos;
-
-
-
-    if total_conceptual_width <= 0.0 {
-
-        // Fallback for no width
-
-        return positions;
-
-    }
-
-
-
-    let scale_factor = effective_width / total_conceptual_width;
-
-
-
     for i in 0..NUM_STRINGS {
-
-        let note = START_NOTE as i32 + i as i32;
-
-        let unscaled_pos = get_unscaled_pos(note);
-
-        positions[i] = PADDING_LEFT + (unscaled_pos - first_pos) * scale_factor;
-
+        positions[i] = UNSCALED_RELATIVE_X_POSITIONS[i] * width;
     }
-
-
 
     positions
-
 }
 
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
