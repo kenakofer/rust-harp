@@ -20,6 +20,8 @@
 //!     - Simplify types and casts
 //!     - Refactor to avoid mod logic duplication
 //!     - Fix held pulse key triggering rapid repeat
+//!     - Pulse in wonky in other keys
+//!     - 
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
@@ -35,9 +37,8 @@ use winit::{
 };
 
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
-const START_NOTE: u8 = 36; // Do in the active key
+const START_NOTE: u8 = 24; // Do in the active key
 const VELOCITY: u8 = 70;
-const MICRO_STEPS_PER_OCTAVE: usize = 15;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
 const MICRO_NOTE: u8 = 20; // middle C for micro-step trigger
@@ -481,6 +482,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         Modifier::ChangeKey => {
                                             // Set transpose to the chord's root
                                             transpose = nc.root as i32;
+                                            if transpose > 6 {
+                                                transpose -= 12;
+                                            }
                                         }
                                         Modifier::Pulse => {
                                             pulse = true;
@@ -490,11 +494,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
 
+                        // Delayed so as to happen after all note adjustments have been made
                         if pulse {
-                            // Play lower notes of the new chord
-                            for i in 0..NUM_STRINGS {
+                            // Play the low root of the new chord
+                            play_note(
+                                &mut midi_connection,
+                                (new_chord.as_ref().unwrap().root as usize)
+                                    % NUM_STRINGS,
+                                &mut active_notes,
+                                transpose,
+                                VELOCITY,
+                            );
+                            // Play higher notes of the new chord
+                            for i in 12..NUM_STRINGS {
                                 if is_note_in_chord(i, &new_chord) {
-                                    let vel = (VELOCITY / 2) as u8;
+                                    let vel = (VELOCITY * 2 / 3) as u8;
                                     play_note(
                                         &mut midi_connection,
                                         i,
