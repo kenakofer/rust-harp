@@ -10,6 +10,16 @@
 //!     in the `winit` event loop without waiting for frame redraws.
 //! * **Visuals**: Super low priority. Displays a window with evenly spaced vertical lines
 //!     representing strings.
+//!
+//!
+//!     TODO:
+//!     - rearrange mods/4 doesn't remove 3
+//!     - Pedal toggle/mod?
+//!     - Phone app version?
+//!     - Check bass balance on keychange
+//!     - Simplify types and casts
+//!     - Refactor to avoid mod logic duplication
+//!     - Fix held pulse key triggering rapid repeat
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
@@ -101,6 +111,7 @@ enum Modifier {
     SwitchMinorMajor,
     No3,
     ChangeKey,
+    Pulse,
 }
 
 fn build_with(root: u8, rels: &[u8]) -> BuiltChord {
@@ -153,6 +164,7 @@ const SUS4_BUTTON: &str = "SUS4_BUTTON";
 const MINOR_MAJOR_BUTTON: &str = "MINOR_MAJOR_BUTTON";
 const NO_3_BUTTON: &str = "MINOR_MAJOR_BUTTON";
 const CHANGE_KEY_BUTTON: &str = "CHANGE_KEY_BUTTON";
+const PULSE_BUTTON: &str = "PULSE_BUTTON";
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -270,6 +282,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         (
             winit::keyboard::Key::Character("1".into()),
             (CHANGE_KEY_BUTTON, Modifier::ChangeKey),
+        ),
+        (
+            winit::keyboard::Key::Named(winit::keyboard::NamedKey::Tab),
+            (PULSE_BUTTON, Modifier::Pulse),
         ),
     ]
     .iter()
@@ -394,6 +410,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if mod_keys_down.contains(CHANGE_KEY_BUTTON) {
                             modifier_stage.insert(Modifier::ChangeKey);
                         }
+                        if mod_keys_down.contains(PULSE_BUTTON) {
+                            modifier_stage.insert(Modifier::Pulse);
+                        }
+
+                        let mut pulse = false;
 
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord, then remove it.
@@ -461,9 +482,29 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             // Set transpose to the chord's root
                                             transpose = nc.root as i32;
                                         }
+                                        Modifier::Pulse => {
+                                            pulse = true;
+                                        }
                                     }
                                 }
                             }
+                        }
+
+                        if pulse {
+                            // Play lower notes of the new chord
+                            for i in 0..NUM_STRINGS {
+                                if is_note_in_chord(i, &new_chord) {
+                                    let vel = (VELOCITY / 2) as u8;
+                                    play_note(
+                                        &mut midi_connection,
+                                        i,
+                                        &mut active_notes,
+                                        transpose,
+                                        vel,
+                                    );
+                                }
+                            }
+
                         }
 
                         // If the notes aren't the same, do the switch
@@ -556,7 +597,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Returns true if a string's note is in the provided chord.
 fn is_note_in_chord(string_index: usize, chord: &Option<BuiltChord>) -> bool {
     if let Some(chord) = chord {
         let note = START_NOTE + string_index as u8;
