@@ -25,7 +25,7 @@ use winit::{
 };
 
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
-const START_NOTE: u8 = 33; // La in the active key
+const START_NOTE: u8 = 36; // Do in the active key
 const VELOCITY: u8 = 70;
 const MICRO_STEPS_PER_OCTAVE: usize = 15;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
@@ -77,6 +77,10 @@ const UNSCALED_RELATIVE_X_POSITIONS: &[f64] = &[
 
 // Use length of array
 const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
+
+const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [
+    0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6
+];
 
 #[derive(Clone)]
 struct BuiltChord {
@@ -616,6 +620,24 @@ fn compute_string_positions(width: f64) -> Vec<f64> {
     positions
 }
 
+fn compute_note_positions(width: f64) -> Vec<f64> {
+    let mut positions: Vec<f64> = vec![0.0; 12];
+
+    // Add as many notes til we go off the right side of the screen.
+    for octave in 0.. {
+        for note in 0..12 {
+            let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[note as usize] as usize;
+            let string = octave * 7 + string_in_octave;
+            if string >= NUM_STRINGS {
+                return positions;
+            }
+            let x = UNSCALED_RELATIVE_X_POSITIONS[string] * width;
+            positions.push(x);
+        }
+    }
+    positions
+}
+
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
 /// We calculate the string positions dynamically based on window width.
 fn check_pluck(
@@ -632,14 +654,14 @@ fn check_pluck(
     }
 
     // Use shared compute function to get positions
-    let positions = compute_string_positions(width);
+    let positions = compute_note_positions(width);
 
     // Determine the range of movement
     let min_x = x1.min(x2);
     let max_x = x1.max(x2);
 
     // Iterate through all string positions to see if one lies within the movement range
-    for i in 0..NUM_STRINGS {
+    for i in 0..positions.len() {
         let string_x = positions[i];
 
         // Strict crossing check
@@ -784,14 +806,14 @@ fn draw_strings(
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0); // Fill with black
 
-    let positions = compute_string_positions(width as f64);
+    let positions = compute_note_positions(width as f64);
 
     if active_chord.is_none() {
         buffer.present().unwrap();
         return;
     }
 
-    for i in 0..NUM_STRINGS {
+    for i in 0..positions.len() {
         if is_note_in_chord(i, active_chord) {
             let x = positions[i].round() as u32;
             if x >= width {
