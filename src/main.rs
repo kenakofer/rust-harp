@@ -660,58 +660,38 @@ fn check_pluck(
     let min_x = x1.min(x2);
     let max_x = x1.max(x2);
 
+    let mut played_note_at_pos = false;
+    let mut crossed_pos = false;
+    let mut string_x: f64 = 0.0;
+
     // Iterate through all string positions to see if one lies within the movement range
     for i in 0..positions.len() {
-        let string_x = positions[i];
 
-        // Strict crossing check
-        if string_x > min_x && string_x <= max_x {
-            if is_note_in_chord(i, active_chord) {
-                let vel = VELOCITY as u8;
-                play_note(conn, i, active_notes, transpose, vel);
-            }
-        }
-    }
-
-    // Micro-steps: map mouse movement to global micro indices across screen without loops
-    let num_octaves = NUM_STRINGS / 12; // integer octaves covered
-    if num_octaves > 0 {
-        let micros_total = num_octaves * MICRO_STEPS_PER_OCTAVE;
-        let micros_total_f = micros_total as f64;
-        // Map x to micro index (0..micros_total-1) by projecting x across the screen
-        let map_to_micro = |x: f64| -> isize {
-            // clamp x to [0, width]
-            let xc = if x < 0.0 {
-                0.0
-            } else if x > width {
-                width
-            } else {
-                x
-            };
-            let frac = xc / width;
-            let idx_f = (frac * micros_total_f).round();
-            let mut idx = idx_f as isize;
-            if idx < 0 {
-                idx = 0
-            }
-            if idx >= micros_total as isize {
-                idx = micros_total as isize - 1
-            }
-            idx
-        };
-
-        let prev_idx = map_to_micro(min_x);
-        let curr_idx = map_to_micro(max_x);
-        let diff = curr_idx - prev_idx;
-        if diff != 0 {
-            let count = diff.abs() as usize;
+        // If we're proceeding to the next string position, crossed the previous one, and didn't
+        // play a note at it, then play the dampened string sound.
+        if string_x != positions[i] {
+            if crossed_pos && !played_note_at_pos {
+                // Play the MICRO sound
             if let Some(ref mut c) = conn {
                 let on = 0x90 | (MICRO_CHANNEL & 0x0F);
                 let off = 0x80 | (MICRO_CHANNEL & 0x0F);
-                for _ in 0..count {
-                    let _ = c.send(&[on, MICRO_NOTE, MICRO_VELOCITY]);
-                    let _ = c.send(&[off, MICRO_NOTE, 0]);
-                }
+                let _ = c.send(&[on, MICRO_NOTE, MICRO_VELOCITY]);
+                let _ = c.send(&[off, MICRO_NOTE, 0]);
+            }
+            }
+            played_note_at_pos = false;
+            crossed_pos = false;
+        }
+
+        string_x = positions[i];
+
+        // Strict crossing check
+        if string_x > min_x && string_x <= max_x {
+            crossed_pos = true;
+            if is_note_in_chord(i, active_chord) {
+                let vel = VELOCITY as u8;
+                play_note(conn, i, active_notes, transpose, vel);
+                played_note_at_pos = true;
             }
         }
     }
