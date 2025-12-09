@@ -81,7 +81,7 @@ class CalibrationUtility:
             final_x_positions.append(avg_pos)
 
         # Format for Rust array
-        rust_array_string = f"const UNSCALED_RELATIVE_X_POSITIONS: &[f64] = &[\n"
+        rust_array_string = f"const UNSCALED_RELATIVE_X_POSITIONS: &[f32] = &[\n"
         for pos in final_x_positions:
             rust_array_string += f"    {pos:.17e},\n"
         rust_array_string += "];"
@@ -100,7 +100,7 @@ class CalibrationUtility:
 
             # Regex to find the existing UNSCALED_RELATIVE_X_POSITIONS block
             # This pattern matches the start of the line, then the const declaration, then the array type with length, then the array content.
-            array_pattern = r"^const UNSCALED_RELATIVE_X_POSITIONS: \&\[f64\] = \&\[(.*?)\];"
+            array_pattern = r"^const UNSCALED_RELATIVE_X_POSITIONS: \&\[f32\] = \&\[(.*?)\];"
 
             if re.search(array_pattern, original_content, re.MULTILINE | re.DOTALL):
                 original_content = re.sub(array_pattern, rust_array_string, original_content, count=1, flags=re.MULTILINE | re.DOTALL)

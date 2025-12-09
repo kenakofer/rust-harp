@@ -29,6 +29,7 @@ use softbuffer::{Context, Surface};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::num::NonZeroU32;
+use std::ops::{Add, Sub, Rem, Div};
 use std::rc::Rc;
 use winit::{
     event::{Event, WindowEvent},
@@ -36,26 +37,84 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
+struct MidiNote(u8);
+
+impl Add<UnbottomedNote> for MidiNote {
+    type Output = MidiNote;
+    fn add(self, rhs: UnbottomedNote) -> MidiNote {
+        let sum: i16 = (self.0 as i16) + (rhs.0 as i16);
+        if sum < 0 {
+            eprintln!("Warning: MIDI note out of range: {}, using 0 instead", sum);
+            return MidiNote(0);
+        } else if sum > 127 {
+            eprintln!("Warning: MIDI note out of range: {}, using 127 instead", sum);
+            return MidiNote(127);
+        }
+        MidiNote(sum as u8)
+    }
+}
+
+impl Rem<u8> for MidiNote {
+    type Output = u8;
+    fn rem(self, rhs: u8) -> u8 {
+        self.0 % rhs
+    }
+}
+
+impl Sub for MidiNote {
+    type Output = Interval;
+    fn sub(self, rhs: MidiNote) -> Interval {
+        Interval(self.0 - rhs.0)
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+struct UnbottomedNote(u8); // Note before building on the BOTTOM_NOTE
+
+
+
+// Note before transposing into the key or building on the BOTTOM_NOTE.
+// This is basically solfege: Do = 0, Re = 2, etc. Can go beyond 12 or below 0
+#[derive(Copy, Clone, Debug, PartialEq)]
+struct UnkeyedNote(i8);
+
+// Position above the root of the chord
+// "The fifth in the chord" would be 7 for example
+#[derive(Copy, Clone, Debug, PartialEq)]
+struct UnrootedNote(u8); 
+
+// Difference in half steps
+#[derive(Copy, Clone, Debug, PartialEq)]
+struct Interval(i8);
+
+impl Div for Interval {
+    type Output = f32;
+    fn div(self, rhs: Interval) -> f32 {
+        (self.0 as f32) / (rhs.0 as f32)
+    }
+}
+
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
-const START_NOTE: u8 = 24; // Do in the active key
+const LOWEST_NOTE: MidiNote = MidiNote(24); // Do in the active key
 const VELOCITY: u8 = 70;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
-const MICRO_NOTE: u8 = 20; // middle C for micro-step trigger
+const MICRO_NOTE: MidiNote = MidiNote(20); // middle C for micro-step trigger
 const MICRO_VELOCITY: u8 = 50; // quiet click
 const MAIN_PROGRAM: u8 = 25; // Steel String Guitar (zero-based)
-const BASS_PROGRAM: u8 = 26; // Bass program
-const BASS_CHANNEL: u8 = 2; // MIDI channel 3 (0-based)
-                            // Float bass velocity
-const BASS_VELOCITY_MULTIPLIER: f64 = 1.0;
-const MAIN_BASS_BOTTOM: f64 = 35.0;
-const MAIN_BASS_TOP: f64 = 80.0;
+const MAIN_CHANNEL: u8 = 0;
+const BASS_PROGRAM: u8 = 26;
+const BASS_CHANNEL: u8 = 2;
+const BASS_VELOCITY_MULTIPLIER: f32 = 1.0;
+const MAIN_BASS_BOTTOM: MidiNote = MidiNote(35);
+const MAIN_BASS_TOP: MidiNote = MidiNote(80);
 
 
 // Pre-calculated unscaled relative x-positions for each string, ranging from 0.0 to 1.0.
 // ensuring string positions scale correctly with window resizing while
 // maintaining the musical interval spacing.
-const UNSCALED_RELATIVE_X_POSITIONS: &[f64] = &[
+const UNSCALED_RELATIVE_X_POSITIONS: &[f32] = &[
     2.03124999999999972e-02,
     5.19531250000000028e-02,
     9.02343750000000056e-02,
@@ -87,7 +146,7 @@ const UNSCALED_RELATIVE_X_POSITIONS: &[f64] = &[
 ];
 
 // Use length of array
-const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
+const NUM_STRINGS: u8 = UNSCALED_RELATIVE_X_POSITIONS.len();
 
 const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [
     0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6
@@ -97,7 +156,7 @@ const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [
 struct BuiltChord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
     //name: &'static str,
-    root: u8,
+    root: UnkeyedNote,
     relative_mask: u16, // bits 0..11
 }
 
@@ -115,7 +174,7 @@ enum Modifier {
     Pulse,
 }
 
-fn build_with(root: u8, rels: &[u8]) -> BuiltChord {
+fn build_with(root: UnkeyedNote, rels: &[u8]) -> BuiltChord {
     let mut mask: u16 = 0;
     for &r in rels.iter() {
         let rel = (r as usize) % 12;
@@ -127,23 +186,22 @@ fn build_with(root: u8, rels: &[u8]) -> BuiltChord {
     }
 }
 
-// Runtime root constants and builders
-const ROOT_VIIB: u8 = 10;
-const ROOT_IV: u8 = 5;
-const ROOT_I: u8 = 0;
-const ROOT_V: u8 = 7;
-const ROOT_II: u8 = 2;
-const ROOT_VI: u8 = 9;
-const ROOT_III: u8 = 4;
-const ROOT_VII: u8 = 11;
+const ROOT_VIIB: UnkeyedNote = UnkeyedNote(10); 
+const ROOT_IV: UnkeyedNote = UnkeyedNote(5); 
+const ROOT_I: UnkeyedNote = UnkeyedNote(0); 
+const ROOT_V: UnkeyedNote = UnkeyedNote(7); 
+const ROOT_II: UnkeyedNote = UnkeyedNote(2); 
+const ROOT_VI: UnkeyedNote = UnkeyedNote(9); 
+const ROOT_III: UnkeyedNote = UnkeyedNote(4); 
+const ROOT_VII: UnkeyedNote = UnkeyedNote(11); 
 
-fn major_tri(root: u8) -> BuiltChord {
+fn major_tri(root: UnkeyedNote) -> BuiltChord {
     build_with(root, &[0, 4, 7])
 }
-fn minor_tri(root: u8) -> BuiltChord {
+fn minor_tri(root: UnkeyedNote) -> BuiltChord {
     build_with(root, &[0, 3, 7])
 }
-fn diminished_tri(root: u8) -> BuiltChord {
+fn diminished_tri(root: UnkeyedNote) -> BuiltChord {
     build_with(root, &[0, 3, 6])
 }
 
@@ -200,11 +258,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     // If we have a virtual/hardware connection, set the instruments
     if let Some(ref mut conn) = conn_out {
         // Set main channel (channel 0) to main program
-        let _ = conn.send(&[0xC0 | 0x00, MAIN_PROGRAM]);
+        let _ = conn.send(&[0xC0 | MAIN_CHANNEL, MAIN_PROGRAM]);
         // Set bass channel program
-        let _ = conn.send(&[0xC0 | (BASS_CHANNEL & 0x0F), BASS_PROGRAM]);
+        let _ = conn.send(&[0xC0 | BASS_CHANNEL, BASS_PROGRAM]);
         // Set micro-step instrument on MICRO_CHANNEL
-        let _ = conn.send(&[0xC0 | (MICRO_CHANNEL & 0x0F), MICRO_PROGRAM]);
+        let _ = conn.send(&[0xC0 | MICRO_CHANNEL, MICRO_PROGRAM]);
     }
 
     // 2. Setup Window
@@ -221,7 +279,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut surface = Surface::new(&context, window.clone()).expect("Failed to create surface");
 
     // Application State
-    let mut prev_pos: Option<(f64, f64)> = None;
+    let mut prev_pos: Option<(f32, f32)> = None;
     let mut window_width = 800.0;
 
     let mut is_mouse_down = false;
@@ -304,7 +362,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match event {
                     WindowEvent::CloseRequested => {
                         // Turn off all active notes before closing
-                        let notes_to_stop: Vec<u8> = active_notes.iter().cloned().collect();
+                        let notes_to_stop: Vec<MidiNote> = active_notes.iter().cloned().collect();
                         for note in notes_to_stop {
                             stop_note(&mut midi_connection, note, &mut active_notes);
                         }
@@ -499,21 +557,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                             // Play the low root of the new chord
                             play_note(
                                 &mut midi_connection,
-                                (new_chord.as_ref().unwrap().root as usize)
+                                (transpose + new_chord.as_ref().unwrap().root as usize)
                                     % NUM_STRINGS,
                                 &mut active_notes,
-                                transpose,
                                 VELOCITY,
                             );
                             // Play higher notes of the new chord
                             for i in 12..NUM_STRINGS {
-                                if is_note_in_chord(i, &new_chord) {
+                                let note = UnbottomedNote(i);
+                                if is_note_in_chord(note, &new_chord) {
                                     let vel = (VELOCITY * 2 / 3) as u8;
                                     play_note(
                                         &mut midi_connection,
-                                        i,
+                                        transpose + i,
                                         &mut active_notes,
-                                        transpose,
                                         vel,
                                     );
                                 }
@@ -529,7 +586,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }) {
                             // Stop any playing notes that are not in the new chord
                             if let Some(new) = new_chord.as_ref() {
-                                let notes_to_stop: Vec<u8> = active_notes
+                                let notes_to_stop: Vec<MidiNote> = active_notes
                                     .iter()
                                     .filter(|&&note| {
                                         let pc = note % 12;
@@ -555,7 +612,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 NonZeroU32::new(physical_size.height).unwrap(),
                             )
                             .unwrap();
-                        window_width = physical_size.width as f64;
+                        window_width = physical_size.width as f32;
 
 
                         // Redraw lines on resize
@@ -611,15 +668,24 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn is_note_in_chord(string_index: usize, chord: &Option<BuiltChord>) -> bool {
+fn is_note_in_chord(note: UnbottomedNote, chord: &Option<BuiltChord>) -> bool {
     if let Some(chord) = chord {
-        let note = START_NOTE + string_index as u8;
+        let note = LOWEST_NOTE + note as u8;
         let pitch_class = note % 12;
         let rel = ((12 + pitch_class as i32 - chord.root as i32) % 12) as usize;
         (chord.relative_mask & (1u16 << rel)) != 0
     } else {
         // If no chord is active, all notes are "in"
         true
+    }
+}
+fn is_note_root_of_chord(note: UnbottomedNote, chord: &Option<BuiltChord>) -> bool {
+    if let Some(chord) = chord {
+        // Make a new chord with only the one note
+        let chord_of_one = build_with(chord.root, &[0]);
+        is_note_in_chord(note, &Some(chord_of_one))
+    } else {
+        false
     }
 }
 
@@ -662,8 +728,8 @@ fn decide_chord_base(
     None
 }
 
-fn _compute_string_positions(width: f64) -> Vec<f64> {
-    let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
+fn _compute_string_positions(width: f32) -> Vec<f32> {
+    let mut positions: Vec<f32> = vec![0.0; NUM_STRINGS];
 
     for i in 0..NUM_STRINGS {
         positions[i] = UNSCALED_RELATIVE_X_POSITIONS[i] * width;
@@ -672,8 +738,8 @@ fn _compute_string_positions(width: f64) -> Vec<f64> {
     positions
 }
 
-fn compute_note_positions(width: f64) -> Vec<f64> {
-    let mut positions: Vec<f64> = vec![0.0; 12];
+fn compute_note_positions(width: f32) -> Vec<f32> {
+    let mut positions: Vec<f32> = vec![0.0; 12];
 
     // Add as many notes til we go off the right side of the screen.
     for octave in 0.. {
@@ -693,12 +759,12 @@ fn compute_note_positions(width: f64) -> Vec<f64> {
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
 /// We calculate the string positions dynamically based on window width.
 fn check_pluck(
-    x1: f64,
-    x2: f64,
-    width: f64,
+    x1: f32,
+    x2: f32,
+    width: f32,
     conn: &mut Option<MidiOutputConnection>,
     active_chord: &Option<BuiltChord>,
-    active_notes: &mut HashSet<u8>,
+    active_notes: &mut HashSet<MidiNote>,
     transpose: i32,
 ) {
     if conn.is_none() {
@@ -714,7 +780,7 @@ fn check_pluck(
 
     let mut played_note_at_pos = false;
     let mut crossed_pos = false;
-    let mut string_x: f64 = 0.0;
+    let mut string_x: f32 = 0.0;
 
     // Iterate through all string positions to see if one lies within the movement range
     for i in 0..positions.len() {
@@ -727,8 +793,8 @@ fn check_pluck(
             if let Some(ref mut c) = conn {
                 let on = 0x90 | (MICRO_CHANNEL & 0x0F);
                 let off = 0x80 | (MICRO_CHANNEL & 0x0F);
-                let _ = c.send(&[on, MICRO_NOTE, MICRO_VELOCITY]);
-                let _ = c.send(&[off, MICRO_NOTE, 0]);
+                let _ = c.send(&[on, MICRO_NOTE.0, MICRO_VELOCITY]);
+                let _ = c.send(&[off, MICRO_NOTE.0, 0]);
             }
             }
             played_note_at_pos = false;
@@ -742,37 +808,42 @@ fn check_pluck(
             crossed_pos = true;
             if is_note_in_chord(i, active_chord) {
                 let vel = VELOCITY as u8;
-                play_note(conn, i, active_notes, transpose, vel);
+                play_note(conn, transpose + i, active_notes, vel);
                 played_note_at_pos = true;
             }
         }
     }
 }
 
+    fn send_note_on(c: &mut MidiOutputConnection, channel: u8, note: MidiNote, vel: u8) {
+        if vel == 0 {
+            send_note_off(c, channel, note);
+            return;
+        }
+        let on = 0x90 | (channel & 0x0F);
+        let _ = c.send(&[on, note.0, vel]);
+    }
+    fn send_note_off(c: &mut MidiOutputConnection, channel: u8, note: MidiNote) {
+        let off = 0x80 | (channel & 0x0F);
+        let _ = c.send(&[off, note.0, 0]);
+    }
+
 fn play_note(
     conn: &mut Option<MidiOutputConnection>,
-    string_index: usize,
-    active_notes: &mut HashSet<u8>,
-    transpose: i32,
+    note: UnbottomedNote,
+    active_notes: &mut HashSet<MidiNote>,
     velocity: u8,
 ) {
     if let Some(c) = conn {
-        let mut note = START_NOTE as i32 + string_index as i32 + transpose;
-        if note < 0 {
-            note = 0
-        }
-        if note > 127 {
-            note = 127
-        }
-        let note_u = note as u8;
+        let midi_note = LOWEST_NOTE + note;
 
         // Crossfade between bass and main
-        let main_factor = if note_u as f64 <= MAIN_BASS_BOTTOM {
+        let main_factor = if midi_note <= MAIN_BASS_BOTTOM {
             0.0
-        } else if note_u as f64 >= MAIN_BASS_TOP {
+        } else if midi_note >= MAIN_BASS_TOP {
             1.0
         } else {
-            (note_u as f64 - MAIN_BASS_BOTTOM) / (MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
+            (midi_note - MAIN_BASS_BOTTOM) / (MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
         };
         let bass_factor = 1.0 - main_factor;
 
@@ -780,8 +851,8 @@ fn play_note(
         let main_factor = 1.0 - 0.5 * (1.0 - main_factor);
 
         // Scale velocities
-        let main_vel = ((velocity as f64) * main_factor).round() as u8;
-        let bass_vel = ((velocity as f64) * bass_factor * BASS_VELOCITY_MULTIPLIER).round() as u8;
+        let main_vel = ((velocity as f32) * main_factor).round() as u8;
+        let bass_vel = ((velocity as f32) * bass_factor * BASS_VELOCITY_MULTIPLIER).round() as u8;
 
         // Clamp velocities to max
         let main_vel = if main_vel > 127 { 127 } else { main_vel };
@@ -797,32 +868,28 @@ fn play_note(
             bass_vel = 1
         }
 
-        // Send to bass channel if bass_vel > 0 (Note On only)
-        if bass_vel > 0 {
-            let on_b = 0x90 | (BASS_CHANNEL & 0x0F);
-            let off_bass = 0x80 | (BASS_CHANNEL & 0x0F);
-            // Send an off first
-            let _ = c.send(&[off_bass, note_u, 0]);
-            let _ = c.send(&[on_b, note_u, bass_vel]);
-        }
 
-        // Send to main channel if main_vel > 0 (Note On only)
-        if main_vel > 0 {
-            let on_m = 0x90 | 0x00;
-            let _ = c.send(&[on_m, note_u, main_vel]);
-        }
+        // Send to bass channel if bass_vel > 0
+        // Send an off first to get a solid rearticulation
+        send_note_off(c, BASS_CHANNEL, midi_note);
+        send_note_on(c, BASS_CHANNEL, midi_note, bass_vel);
 
-        active_notes.insert(note_u);
+        // Send to main channel
+        send_note_on(c, MAIN_CHANNEL, midi_note, main_vel);
+
+        active_notes.insert(midi_note);
     }
 }
 
-fn stop_note(conn: &mut Option<MidiOutputConnection>, note: u8, active_notes: &mut HashSet<u8>) {
+fn stop_note(conn: &mut Option<MidiOutputConnection>, note: MidiNote, active_notes: &mut HashSet<MidiNote>) {
     if let Some(c) = conn {
         // Send Note Off on both channels to ensure silence
-        let off_main = 0x80 | 0x00;
-        let off_bass = 0x80 | (BASS_CHANNEL & 0x0F);
-        let _ = c.send(&[off_main, note, 0]);
-        let _ = c.send(&[off_bass, note, 0]);
+        // let off_main = 0x80 | MAIN_CHANNEL;
+        // let off_bass = 0x80 | (BASS_CHANNEL & 0x0F);
+        // let _ = c.send(&[off_main, note.0, 0]);
+        send_note_off(c, MAIN_CHANNEL, note);
+        // let _ = c.send(&[off_bass, note.0, 0]);
+        send_note_off(c, BASS_CHANNEL, note);
         active_notes.remove(&note);
     }
 }
@@ -838,7 +905,7 @@ fn draw_strings(
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0); // Fill with black
 
-    let positions = compute_note_positions(width as f64);
+    let positions = compute_note_positions(width as f32);
 
     if active_chord.is_none() {
         buffer.present().unwrap();
@@ -846,14 +913,15 @@ fn draw_strings(
     }
 
     for i in 0..positions.len() {
-        if is_note_in_chord(i, active_chord) {
+        let ubnote = UnbottomedNote(i as u8);
+        if is_note_in_chord(ubnote, active_chord) {
             let x = positions[i].round() as u32;
             if x >= width {
                 continue;
             }
 
-            let note = START_NOTE + i as u8;
-            let color = if note % 12 == active_chord.as_ref().unwrap().root {
+            //TODO this bit is tricky, where does transpose come in? How to do it properly?
+            let color = if is_note_root_of_chord(ubnote, active_chord) {
                 0xFF0000 // Red for root
             } else {
                 0xFFFFFF // White for other active notes
