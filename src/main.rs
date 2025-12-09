@@ -662,9 +662,7 @@ fn decide_chord_base(
     None
 }
 
-/// Compute x positions for each string using a piano-like layout with padding on each side.
-
-fn compute_string_positions(width: f64) -> Vec<f64> {
+fn _compute_string_positions(width: f64) -> Vec<f64> {
     let mut positions: Vec<f64> = vec![0.0; NUM_STRINGS];
 
     for i in 0..NUM_STRINGS {
