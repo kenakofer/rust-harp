@@ -65,28 +65,37 @@ impl Rem<u8> for MidiNote {
 impl Sub for MidiNote {
     type Output = Interval;
     fn sub(self, rhs: MidiNote) -> Interval {
-        Interval(self.0 - rhs.0)
+        Interval(self.0 as i16 - rhs.0 as i16)
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-struct UnbottomedNote(u8); // Note before building on the BOTTOM_NOTE
+struct UnbottomedNote(i16); // Note before building on the BOTTOM_NOTE
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+struct Transpose(i16); // Basically an interval
 
+impl Add<UnkeyedNote> for Transpose {
+    type Output = UnbottomedNote;
+    fn add(self, rhs: UnkeyedNote) -> UnbottomedNote {
+        let sum: i16 = (self.0 as i16) + (rhs.0 as i16);
+        UnbottomedNote(sum)
+    }
+}
 
 // Note before transposing into the key or building on the BOTTOM_NOTE.
 // This is basically solfege: Do = 0, Re = 2, etc. Can go beyond 12 or below 0
 #[derive(Copy, Clone, Debug, PartialEq)]
-struct UnkeyedNote(i8);
+struct UnkeyedNote(i16);
 
 // Position above the root of the chord
 // "The fifth in the chord" would be 7 for example
 #[derive(Copy, Clone, Debug, PartialEq)]
-struct UnrootedNote(u8); 
+struct _UnrootedNote(i16); 
 
 // Difference in half steps
 #[derive(Copy, Clone, Debug, PartialEq)]
-struct Interval(i8);
+struct Interval(i16);
 
 impl Div for Interval {
     type Output = f32;
@@ -146,7 +155,7 @@ const UNSCALED_RELATIVE_X_POSITIONS: &[f32] = &[
 ];
 
 // Use length of array
-const NUM_STRINGS: u8 = UNSCALED_RELATIVE_X_POSITIONS.len();
+const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
 
 const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [
     0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6
@@ -295,7 +304,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Modifier queue: modifiers queued and applied on next chord key press
     let mut modifier_stage: HashSet<Modifier> = HashSet::new();
     // Transpose in semitones (0-11) applied to played notes
-    let mut transpose: i32 = 0;
+    let mut transpose: Transpose = Transpose(0);
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
@@ -539,9 +548,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         }
                                         Modifier::ChangeKey => {
                                             // Set transpose to the chord's root
-                                            transpose = nc.root as i32;
-                                            if transpose > 6 {
-                                                transpose -= 12;
+                                            transpose = Transpose(nc.root.0 as i16);
+                                            if transpose.0 > 6 {
+                                                transpose.0 -= 12;
                                             }
                                         }
                                         Modifier::Pulse => {
@@ -557,19 +566,18 @@ fn main() -> Result<(), Box<dyn Error>> {
                             // Play the low root of the new chord
                             play_note(
                                 &mut midi_connection,
-                                (transpose + new_chord.as_ref().unwrap().root as usize)
-                                    % NUM_STRINGS,
+                                transpose + new_chord.as_ref().unwrap().root,
                                 &mut active_notes,
                                 VELOCITY,
                             );
                             // Play higher notes of the new chord
                             for i in 12..NUM_STRINGS {
-                                let note = UnbottomedNote(i);
+                                let note = UnkeyedNote(i as i16);
                                 if is_note_in_chord(note, &new_chord) {
                                     let vel = (VELOCITY * 2 / 3) as u8;
                                     play_note(
                                         &mut midi_connection,
-                                        transpose + i,
+                                        transpose + note,
                                         &mut active_notes,
                                         vel,
                                     );
@@ -590,8 +598,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     .iter()
                                     .filter(|&&note| {
                                         let pc = note % 12;
+                                        //TODO this could be better
                                         let rel =
-                                            ((12 + pc as i32 - new.root as i32) % 12) as usize;
+                                            ((12 + pc as i32 - new.root.0 as i32) % 12) as usize;
                                         (new.relative_mask & (1u16 << rel)) == 0
                                     })
                                     .cloned()
@@ -631,8 +640,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::CursorMoved { position, .. } => {
-                        let curr_x = position.x;
-                        let curr_y = position.y;
+                        let curr_x = position.x as f32;
+                        let curr_y = position.y as f32;
 
                         if is_mouse_down {
                             if let Some((last_x, _)) = prev_pos {
@@ -668,18 +677,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn is_note_in_chord(note: UnbottomedNote, chord: &Option<BuiltChord>) -> bool {
+fn is_note_in_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool {
     if let Some(chord) = chord {
-        let note = LOWEST_NOTE + note as u8;
-        let pitch_class = note % 12;
-        let rel = ((12 + pitch_class as i32 - chord.root as i32) % 12) as usize;
+        let pitch_class = note.0 % 12;
+        // TODO better way to do this
+        let rel = ((12 + pitch_class as i32 - chord.root.0 as i32) % 12) as usize;
         (chord.relative_mask & (1u16 << rel)) != 0
     } else {
         // If no chord is active, all notes are "in"
         true
     }
 }
-fn is_note_root_of_chord(note: UnbottomedNote, chord: &Option<BuiltChord>) -> bool {
+fn is_note_root_of_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool {
     if let Some(chord) = chord {
         // Make a new chord with only the one note
         let chord_of_one = build_with(chord.root, &[0]);
@@ -698,7 +707,7 @@ fn decide_chord_base(
         return Some(build_with(ROOT_I, &[0, 2, 4, 5, 7, 9, 11]));
     }
 
-    let chord_builders: Vec<(&'static str, u8, fn(u8) -> BuiltChord)> = vec![
+    let chord_builders: Vec<(&'static str, UnkeyedNote, fn(UnkeyedNote) -> BuiltChord)> = vec![
         (VII_BUTTON, ROOT_VII, diminished_tri),
         (III_BUTTON, ROOT_III, minor_tri),
         (VI_BUTTON, ROOT_VI, minor_tri),
@@ -743,10 +752,10 @@ fn compute_note_positions(width: f32) -> Vec<f32> {
 
     // Add as many notes til we go off the right side of the screen.
     for octave in 0.. {
-        for note in 0..12 {
-            let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[note as usize] as usize;
+        for uknote in 0..12 {
+            let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
             let string = octave * 7 + string_in_octave;
-            if string >= NUM_STRINGS {
+            if string >= NUM_STRINGS.into() {
                 return positions;
             }
             let x = UNSCALED_RELATIVE_X_POSITIONS[string] * width;
@@ -765,7 +774,7 @@ fn check_pluck(
     conn: &mut Option<MidiOutputConnection>,
     active_chord: &Option<BuiltChord>,
     active_notes: &mut HashSet<MidiNote>,
-    transpose: i32,
+    transpose: Transpose,
 ) {
     if conn.is_none() {
         return;
@@ -784,6 +793,8 @@ fn check_pluck(
 
     // Iterate through all string positions to see if one lies within the movement range
     for i in 0..positions.len() {
+        let uknote = UnkeyedNote(i as i16);
+        let ubnote = transpose + uknote;
 
         // If we're proceeding to the next string position, crossed the previous one, and didn't
         // play a note at it, then play the dampened string sound.
@@ -806,9 +817,9 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            if is_note_in_chord(i, active_chord) {
+            if is_note_in_chord(uknote, active_chord) {
                 let vel = VELOCITY as u8;
-                play_note(conn, transpose + i, active_notes, vel);
+                play_note(conn, ubnote, active_notes, vel);
                 played_note_at_pos = true;
             }
         }
@@ -913,15 +924,15 @@ fn draw_strings(
     }
 
     for i in 0..positions.len() {
-        let ubnote = UnbottomedNote(i as u8);
-        if is_note_in_chord(ubnote, active_chord) {
+        let uknote = UnkeyedNote(i as i16);
+        if is_note_in_chord(uknote, active_chord) {
             let x = positions[i].round() as u32;
             if x >= width {
                 continue;
             }
 
             //TODO this bit is tricky, where does transpose come in? How to do it properly?
-            let color = if is_note_root_of_chord(ubnote, active_chord) {
+            let color = if is_note_root_of_chord(uknote, active_chord) {
                 0xFF0000 // Red for root
             } else {
                 0xFFFFFF // White for other active notes
