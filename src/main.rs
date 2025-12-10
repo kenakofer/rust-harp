@@ -284,14 +284,25 @@ enum ChordButton {
   VIIB, IV, I, V, II, VI, III, VII, HeptatonicMajor,
 }
 
-const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+enum ModButton {
+    Major2,
+    Minor7,
+    Major7,
+    Sus4,
+    MinorMajor,
+    No3,
+    ChangeKey,
+    Pulse,
+}
+/*const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
 const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
 const MAJOR_7_BUTTON: &str = "MAJOR_7_BUTTON";
 const SUS4_BUTTON: &str = "SUS4_BUTTON";
 const MINOR_MAJOR_BUTTON: &str = "MINOR_MAJOR_BUTTON";
 const NO_3_BUTTON: &str = "MINOR_MAJOR_BUTTON";
 const CHANGE_KEY_BUTTON: &str = "CHANGE_KEY_BUTTON";
-const PULSE_BUTTON: &str = "PULSE_BUTTON";
+const PULSE_BUTTON: &str = "PULSE_BUTTON";*/
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -359,7 +370,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut active_notes = HashSet::new();
     // Key tracking using named buttons
     let mut chord_keys_down: HashSet<ChordButton> = HashSet::new();
-    let mut mod_keys_down: HashSet<&'static str> = HashSet::new();
+    let mut mod_keys_down: HashSet<ModButton> = HashSet::new();
     // Modifier queue: modifiers queued and applied on next chord key press
     let mut modifier_stage: HashSet<Modifier> = HashSet::new();
     // Transpose in semitones (0-11) applied to played notes
@@ -381,38 +392,38 @@ fn main() -> Result<(), Box<dyn Error>> {
     .cloned()
     .collect();
 
-    let mod_key_map: HashMap<winit::keyboard::Key, (&'static str, Modifier)> = [
+    let mod_key_map: HashMap<winit::keyboard::Key, (ModButton, Modifier)> = [
         (
             winit::keyboard::Key::Character("5".into()),
-            (MAJOR_2_BUTTON, Modifier::AddMajor2),
+            (ModButton::Major2, Modifier::AddMajor2),
         ),
         (
             winit::keyboard::Key::Character("b".into()),
-            (MAJOR_7_BUTTON, Modifier::AddMajor7),
+            (ModButton::Major7, Modifier::AddMajor7),
         ),
         (
             winit::keyboard::Key::Character("6".into()),
-            (MINOR_7_BUTTON, Modifier::AddMinor7),
+            (ModButton::Minor7, Modifier::AddMinor7),
         ),
         (
             winit::keyboard::Key::Character("3".into()),
-            (SUS4_BUTTON, Modifier::AddSus4),
+            (ModButton::Sus4, Modifier::AddSus4),
         ),
         (
             winit::keyboard::Key::Character("4".into()),
-            (MINOR_MAJOR_BUTTON, Modifier::SwitchMinorMajor),
+            (ModButton::MinorMajor, Modifier::SwitchMinorMajor),
         ),
         (
             winit::keyboard::Key::Character(".".into()),
-            (NO_3_BUTTON, Modifier::No3),
+            (ModButton::No3, Modifier::No3),
         ),
         (
             winit::keyboard::Key::Character("1".into()),
-            (CHANGE_KEY_BUTTON, Modifier::ChangeKey),
+            (ModButton::ChangeKey, Modifier::ChangeKey),
         ),
         (
             winit::keyboard::Key::Named(winit::keyboard::NamedKey::Tab),
-            (PULSE_BUTTON, Modifier::Pulse),
+            (ModButton::Pulse, Modifier::Pulse),
         ),
     ]
     .iter()
@@ -450,7 +461,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 mod_key_map.get(&event.logical_key)
                             {
                                 if !mod_keys_down.contains(button) {
-                                    mod_keys_down.insert(button);
+                                    mod_keys_down.insert(*button);
                                     modifier_stage.insert(modifier.clone());
                                 }
                             } else if let winit::keyboard::Key::Named(
@@ -518,28 +529,28 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         // Inserting here supports held mods
-                        if mod_keys_down.contains(MAJOR_2_BUTTON) {
+                        if mod_keys_down.contains(&ModButton::Major2) {
                             modifier_stage.insert(Modifier::AddMajor2);
                         }
-                        if mod_keys_down.contains(MINOR_7_BUTTON) {
+                        if mod_keys_down.contains(&ModButton::Minor7) {
                             modifier_stage.insert(Modifier::AddMinor7);
                         }
-                        if mod_keys_down.contains(SUS4_BUTTON) {
+                        if mod_keys_down.contains(&ModButton::Sus4) {
                             modifier_stage.insert(Modifier::AddSus4);
                         }
-                        if mod_keys_down.contains(MINOR_MAJOR_BUTTON) {
+                        if mod_keys_down.contains(&ModButton::MinorMajor) {
                             modifier_stage.insert(Modifier::SwitchMinorMajor);
                         }
-                        if mod_keys_down.contains(NO_3_BUTTON) {
+                        if mod_keys_down.contains(&ModButton::No3) {
                             modifier_stage.insert(Modifier::RestorePerfect5);
                         }
-                        if mod_keys_down.contains(MAJOR_7_BUTTON) {
+                        if mod_keys_down.contains(&ModButton::Major7) {
                             modifier_stage.insert(Modifier::AddMajor7);
                         }
-                        if mod_keys_down.contains(CHANGE_KEY_BUTTON) {
+                        if mod_keys_down.contains(&ModButton::ChangeKey) {
                             modifier_stage.insert(Modifier::ChangeKey);
                         }
-                        if mod_keys_down.contains(PULSE_BUTTON) {
+                        if mod_keys_down.contains(&ModButton::Pulse) {
                             modifier_stage.insert(Modifier::Pulse);
                         }
 
