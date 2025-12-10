@@ -845,12 +845,10 @@ fn check_pluck(
         if string_x != positions[i] {
             if crossed_pos && !played_note_at_pos {
                 // Play the MICRO sound
-            if let Some(ref mut c) = conn {
-                let on = 0x90 | (MICRO_CHANNEL & 0x0F);
-                let off = 0x80 | (MICRO_CHANNEL & 0x0F);
-                let _ = c.send(&[on, MICRO_NOTE.0, MICRO_VELOCITY]);
-                let _ = c.send(&[off, MICRO_NOTE.0, 0]);
-            }
+                if let Some(ref mut c) = conn {
+                    send_note_on(c, MICRO_CHANNEL, MICRO_NOTE, MICRO_VELOCITY);
+                    send_note_off(c, MICRO_CHANNEL, MICRO_NOTE);
+                }
             }
             played_note_at_pos = false;
             crossed_pos = false;
@@ -923,14 +921,12 @@ fn play_note(
             bass_vel = 1
         }
 
+        // Send to main channel and bass
+        send_note_on(c, MAIN_CHANNEL, midi_note, main_vel);
 
-        // Send to bass channel if bass_vel > 0
-        // Send an off first to get a solid rearticulation
+        // Send an off to bass first to get a solid rearticulation
         send_note_off(c, BASS_CHANNEL, midi_note);
         send_note_on(c, BASS_CHANNEL, midi_note, bass_vel);
-
-        // Send to main channel
-        send_note_on(c, MAIN_CHANNEL, midi_note, main_vel);
 
         active_notes.insert(midi_note);
     }
@@ -939,11 +935,7 @@ fn play_note(
 fn stop_note(conn: &mut Option<MidiOutputConnection>, note: MidiNote, active_notes: &mut HashSet<MidiNote>) {
     if let Some(c) = conn {
         // Send Note Off on both channels to ensure silence
-        // let off_main = 0x80 | MAIN_CHANNEL;
-        // let off_bass = 0x80 | (BASS_CHANNEL & 0x0F);
-        // let _ = c.send(&[off_main, note.0, 0]);
         send_note_off(c, MAIN_CHANNEL, note);
-        // let _ = c.send(&[off_bass, note.0, 0]);
         send_note_off(c, BASS_CHANNEL, note);
         active_notes.remove(&note);
     }
