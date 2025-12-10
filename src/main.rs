@@ -359,7 +359,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Application State
     let mut prev_pos: Option<(f32, f32)> = None;
-    let mut window_width = 800.0;
 
     let mut is_mouse_down = false;
     let mut active_chord: Option<BuiltChord> = Some(major_tri(ROOT_I));
@@ -377,6 +376,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut transpose: Transpose = Transpose(0);
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
+    let mut note_positions: [f32; NUM_STRINGS * 2] = [0.0; NUM_STRINGS * 2];
 
     let chord_key_map: HashMap<winit::keyboard::Key, ChordButton> = [
         (winit::keyboard::Key::Character("a".into()), ChordButton::VIIB),
@@ -689,7 +689,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 NonZeroU32::new(physical_size.height).unwrap(),
                             )
                             .unwrap();
-                        window_width = physical_size.width as f32;
+
+                        let window_width = physical_size.width as f32;
+
+                        compute_note_positions(&mut note_positions, window_width);
 
                         // Redraw lines on resize
                         draw_strings(
@@ -697,6 +700,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             physical_size.width,
                             physical_size.height,
                             &active_chord,
+                            &note_positions,
                         );
                     }
 
@@ -716,11 +720,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 check_pluck(
                                     last_x,
                                     curr_x,
-                                    window_width,
                                     &mut midi_connection,
                                     &active_chord,
                                     &mut active_notes,
                                     transpose,
+                                    &note_positions
                                 );
                             }
                         }
@@ -731,7 +735,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     WindowEvent::RedrawRequested => {
                         // Initial draw if needed, though Resized usually handles it on startup
                         let size = window.inner_size();
-                        draw_strings(&mut surface, size.width, size.height, &active_chord);
+                        draw_strings(&mut surface, size.width, size.height, &active_chord, &note_positions);
                     }
 
                     _ => {}
@@ -793,8 +797,8 @@ fn _compute_string_positions(width: f32) -> Vec<f32> {
     positions
 }
 
-fn compute_note_positions(width: f32) -> Vec<f32> {
-    let mut positions: Vec<f32> = vec![0.0; 12];
+fn compute_note_positions(positions: &mut [f32], width: f32) {
+    let mut i = 0;
 
     // Add as many notes til we go off the right side of the screen.
     for octave in 0.. {
@@ -802,13 +806,13 @@ fn compute_note_positions(width: f32) -> Vec<f32> {
             let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
             let string = octave * 7 + string_in_octave;
             if string >= NUM_STRINGS.into() {
-                return positions;
+                return
             }
             let x = UNSCALED_RELATIVE_X_POSITIONS[string] * width;
-            positions.push(x);
+            positions[i] = x;
+            i+=1;
         }
     }
-    positions
 }
 
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
@@ -816,18 +820,15 @@ fn compute_note_positions(width: f32) -> Vec<f32> {
 fn check_pluck(
     x1: f32,
     x2: f32,
-    width: f32,
     conn: &mut Option<MidiOutputConnection>,
     active_chord: &Option<BuiltChord>,
     active_notes: &mut HashSet<MidiNote>,
     transpose: Transpose,
+    note_positions: &[f32],
 ) {
     if conn.is_none() {
         return;
     }
-
-    // Use shared compute function to get positions
-    let positions = compute_note_positions(width);
 
     // Determine the range of movement
     let min_x = x1.min(x2);
@@ -838,13 +839,13 @@ fn check_pluck(
     let mut string_x: f32 = 0.0;
 
     // Iterate through all string positions to see if one lies within the movement range
-    for i in 0..positions.len() {
+    for i in 0..note_positions.len() {
         let uknote = UnkeyedNote(i as i16);
         let ubnote = transpose + uknote;
 
         // If we're proceeding to the next string position, crossed the previous one, and didn't
         // play a note at it, then play the dampened string sound.
-        if string_x != positions[i] {
+        if string_x != note_positions[i] {
             if crossed_pos && !played_note_at_pos {
                 // Play the MICRO sound
                 if let Some(ref mut c) = conn {
@@ -856,7 +857,7 @@ fn check_pluck(
             crossed_pos = false;
         }
 
-        string_x = positions[i];
+        string_x = note_positions[i];
 
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
@@ -954,11 +955,10 @@ fn draw_strings(
     width: u32,
     height: u32,
     active_chord: &Option<BuiltChord>,
+    positions: &[f32],
 ) {
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0); // Fill with black
-
-    let positions = compute_note_positions(width as f32);
 
     if active_chord.is_none() {
         buffer.present().unwrap();
