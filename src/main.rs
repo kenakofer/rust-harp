@@ -17,11 +17,9 @@
 //!     - Pedal toggle/mod?
 //!     - Phone app version?
 //!     - Check bass balance on keychange
-//!     - Simplify types and casts
 //!     - Refactor to avoid mod logic duplication
 //!     - Fix held pulse key triggering rapid repeat
 //!     - Pulse in wonky in other keys
-//!     - 
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
@@ -40,7 +38,7 @@ use winit::{
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 struct MidiNote(u8);
 
-impl Add<UnbottomedNote> for MidiNote {
+/*impl Add<UnbottomedNote> for MidiNote {
     type Output = MidiNote;
     fn add(self, rhs: UnbottomedNote) -> MidiNote {
         let sum: i16 = (self.0 as i16) + (rhs.0 as i16);
@@ -53,7 +51,7 @@ impl Add<UnbottomedNote> for MidiNote {
         }
         MidiNote(sum as u8)
     }
-}
+}*/
 
 impl Rem<u8> for MidiNote {
     type Output = u8;
@@ -83,15 +81,58 @@ impl Add<UnkeyedNote> for Transpose {
     }
 }
 
+impl Add<UnbottomedNote> for Transpose {
+    type Output = MidiNote;
+    fn add(self, rhs: UnbottomedNote) -> MidiNote {
+        let sum: i16 = (self.0 as i16) + (rhs.0 as i16);
+        if sum < 0 {
+            eprintln!("Warning: MIDI note out of range: {}, using 0 instead", sum);
+            return MidiNote(0);
+        } else if sum > 127 {
+            eprintln!("Warning: MIDI note out of range: {}, using 127 instead", sum);
+            return MidiNote(127);
+        }
+        MidiNote(sum as u8)
+    }
+}
+
+impl Sub<Transpose> for UnbottomedNote {
+    type Output = UnkeyedNote;
+    fn sub(self, rhs: Transpose) -> UnkeyedNote {
+        let diff: i16 = (self.0 as i16) - (rhs.0 as i16);
+        UnkeyedNote(diff)
+    }
+}
+
+impl Sub<Transpose> for MidiNote {
+    type Output = UnbottomedNote;
+    fn sub(self, rhs: Transpose) -> UnbottomedNote {
+        let diff: i16 = (self.0 as i16) - rhs.0;
+        UnbottomedNote(diff)
+    }
+}
+
 // Note before transposing into the key or building on the BOTTOM_NOTE.
 // This is basically solfege: Do = 0, Re = 2, etc. Can go beyond 12 or below 0
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct UnkeyedNote(i16);
 
+impl Sub for UnkeyedNote {
+    type Output = Interval;
+    fn sub(self, rhs: UnkeyedNote) -> Interval {
+        Interval(self.0 - rhs.0)
+    }
+}
+
 // Position above the root of the chord
 // "The fifth in the chord" would be 7 for example
-#[derive(Copy, Clone, Debug, PartialEq)]
-struct _UnrootedNote(i16); 
+//#[derive(Copy, Clone, Debug, PartialEq)]
+struct UnrootedNote(u8); 
+impl UnrootedNote {
+    pub fn new(i: Interval) -> Self {
+        Self( i.0.rem_euclid(12) as u8 )
+    }
+}
 
 // Difference in half steps
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -105,7 +146,7 @@ impl Div for Interval {
 }
 
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
-const LOWEST_NOTE: MidiNote = MidiNote(24); // Do in the active key
+const LOWEST_NOTE: Transpose = Transpose(24); // Do in the active key
 const VELOCITY: u8 = 70;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
@@ -161,7 +202,7 @@ const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [
     0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6
 ];
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct BuiltChord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
     //name: &'static str,
@@ -182,6 +223,31 @@ enum Modifier {
     ChangeKey,
     Pulse,
 }
+
+fn get_note_above_root(note: UnkeyedNote, root: UnkeyedNote) -> UnrootedNote {
+    UnrootedNote::new(note - root)
+}
+
+fn is_note_in_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool {
+    if let Some(chord) = chord {
+        let rel = get_note_above_root(note, chord.root);
+        chord.relative_mask & (1u16 << (rel.0 as usize)) != 0
+    } else {
+        // If no chord is active, all notes are "in"
+        true
+    }
+}
+
+fn is_note_root_of_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool {
+    if let Some(chord) = chord {
+        // Make a new chord with only the one note
+        let chord_of_one = build_with(chord.root, &[0]);
+        is_note_in_chord(note, &Some(chord_of_one))
+    } else {
+        false
+    }
+}
+
 
 fn build_with(root: UnkeyedNote, rels: &[u8]) -> BuiltChord {
     let mut mask: u16 = 0;
@@ -593,15 +659,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                             })
                         }) {
                             // Stop any playing notes that are not in the new chord
-                            if let Some(new) = new_chord.as_ref() {
+                            if let Some(new) = new_chord {
                                 let notes_to_stop: Vec<MidiNote> = active_notes
                                     .iter()
                                     .filter(|&&note| {
-                                        let pc = note % 12;
-                                        //TODO this could be better
-                                        let rel =
-                                            ((12 + pc as i32 - new.root.0 as i32) % 12) as usize;
-                                        (new.relative_mask & (1u16 << rel)) == 0
+                                        is_note_in_chord(
+                                            note - LOWEST_NOTE - transpose,
+                                            &Some(new),
+                                        ) == false
                                     })
                                     .cloned()
                                     .collect();
@@ -675,27 +740,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     })?;
 
     Ok(())
-}
-
-fn is_note_in_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool {
-    if let Some(chord) = chord {
-        let pitch_class = note.0 % 12;
-        // TODO better way to do this
-        let rel = ((12 + pitch_class as i32 - chord.root.0 as i32) % 12) as usize;
-        (chord.relative_mask & (1u16 << rel)) != 0
-    } else {
-        // If no chord is active, all notes are "in"
-        true
-    }
-}
-fn is_note_root_of_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool {
-    if let Some(chord) = chord {
-        // Make a new chord with only the one note
-        let chord_of_one = build_with(chord.root, &[0]);
-        is_note_in_chord(note, &Some(chord_of_one))
-    } else {
-        false
-    }
 }
 
 // Decide chord from current chord_keys_down and previous chord state.
@@ -931,7 +975,6 @@ fn draw_strings(
                 continue;
             }
 
-            //TODO this bit is tricky, where does transpose come in? How to do it properly?
             let color = if is_note_root_of_chord(uknote, active_chord) {
                 0xFF0000 // Red for root
             } else {
