@@ -279,16 +279,10 @@ fn diminished_tri(root: UnkeyedNote) -> BuiltChord {
     build_with(root, &[0, 3, 6])
 }
 
-// Named button identifiers for key tracking
-const VIIB_BUTTON: &str = "VIIB_BUTTON";
-const IV_BUTTON: &str = "IV_BUTTON";
-const I_BUTTON: &str = "I_BUTTON";
-const V_BUTTON: &str = "V_BUTTON";
-const II_BUTTON: &str = "II_BUTTON";
-const VI_BUTTON: &str = "VI_BUTTON";
-const III_BUTTON: &str = "III_BUTTON";
-const VII_BUTTON: &str = "VII_BUTTON";
-const HEPTATONIC_MAJOR_BUTTON: &str = "HEPTATONIC_MAJOR_BUTTON";
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+enum ChordButton {
+  VIIB, IV, I, V, II, VI, III, VII, HeptatonicMajor,
+}
 
 const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
 const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
@@ -364,7 +358,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut active_notes = HashSet::new();
     // Key tracking using named buttons
-    let mut chord_keys_down: HashSet<&'static str> = HashSet::new();
+    let mut chord_keys_down: HashSet<ChordButton> = HashSet::new();
     let mut mod_keys_down: HashSet<&'static str> = HashSet::new();
     // Modifier queue: modifiers queued and applied on next chord key press
     let mut modifier_stage: HashSet<Modifier> = HashSet::new();
@@ -373,15 +367,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
 
-    let chord_key_map: HashMap<winit::keyboard::Key, &'static str> = [
-        (winit::keyboard::Key::Character("a".into()), VIIB_BUTTON),
-        (winit::keyboard::Key::Character("s".into()), IV_BUTTON),
-        (winit::keyboard::Key::Character("d".into()), I_BUTTON),
-        (winit::keyboard::Key::Character("f".into()), V_BUTTON),
-        (winit::keyboard::Key::Character("z".into()), II_BUTTON),
-        (winit::keyboard::Key::Character("x".into()), VI_BUTTON),
-        (winit::keyboard::Key::Character("c".into()), III_BUTTON),
-        (winit::keyboard::Key::Character("v".into()), VII_BUTTON),
+    let chord_key_map: HashMap<winit::keyboard::Key, ChordButton> = [
+        (winit::keyboard::Key::Character("a".into()), ChordButton::VIIB),
+        (winit::keyboard::Key::Character("s".into()), ChordButton::IV),
+        (winit::keyboard::Key::Character("d".into()), ChordButton::I),
+        (winit::keyboard::Key::Character("f".into()), ChordButton::V),
+        (winit::keyboard::Key::Character("z".into()), ChordButton::II),
+        (winit::keyboard::Key::Character("x".into()), ChordButton::VI),
+        (winit::keyboard::Key::Character("c".into()), ChordButton::III),
+        (winit::keyboard::Key::Character("v".into()), ChordButton::VII),
     ]
     .iter()
     .cloned()
@@ -447,8 +441,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let mut chord_was_pressed = false;
 
                         if event.state == winit::event::ElementState::Pressed {
-                            if let Some(button) = chord_key_map.get(&event.logical_key) {
-                                if !chord_keys_down.contains(button) {
+                            if let Some(&button) = chord_key_map.get(&event.logical_key) {
+                                if !chord_keys_down.contains(&button) {
                                     chord_keys_down.insert(button);
                                     chord_was_pressed = true;
                                 }
@@ -464,8 +458,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                             ) = event.logical_key
                             {
                                 if event.location == winit::keyboard::KeyLocation::Left {
-                                    if !chord_keys_down.contains(HEPTATONIC_MAJOR_BUTTON) {
-                                        chord_keys_down.insert(HEPTATONIC_MAJOR_BUTTON);
+                                    if !chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
+                                        chord_keys_down.insert(ChordButton::HeptatonicMajor);
                                         chord_was_pressed = true;
                                     }
                                 }
@@ -481,7 +475,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             ) = event.logical_key
                             {
                                 if event.location == winit::keyboard::KeyLocation::Left {
-                                    chord_keys_down.remove(HEPTATONIC_MAJOR_BUTTON);
+                                    chord_keys_down.remove(&ChordButton::HeptatonicMajor);
                                 }
                             }
                         }
@@ -502,20 +496,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // modifier pipeline.
                         if chord_was_pressed {
                             // Pairs that imply minor 7: VI+II, III+VI, VII+III, IV+I, IV+VIIB, I+V, V+II
-                            if (chord_keys_down.contains(VI_BUTTON)
-                                && chord_keys_down.contains(II_BUTTON))
-                                || (chord_keys_down.contains(III_BUTTON)
-                                    && chord_keys_down.contains(VI_BUTTON))
-                                || (chord_keys_down.contains(VII_BUTTON)
-                                    && chord_keys_down.contains(III_BUTTON))
-                                || (chord_keys_down.contains(IV_BUTTON)
-                                    && chord_keys_down.contains(I_BUTTON))
-                                || (chord_keys_down.contains(IV_BUTTON)
-                                    && chord_keys_down.contains(VIIB_BUTTON))
-                                || (chord_keys_down.contains(I_BUTTON)
-                                    && chord_keys_down.contains(V_BUTTON))
-                                || (chord_keys_down.contains(V_BUTTON)
-                                    && chord_keys_down.contains(II_BUTTON))
+                            if (chord_keys_down.contains(&ChordButton::VI)
+                                && chord_keys_down.contains(&ChordButton::II))
+                                || (chord_keys_down.contains(&ChordButton::III)
+                                    && chord_keys_down.contains(&ChordButton::VI))
+                                || (chord_keys_down.contains(&ChordButton::VII)
+                                    && chord_keys_down.contains(&ChordButton::III))
+                                || (chord_keys_down.contains(&ChordButton::IV)
+                                    && chord_keys_down.contains(&ChordButton::I))
+                                || (chord_keys_down.contains(&ChordButton::IV)
+                                    && chord_keys_down.contains(&ChordButton::VIIB))
+                                || (chord_keys_down.contains(&ChordButton::I)
+                                    && chord_keys_down.contains(&ChordButton::V))
+                                || (chord_keys_down.contains(&ChordButton::V)
+                                    && chord_keys_down.contains(&ChordButton::II))
                             {
                                 modifier_stage.insert(Modifier::AddMinor7);
                                 modifier_stage.insert(Modifier::Minor3ToMajor);
@@ -742,25 +736,25 @@ fn main() -> Result<(), Box<dyn Error>> {
 // Decide chord from current chord_keys_down and previous chord state.
 fn decide_chord_base(
     old_chord: Option<&BuiltChord>,
-    chord_keys_down: &HashSet<&'static str>,
+    chord_keys_down: &HashSet<ChordButton>,
 ) -> Option<BuiltChord> {
-    if chord_keys_down.contains(HEPTATONIC_MAJOR_BUTTON) {
+    if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
         return Some(build_with(ROOT_I, &[0, 2, 4, 5, 7, 9, 11]));
     }
 
-    let chord_builders: Vec<(&'static str, UnkeyedNote, fn(UnkeyedNote) -> BuiltChord)> = vec![
-        (VII_BUTTON, ROOT_VII, diminished_tri),
-        (III_BUTTON, ROOT_III, minor_tri),
-        (VI_BUTTON, ROOT_VI, minor_tri),
-        (II_BUTTON, ROOT_II, minor_tri),
-        (V_BUTTON, ROOT_V, major_tri),
-        (I_BUTTON, ROOT_I, major_tri),
-        (IV_BUTTON, ROOT_IV, major_tri),
-        (VIIB_BUTTON, ROOT_VIIB, major_tri),
+    let chord_builders: Vec<(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> BuiltChord)> = vec![
+        (ChordButton::VII, ROOT_VII, diminished_tri),
+        (ChordButton::III, ROOT_III, minor_tri),
+        (ChordButton::VI, ROOT_VI, minor_tri),
+        (ChordButton::II, ROOT_II, minor_tri),
+        (ChordButton::V, ROOT_V, major_tri),
+        (ChordButton::I, ROOT_I, major_tri),
+        (ChordButton::IV, ROOT_IV, major_tri),
+        (ChordButton::VIIB, ROOT_VIIB, major_tri),
     ];
 
     for (button, root, builder) in chord_builders {
-        if chord_keys_down.contains(button) {
+        if chord_keys_down.contains(&button) {
             if let Some(old) = old_chord {
                 if old.root == root {
                     return Some(old.clone());
