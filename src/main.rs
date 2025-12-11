@@ -38,21 +38,6 @@ use winit::{
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 struct MidiNote(u8);
 
-/*impl Add<UnbottomedNote> for MidiNote {
-    type Output = MidiNote;
-    fn add(self, rhs: UnbottomedNote) -> MidiNote {
-        let sum: i16 = (self.0 as i16) + (rhs.0 as i16);
-        if sum < 0 {
-            eprintln!("Warning: MIDI note out of range: {}, using 0 instead", sum);
-            return MidiNote(0);
-        } else if sum > 127 {
-            eprintln!("Warning: MIDI note out of range: {}, using 127 instead", sum);
-            return MidiNote(127);
-        }
-        MidiNote(sum as u8)
-    }
-}*/
-
 impl Rem<u8> for MidiNote {
     type Output = u8;
     fn rem(self, rhs: u8) -> u8 {
