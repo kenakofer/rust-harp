@@ -20,6 +20,7 @@
 //!     - Refactor to avoid mod logic duplication
 //!     - Fix held pulse key triggering rapid repeat
 //!     - Pulse in wonky in other keys
+//!     - Note positions should be vector again
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
@@ -266,7 +267,15 @@ fn diminished_tri(root: UnkeyedNote) -> BuiltChord {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 enum ChordButton {
-  VIIB, IV, I, V, II, VI, III, VII, HeptatonicMajor,
+    VIIB,
+    IV,
+    I,
+    V,
+    II,
+    VI,
+    III,
+    VII,
+    HeptatonicMajor,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -280,602 +289,515 @@ enum ModButton {
     ChangeKey,
     Pulse,
 }
-/*const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
-const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
-const MAJOR_7_BUTTON: &str = "MAJOR_7_BUTTON";
-const SUS4_BUTTON: &str = "SUS4_BUTTON";
-const MINOR_MAJOR_BUTTON: &str = "MINOR_MAJOR_BUTTON";
-const NO_3_BUTTON: &str = "MINOR_MAJOR_BUTTON";
-const CHANGE_KEY_BUTTON: &str = "CHANGE_KEY_BUTTON";
-const PULSE_BUTTON: &str = "PULSE_BUTTON";*/
 
-fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::init();
-
-    // 1. Setup MIDI Output
-    // We try to create a virtual port first (best for Linux/ALSA).
-    let midi_out = MidiOutput::new("Rust Harp Client")?;
-    let mut conn_out: Option<MidiOutputConnection> = None;
-
-    // Attempt to create a virtual port.
-    match midi_out.create_virtual("Rust Harp Output") {
-        Ok(conn) => {
-            println!("Created virtual MIDI port: 'Rust Harp Output'");
-            conn_out = Some(conn);
-        }
-        Err(_) => {
-            // Fallback for non-ALSA environments or errors
-            let midi_out = MidiOutput::new("Rust Harp Client")?;
-            let ports = midi_out.ports();
-            if let Some(port) = ports.first() {
-                println!(
-                    "Virtual port failed. Connecting to first available hardware port: {}",
-                    midi_out.port_name(port)?
-                );
-                conn_out = Some(midi_out.connect(port, "Rust Harp Connection")?);
-            } else {
-                eprintln!("Warning: No MIDI ports found. Application will run visually but emit no sound.");
-            }
-        }
-    }
-
-    // If we have a virtual/hardware connection, set the instruments
-    if let Some(ref mut conn) = conn_out {
-        // Set main channel (channel 0) to main program
-        let _ = conn.send(&[0xC0 | MAIN_CHANNEL, MAIN_PROGRAM]);
-        // Set bass channel program
-        let _ = conn.send(&[0xC0 | BASS_CHANNEL, BASS_PROGRAM]);
-        // Set micro-step instrument on MICRO_CHANNEL
-        let _ = conn.send(&[0xC0 | MICRO_CHANNEL, MICRO_PROGRAM]);
-    }
-
-    // 2. Setup Window
-    let event_loop = EventLoop::new()?;
-    let window = Rc::new(
-        WindowBuilder::new()
-            .with_title("Rust MIDI Harp")
-            .with_inner_size(winit::dpi::LogicalSize::new(800.0, 600.0))
-            .build(&event_loop)?,
-    );
-
-    // 3. Setup Graphics Context
-    let context = Context::new(window.clone()).expect("Failed to create graphics context");
-    let mut surface = Surface::new(&context, window.clone()).expect("Failed to create surface");
-
-    // Application State
-    let mut prev_pos: Option<(f32, f32)> = None;
-
-    let mut is_mouse_down = false;
-    let mut active_chord: Option<BuiltChord> = Some(major_tri(ROOT_I));
-    if let Some(ref mut nc) = active_chord {
-        nc.relative_mask |= 1u16 << 2; // AddMajor2
-    }
-
-    let mut active_notes = HashSet::new();
-    // Key tracking using named buttons
-    let mut chord_keys_down: HashSet<ChordButton> = HashSet::new();
-    let mut mod_keys_down: HashSet<ModButton> = HashSet::new();
-    // Modifier queue: modifiers queued and applied on next chord key press
-    let mut modifier_stage: HashSet<Modifier> = HashSet::new();
-    // Transpose in semitones (0-11) applied to played notes
-    let mut transpose: Transpose = Transpose(0);
-    // We move conn_out into the event loop
-    let mut midi_connection = conn_out;
-    let mut note_positions: [f32; NUM_STRINGS * 2] = [0.0; NUM_STRINGS * 2];
-
-    let chord_key_map: HashMap<winit::keyboard::Key, ChordButton> = [
-        (winit::keyboard::Key::Character("a".into()), ChordButton::VIIB),
-        (winit::keyboard::Key::Character("s".into()), ChordButton::IV),
-        (winit::keyboard::Key::Character("d".into()), ChordButton::I),
-        (winit::keyboard::Key::Character("f".into()), ChordButton::V),
-        (winit::keyboard::Key::Character("z".into()), ChordButton::II),
-        (winit::keyboard::Key::Character("x".into()), ChordButton::VI),
-        (winit::keyboard::Key::Character("c".into()), ChordButton::III),
-        (winit::keyboard::Key::Character("v".into()), ChordButton::VII),
-    ]
-    .iter()
-    .cloned()
-    .collect();
-
-    let mod_key_map: HashMap<winit::keyboard::Key, (ModButton, Modifier)> = [
-        (
-            winit::keyboard::Key::Character("5".into()),
-            (ModButton::Major2, Modifier::AddMajor2),
-        ),
-        (
-            winit::keyboard::Key::Character("b".into()),
-            (ModButton::Major7, Modifier::AddMajor7),
-        ),
-        (
-            winit::keyboard::Key::Character("6".into()),
-            (ModButton::Minor7, Modifier::AddMinor7),
-        ),
-        (
-            winit::keyboard::Key::Character("3".into()),
-            (ModButton::Sus4, Modifier::AddSus4),
-        ),
-        (
-            winit::keyboard::Key::Character("4".into()),
-            (ModButton::MinorMajor, Modifier::SwitchMinorMajor),
-        ),
-        (
-            winit::keyboard::Key::Character(".".into()),
-            (ModButton::No3, Modifier::No3),
-        ),
-        (
-            winit::keyboard::Key::Character("1".into()),
-            (ModButton::ChangeKey, Modifier::ChangeKey),
-        ),
-        (
-            winit::keyboard::Key::Named(winit::keyboard::NamedKey::Tab),
-            (ModButton::Pulse, Modifier::Pulse),
-        ),
-    ]
-    .iter()
-    .cloned()
-    .collect();
-
-    // 4. Run Event Loop
-    event_loop.run(move |event, elwt| {
-        // Set ControlFlow to Wait. This is efficient; it sleeps until an event (like mouse move) arrives.
-        // For a controller, this provides immediate response upon OS interrupt.
-        elwt.set_control_flow(ControlFlow::Wait);
-
-        match event {
-            Event::WindowEvent { window_id, event } if window_id == window.id() => {
-                match event {
-                    WindowEvent::CloseRequested => {
-                        // Turn off all active notes before closing
-                        let notes_to_stop: Vec<MidiNote> = active_notes.iter().cloned().collect();
-                        for note in notes_to_stop {
-                            stop_note(&mut midi_connection, note, &mut active_notes);
-                        }
-                        elwt.exit();
-                    }
-
-                    WindowEvent::KeyboardInput { event, .. } => {
-                        let mut chord_was_pressed = false;
-
-                        if event.state == winit::event::ElementState::Pressed {
-                            if let Some(&button) = chord_key_map.get(&event.logical_key) {
-                                if !chord_keys_down.contains(&button) {
-                                    chord_keys_down.insert(button);
-                                    chord_was_pressed = true;
-                                }
-                            } else if let Some((button, modifier)) =
-                                mod_key_map.get(&event.logical_key)
-                            {
-                                if !mod_keys_down.contains(button) {
-                                    mod_keys_down.insert(*button);
-                                    modifier_stage.insert(modifier.clone());
-                                }
-                            } else if let winit::keyboard::Key::Named(
-                                winit::keyboard::NamedKey::Control,
-                            ) = event.logical_key
-                            {
-                                if event.location == winit::keyboard::KeyLocation::Left {
-                                    if !chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
-                                        chord_keys_down.insert(ChordButton::HeptatonicMajor);
-                                        chord_was_pressed = true;
-                                    }
-                                }
-                            }
-                        } else {
-                            // Released
-                            if let Some(button) = chord_key_map.get(&event.logical_key) {
-                                chord_keys_down.remove(button);
-                            } else if let Some((button, _)) = mod_key_map.get(&event.logical_key) {
-                                mod_keys_down.remove(button);
-                            } else if let winit::keyboard::Key::Named(
-                                winit::keyboard::NamedKey::Control,
-                            ) = event.logical_key
-                            {
-                                if event.location == winit::keyboard::KeyLocation::Left {
-                                    chord_keys_down.remove(&ChordButton::HeptatonicMajor);
-                                }
-                            }
-                        }
-
-                        if chord_keys_down.is_empty() {
-                            return;
-                        }
-
-                        let old_chord = if chord_was_pressed {
-                            None
-                        } else {
-                            active_chord.as_ref()
-                        };
-                        let mut new_chord = decide_chord_base(old_chord, &chord_keys_down);
-
-                        // If a chord key was just pressed, detect pair combos that imply a minor-7
-                        // and enqueue the AddMinor7 modifier so it is applied via the existing
-                        // modifier pipeline.
-                        if chord_was_pressed {
-                            // Pairs that imply minor 7: VI+II, III+VI, VII+III, IV+I, IV+VIIB, I+V, V+II
-                            if (chord_keys_down.contains(&ChordButton::VI)
-                                && chord_keys_down.contains(&ChordButton::II))
-                                || (chord_keys_down.contains(&ChordButton::III)
-                                    && chord_keys_down.contains(&ChordButton::VI))
-                                || (chord_keys_down.contains(&ChordButton::VII)
-                                    && chord_keys_down.contains(&ChordButton::III))
-                                || (chord_keys_down.contains(&ChordButton::IV)
-                                    && chord_keys_down.contains(&ChordButton::I))
-                                || (chord_keys_down.contains(&ChordButton::IV)
-                                    && chord_keys_down.contains(&ChordButton::VIIB))
-                                || (chord_keys_down.contains(&ChordButton::I)
-                                    && chord_keys_down.contains(&ChordButton::V))
-                                || (chord_keys_down.contains(&ChordButton::V)
-                                    && chord_keys_down.contains(&ChordButton::II))
-                            {
-                                modifier_stage.insert(Modifier::AddMinor7);
-                                modifier_stage.insert(Modifier::Minor3ToMajor);
-                                modifier_stage.insert(Modifier::RestorePerfect5);
-                            }
-                        }
-
-                        // Inserting here supports held mods
-                        if mod_keys_down.contains(&ModButton::Major2) {
-                            modifier_stage.insert(Modifier::AddMajor2);
-                        }
-                        if mod_keys_down.contains(&ModButton::Minor7) {
-                            modifier_stage.insert(Modifier::AddMinor7);
-                        }
-                        if mod_keys_down.contains(&ModButton::Sus4) {
-                            modifier_stage.insert(Modifier::AddSus4);
-                        }
-                        if mod_keys_down.contains(&ModButton::MinorMajor) {
-                            modifier_stage.insert(Modifier::SwitchMinorMajor);
-                        }
-                        if mod_keys_down.contains(&ModButton::No3) {
-                            modifier_stage.insert(Modifier::RestorePerfect5);
-                        }
-                        if mod_keys_down.contains(&ModButton::Major7) {
-                            modifier_stage.insert(Modifier::AddMajor7);
-                        }
-                        if mod_keys_down.contains(&ModButton::ChangeKey) {
-                            modifier_stage.insert(Modifier::ChangeKey);
-                        }
-                        if mod_keys_down.contains(&ModButton::Pulse) {
-                            modifier_stage.insert(Modifier::Pulse);
-                        }
-
-                        let mut pulse = false;
-
-                        // If there are modifiers queued and a chord key is down, apply them now to
-                        // the freshly constructed chord, then remove it.
-                        if !modifier_stage.is_empty() {
-                            if let Some(ref mut nc) = new_chord {
-                                for m in modifier_stage.drain() {
-                                    match m {
-                                        Modifier::AddMajor2 => {
-                                            nc.relative_mask |= 1u16 << 2;
-                                        }
-                                        Modifier::AddMinor7 => {
-                                            nc.relative_mask |= 1u16 << 10;
-                                        }
-                                        Modifier::Minor3ToMajor => {
-                                            // Change minor 3rd to major 3rd if present
-                                            let minor_3rd_bit = 1u16 << 3;
-                                            if (nc.relative_mask & minor_3rd_bit) != 0 {
-                                                nc.relative_mask &= !minor_3rd_bit;
-                                                nc.relative_mask |= 1u16 << 4;
-                                            }
-                                        }
-                                        Modifier::AddSus4 => {
-                                            // Remove major/minor third (bits 3 and 4) and add perfect 4th (bit 5)
-                                            nc.relative_mask &= !(1u16 << 3);
-                                            nc.relative_mask &= !(1u16 << 4);
-                                            nc.relative_mask |= 1u16 << 5;
-                                        }
-                                        Modifier::AddMajor7 => {
-                                            // Add major 7th (interval 11)
-                                            nc.relative_mask |= 1u16 << 11;
-                                        }
-                                        Modifier::SwitchMinorMajor => {
-                                            // Based on root to be stable on multiple runs
-                                            if nc.root == ROOT_II
-                                                || nc.root == ROOT_III
-                                                || nc.root == ROOT_VI
-                                                || nc.root == ROOT_VII
-                                            {
-                                                // Change minor tri to major tri
-                                                let minor_3rd_bit = 1u16 << 3;
-                                                nc.relative_mask &= !minor_3rd_bit;
-                                                nc.relative_mask |= 1u16 << 4;
-                                            } else {
-                                                // Change major tri to minor tri
-                                                let major_3rd_bit = 1u16 << 4;
-                                                nc.relative_mask &= !major_3rd_bit;
-                                                nc.relative_mask |= 1u16 << 3;
-                                            }
-                                        }
-                                        Modifier::No3 => {
-                                            // Remove both major and minor 3rd
-                                            nc.relative_mask &= !(1u16 << 3);
-                                            nc.relative_mask &= !(1u16 << 4);
-                                        }
-                                        Modifier::RestorePerfect5 => {
-                                            // Change minor 3rd to major 3rd if present
-                                            let p5_bit = 1u16 << 7;
-                                            let dim5_bit = 1u16 << 6;
-                                            let aug5_bit = 1u16 << 8;
-                                            nc.relative_mask &= !dim5_bit;
-                                            nc.relative_mask &= !aug5_bit;
-                                            nc.relative_mask |= p5_bit;
-                                        }
-                                        Modifier::ChangeKey => {
-                                            // Set transpose to the chord's root
-                                            transpose = Transpose(nc.root.0 as i16);
-                                            if transpose.0 > 6 {
-                                                transpose.0 -= 12;
-                                            }
-                                        }
-                                        Modifier::Pulse => {
-                                            pulse = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Delayed so as to happen after all note adjustments have been made
-                        if pulse {
-                            // Play the low root of the new chord
-                            play_note(
-                                &mut midi_connection,
-                                transpose + new_chord.as_ref().unwrap().root,
-                                &mut active_notes,
-                                VELOCITY,
-                            );
-                            // Play higher notes of the new chord
-                            for i in 12..NUM_STRINGS {
-                                let note = UnkeyedNote(i as i16);
-                                if is_note_in_chord(note, &new_chord) {
-                                    let vel = (VELOCITY * 2 / 3) as u8;
-                                    play_note(
-                                        &mut midi_connection,
-                                        transpose + note,
-                                        &mut active_notes,
-                                        vel,
-                                    );
-                                }
-                            }
-                        }
-
-                        // If the notes aren't the same, do the switch
-                        if old_chord.map_or(true, |old| {
-                            new_chord.as_ref().map_or(true, |new| {
-                                old.root != new.root || old.relative_mask != new.relative_mask
-                            })
-                        }) {
-                            // Stop any playing notes that are not in the new chord
-                            if let Some(new) = new_chord {
-                                let notes_to_stop: Vec<MidiNote> = active_notes
-                                    .iter()
-                                    .filter(|&&note| {
-                                        is_note_in_chord(note - LOWEST_NOTE - transpose, &Some(new))
-                                            == false
-                                    })
-                                    .cloned()
-                                    .collect();
-                                for note in notes_to_stop {
-                                    stop_note(&mut midi_connection, note, &mut active_notes);
-                                }
-                            }
-                            active_chord = new_chord;
-                            window.request_redraw();
-                        }
-                    }
-
-                    WindowEvent::Resized(physical_size) => {
-                        surface
-                            .resize(
-                                NonZeroU32::new(physical_size.width).unwrap(),
-                                NonZeroU32::new(physical_size.height).unwrap(),
-                            )
-                            .unwrap();
-
-                        let window_width = physical_size.width as f32;
-
-                        compute_note_positions(&mut note_positions, window_width);
-
-                        // Redraw lines on resize
-                        draw_strings(
-                            &mut surface,
-                            physical_size.width,
-                            physical_size.height,
-                            &active_chord,
-                            &note_positions,
-                        );
-                    }
-
-                    WindowEvent::MouseInput { state, button, .. } => {
-                        if button == winit::event::MouseButton::Left {
-                            is_mouse_down = state == winit::event::ElementState::Pressed;
-                        }
-                    }
-
-                    WindowEvent::CursorMoved { position, .. } => {
-                        let curr_x = position.x as f32;
-                        let curr_y = position.y as f32;
-
-                        if is_mouse_down {
-                            if let Some((last_x, _)) = prev_pos {
-                                // High-priority: Check for string crossings immediately
-                                check_pluck(
-                                    last_x,
-                                    curr_x,
-                                    &mut midi_connection,
-                                    &active_chord,
-                                    &mut active_notes,
-                                    transpose,
-                                    &note_positions
-                                );
-                            }
-                        }
-
-                        prev_pos = Some((curr_x, curr_y));
-                    }
-
-                    WindowEvent::RedrawRequested => {
-                        // Initial draw if needed, though Resized usually handles it on startup
-                        let size = window.inner_size();
-                        draw_strings(&mut surface, size.width, size.height, &active_chord, &note_positions);
-                    }
-
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
-    })?;
-
-    Ok(())
-}
-
-// Decide chord from current chord_keys_down and previous chord state.
-fn decide_chord_base(
-    old_chord: Option<&BuiltChord>,
-    chord_keys_down: &HashSet<ChordButton>,
-) -> Option<BuiltChord> {
-    if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
-        return Some(build_with(ROOT_I, &[0, 2, 4, 5, 7, 9, 11]));
-    }
-
-    let chord_builders: Vec<(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> BuiltChord)> = vec![
-        (ChordButton::VII, ROOT_VII, diminished_tri),
-        (ChordButton::III, ROOT_III, minor_tri),
-        (ChordButton::VI, ROOT_VI, minor_tri),
-        (ChordButton::II, ROOT_II, minor_tri),
-        (ChordButton::V, ROOT_V, major_tri),
-        (ChordButton::I, ROOT_I, major_tri),
-        (ChordButton::IV, ROOT_IV, major_tri),
-        (ChordButton::VIIB, ROOT_VIIB, major_tri),
-    ];
-
-    for (button, root, builder) in chord_builders {
-        if chord_keys_down.contains(&button) {
-            if let Some(old) = old_chord {
-                if old.root == root {
-                    return Some(old.clone());
-                }
-            }
-            return Some(builder(root));
-        }
-    }
-
-    // No keys down: preserve chord if we just went from 1 -> 0
-    if let Some(old) = old_chord {
-        return Some(old.clone());
-    }
-
-    None
-}
-
-fn _compute_string_positions(width: f32) -> Vec<f32> {
-    let mut positions: Vec<f32> = vec![0.0; NUM_STRINGS];
-
-    for i in 0..NUM_STRINGS {
-        positions[i] = UNSCALED_RELATIVE_X_POSITIONS[i] * width;
-    }
-
-    positions
-}
-
-fn compute_note_positions(positions: &mut [f32], width: f32) {
-    let mut i = 0;
-
-    // Add as many notes til we go off the right side of the screen.
-    for octave in 0.. {
-        for uknote in 0..12 {
-            let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
-            let string = octave * 7 + string_in_octave;
-            if string >= NUM_STRINGS.into() {
-                return
-            }
-            let x = UNSCALED_RELATIVE_X_POSITIONS[string] * width;
-            positions[i] = x;
-            i+=1;
-        }
-    }
-}
-
-/// Core Logic: Detects if the mouse cursor crossed any string boundaries.
-/// We calculate the string positions dynamically based on window width.
-fn check_pluck(
-    x1: f32,
-    x2: f32,
-    conn: &mut Option<MidiOutputConnection>,
-    active_chord: &Option<BuiltChord>,
-    active_notes: &mut HashSet<MidiNote>,
+struct HarpApp {
+    midi_connection: Option<MidiOutputConnection>,
+    prev_pos: Option<(f32, f32)>,
+    is_mouse_down: bool,
+    active_chord: Option<BuiltChord>,
+    active_notes: HashSet<MidiNote>,
+    chord_keys_down: HashSet<ChordButton>,
+    mod_keys_down: HashSet<ModButton>,
+    modifier_stage: HashSet<Modifier>,
     transpose: Transpose,
-    note_positions: &[f32],
-) {
-    if conn.is_none() {
-        return;
-    }
+    note_positions: Vec<f32>,
+    chord_key_map: HashMap<winit::keyboard::Key, ChordButton>,
+    mod_key_map: HashMap<winit::keyboard::Key, (ModButton, Modifier)>,
+    window: Rc<Window>,
+    surface: Surface<Rc<Window>, Rc<Window>>,
+}
 
-    // Determine the range of movement
-    let min_x = x1.min(x2);
-    let max_x = x1.max(x2);
+impl HarpApp {
+    fn new(event_loop: &EventLoop<()>) -> Result<Self, Box<dyn Error>> {
+        // 1. Setup MIDI Output
+        let midi_out = MidiOutput::new("Rust Harp Client")?;
+        let mut conn_out: Option<MidiOutputConnection> = None;
 
-    let mut played_note_at_pos = false;
-    let mut crossed_pos = false;
-    let mut string_x: f32 = 0.0;
-
-    // Iterate through all string positions to see if one lies within the movement range
-    for i in 0..note_positions.len() {
-        let uknote = UnkeyedNote(i as i16);
-        let ubnote = transpose + uknote;
-
-        // If we're proceeding to the next string position, crossed the previous one, and didn't
-        // play a note at it, then play the dampened string sound.
-        if string_x != note_positions[i] {
-            if crossed_pos && !played_note_at_pos {
-                // Play the MICRO sound
-                if let Some(ref mut c) = conn {
-                    send_note_on(c, MICRO_CHANNEL, MICRO_NOTE, MICRO_VELOCITY);
-                    send_note_off(c, MICRO_CHANNEL, MICRO_NOTE);
+        match midi_out.create_virtual("Rust Harp Output") {
+            Ok(conn) => {
+                println!("Created virtual MIDI port: 'Rust Harp Output'");
+                conn_out = Some(conn);
+            }
+            Err(_) => {
+                let midi_out = MidiOutput::new("Rust Harp Client")?;
+                let ports = midi_out.ports();
+                if let Some(port) = ports.first() {
+                    println!(
+                        "Virtual port failed. Connecting to first available hardware port: {}",
+                        midi_out.port_name(port)?
+                    );
+                    conn_out = Some(midi_out.connect(port, "Rust Harp Connection")?);
+                } else {
+                    eprintln!("Warning: No MIDI ports found. Application will run visually but emit no sound.");
                 }
             }
-            played_note_at_pos = false;
-            crossed_pos = false;
         }
 
-        string_x = note_positions[i];
+        if let Some(ref mut conn) = conn_out {
+            let _ = conn.send(&[0xC0 | MAIN_CHANNEL, MAIN_PROGRAM]);
+            let _ = conn.send(&[0xC0 | BASS_CHANNEL, BASS_PROGRAM]);
+            let _ = conn.send(&[0xC0 | MICRO_CHANNEL, MICRO_PROGRAM]);
+        }
 
-        // Strict crossing check
-        if string_x > min_x && string_x <= max_x {
-            crossed_pos = true;
-            if is_note_in_chord(uknote, active_chord) {
-                let vel = VELOCITY as u8;
-                play_note(conn, ubnote, active_notes, vel);
-                played_note_at_pos = true;
+        // 2. Setup Window
+        let window = Rc::new(
+            WindowBuilder::new()
+                .with_title("Rust MIDI Harp")
+                .with_inner_size(winit::dpi::LogicalSize::new(800.0, 600.0))
+                .build(event_loop)?,
+        );
+
+        // 3. Setup Graphics Context
+        let context = Context::new(window.clone()).expect("Failed to create graphics context");
+        let surface = Surface::new(&context, window.clone()).expect("Failed to create surface");
+
+        // Application State
+        let mut active_chord: Option<BuiltChord> = Some(major_tri(ROOT_I));
+        if let Some(ref mut nc) = active_chord {
+            nc.relative_mask |= 1u16 << 2; // AddMajor2
+        }
+
+        let mut note_positions = vec![0.0; NUM_STRINGS * 2];
+        let window_width = window.inner_size().width as f32;
+        compute_note_positions(&mut note_positions, window_width);
+
+        Ok(HarpApp {
+            midi_connection: conn_out,
+            prev_pos: None,
+            is_mouse_down: false,
+            active_chord,
+            active_notes: HashSet::new(),
+            chord_keys_down: HashSet::new(),
+            mod_keys_down: HashSet::new(),
+            modifier_stage: HashSet::new(),
+            transpose: Transpose(0),
+            note_positions,
+            chord_key_map: [
+                (
+                    winit::keyboard::Key::Character("a".into()),
+                    ChordButton::VIIB,
+                ),
+                (winit::keyboard::Key::Character("s".into()), ChordButton::IV),
+                (winit::keyboard::Key::Character("d".into()), ChordButton::I),
+                (winit::keyboard::Key::Character("f".into()), ChordButton::V),
+                (winit::keyboard::Key::Character("z".into()), ChordButton::II),
+                (winit::keyboard::Key::Character("x".into()), ChordButton::VI),
+                (
+                    winit::keyboard::Key::Character("c".into()),
+                    ChordButton::III,
+                ),
+                (
+                    winit::keyboard::Key::Character("v".into()),
+                    ChordButton::VII,
+                ),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+            mod_key_map: [
+                (
+                    winit::keyboard::Key::Character("5".into()),
+                    (ModButton::Major2, Modifier::AddMajor2),
+                ),
+                (
+                    winit::keyboard::Key::Character("b".into()),
+                    (ModButton::Major7, Modifier::AddMajor7),
+                ),
+                (
+                    winit::keyboard::Key::Character("6".into()),
+                    (ModButton::Minor7, Modifier::AddMinor7),
+                ),
+                (
+                    winit::keyboard::Key::Character("3".into()),
+                    (ModButton::Sus4, Modifier::AddSus4),
+                ),
+                (
+                    winit::keyboard::Key::Character("4".into()),
+                    (ModButton::MinorMajor, Modifier::SwitchMinorMajor),
+                ),
+                (
+                    winit::keyboard::Key::Character(".".into()),
+                    (ModButton::No3, Modifier::No3),
+                ),
+                (
+                    winit::keyboard::Key::Character("1".into()),
+                    (ModButton::ChangeKey, Modifier::ChangeKey),
+                ),
+                (
+                    winit::keyboard::Key::Named(winit::keyboard::NamedKey::Tab),
+                    (ModButton::Pulse, Modifier::Pulse),
+                ),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+            window,
+            surface,
+        })
+    }
+
+    fn handle_mouse_move(&mut self, x: f32, y: f32) {
+        if self.is_mouse_down {
+            if let Some((last_x, _)) = self.prev_pos {
+                self.check_pluck(last_x, x);
+            }
+        }
+        self.prev_pos = Some((x, y));
+    }
+
+    /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
+    /// We calculate the string positions dynamically based on window width.
+    fn check_pluck(&mut self, x1: f32, x2: f32) {
+        if self.midi_connection.is_none() {
+            return;
+        }
+
+        // Determine the range of movement
+        let min_x = x1.min(x2);
+        let max_x = x1.max(x2);
+
+        let mut played_note_at_pos = false;
+        let mut crossed_pos = false;
+        let mut string_x: f32 = 0.0;
+
+        // Iterate through all string positions to see if one lies within the movement range
+        for i in 0..self.note_positions.len() {
+            let uknote = UnkeyedNote(i as i16);
+            let ubnote = self.transpose + uknote;
+
+            // If we're proceeding to the next string position, crossed the previous one, and didn't
+            // play a note at it, then play the dampened string sound.
+            if string_x != self.note_positions[i] {
+                if crossed_pos && !played_note_at_pos {
+                    // Play the MICRO sound
+                        send_note_on(&self.midi_connection, MICRO_CHANNEL, MICRO_NOTE, MICRO_VELOCITY);
+                        send_note_off(&self.midi_connection, MICRO_CHANNEL, MICRO_NOTE);
+                }
+                played_note_at_pos = false;
+                crossed_pos = false;
+            }
+
+            string_x = self.note_positions[i];
+
+            // Strict crossing check
+            if string_x > min_x && string_x <= max_x {
+                crossed_pos = true;
+                if self.is_note_in_chord(uknote) {
+                    let vel = VELOCITY as u8;
+                    self.play_note(ubnote, vel);
+                    played_note_at_pos = true;
+                }
             }
         }
     }
-}
 
-fn send_note_on(c: &mut MidiOutputConnection, channel: u8, note: MidiNote, vel: u8) {
-    if vel == 0 {
-        send_note_off(c, channel, note);
-        return;
+    fn handle_keyboard_input(&mut self, event: &winit::keyboard::KeyEvent) {
+        let mut chord_was_pressed = false;
+
+        if event.state == winit::event::ElementState::Pressed {
+            if let Some(&button) = self.chord_key_map.get(&event.logical_key) {
+                if !self.chord_keys_down.contains(&button) {
+                    self.chord_keys_down.insert(button);
+                    chord_was_pressed = true;
+                }
+            } else if let Some((button, modifier)) = self.mod_key_map.get(&event.logical_key) {
+                if !self.mod_keys_down.contains(button) {
+                    self.mod_keys_down.insert(*button);
+                    self.modifier_stage.insert(modifier.clone());
+                }
+            } else if let winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control) =
+                event.logical_key
+            {
+                if event.location == winit::keyboard::KeyLocation::Left {
+                    if !self.chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
+                        self.chord_keys_down.insert(ChordButton::HeptatonicMajor);
+                        chord_was_pressed = true;
+                    }
+                }
+            }
+        } else {
+            // Released
+            if let Some(button) = self.chord_key_map.get(&event.logical_key) {
+                self.chord_keys_down.remove(button);
+            } else if let Some((button, _)) = self.mod_key_map.get(&event.logical_key) {
+                self.mod_keys_down.remove(button);
+            } else if let winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control) =
+                event.logical_key
+            {
+                if event.location == winit::keyboard::KeyLocation::Left {
+                    self.chord_keys_down.remove(&ChordButton::HeptatonicMajor);
+                }
+            }
+        }
+
+        if self.chord_keys_down.is_empty() {
+            return;
+        }
+
+        let old_chord = if chord_was_pressed {
+            None
+        } else {
+            self.active_chord.as_ref()
+        };
+        let mut new_chord = decide_chord_base(old_chord, &self.chord_keys_down);
+
+        // If a chord key was just pressed, detect pair combos that imply a minor-7
+        // and enqueue the AddMinor7 modifier so it is applied via the existing
+        // modifier pipeline.
+        if chord_was_pressed {
+            // Pairs that imply minor 7: VI+II, III+VI, VII+III, IV+I, IV+VIIB, I+V, V+II
+            if (self.chord_keys_down.contains(&ChordButton::VI)
+                && self.chord_keys_down.contains(&ChordButton::II))
+                || (self.chord_keys_down.contains(&ChordButton::III)
+                    && self.chord_keys_down.contains(&ChordButton::VI))
+                || (self.chord_keys_down.contains(&ChordButton::VII)
+                    && self.chord_keys_down.contains(&ChordButton::III))
+                || (self.chord_keys_down.contains(&ChordButton::IV)
+                    && self.chord_keys_down.contains(&ChordButton::I))
+                || (self.chord_keys_down.contains(&ChordButton::IV)
+                    && self.chord_keys_down.contains(&ChordButton::VIIB))
+                || (self.chord_keys_down.contains(&ChordButton::I)
+                    && self.chord_keys_down.contains(&ChordButton::V))
+                || (self.chord_keys_down.contains(&ChordButton::V)
+                    && self.chord_keys_down.contains(&ChordButton::II))
+            {
+                self.modifier_stage.insert(Modifier::AddMinor7);
+                self.modifier_stage.insert(Modifier::Minor3ToMajor);
+                self.modifier_stage.insert(Modifier::RestorePerfect5);
+            }
+        }
+
+        // Inserting here supports held mods
+        if self.mod_keys_down.contains(&ModButton::Major2) {
+            self.modifier_stage.insert(Modifier::AddMajor2);
+        }
+        if self.mod_keys_down.contains(&ModButton::Minor7) {
+            self.modifier_stage.insert(Modifier::AddMinor7);
+        }
+        if self.mod_keys_down.contains(&ModButton::Sus4) {
+            self.modifier_stage.insert(Modifier::AddSus4);
+        }
+        if self.mod_keys_down.contains(&ModButton::MinorMajor) {
+            self.modifier_stage.insert(Modifier::SwitchMinorMajor);
+        }
+        if self.mod_keys_down.contains(&ModButton::No3) {
+            self.modifier_stage.insert(Modifier::RestorePerfect5);
+        }
+        if self.mod_keys_down.contains(&ModButton::Major7) {
+            self.modifier_stage.insert(Modifier::AddMajor7);
+        }
+        if self.mod_keys_down.contains(&ModButton::ChangeKey) {
+            self.modifier_stage.insert(Modifier::ChangeKey);
+        }
+        if self.mod_keys_down.contains(&ModButton::Pulse) {
+            self.modifier_stage.insert(Modifier::Pulse);
+        }
+
+        let mut pulse = false;
+
+        // If there are modifiers queued and a chord key is down, apply them now to
+        // the freshly constructed chord, then remove it.
+        if !self.modifier_stage.is_empty() {
+            if let Some(ref mut nc) = new_chord {
+                for m in self.modifier_stage.drain() {
+                    match m {
+                        Modifier::AddMajor2 => {
+                            nc.relative_mask |= 1u16 << 2;
+                        }
+                        Modifier::AddMinor7 => {
+                            nc.relative_mask |= 1u16 << 10;
+                        }
+                        Modifier::Minor3ToMajor => {
+                            // Change minor 3rd to major 3rd if present
+                            let minor_3rd_bit = 1u16 << 3;
+                            if (nc.relative_mask & minor_3rd_bit) != 0 {
+                                nc.relative_mask &= !minor_3rd_bit;
+                                nc.relative_mask |= 1u16 << 4;
+                            }
+                        }
+                        Modifier::AddSus4 => {
+                            // Remove major/minor third (bits 3 and 4) and add perfect 4th (bit 5)
+                            nc.relative_mask &= !(1u16 << 3);
+                            nc.relative_mask &= !(1u16 << 4);
+                            nc.relative_mask |= 1u16 << 5;
+                        }
+                        Modifier::AddMajor7 => {
+                            // Add major 7th (interval 11)
+                            nc.relative_mask |= 1u16 << 11;
+                        }
+                        Modifier::SwitchMinorMajor => {
+                            // Based on root to be stable on multiple runs
+                            if nc.root == ROOT_II
+                                || nc.root == ROOT_III
+                                || nc.root == ROOT_VI
+                                || nc.root == ROOT_VII
+                            {
+                                // Change minor tri to major tri
+                                let minor_3rd_bit = 1u16 << 3;
+                                nc.relative_mask &= !minor_3rd_bit;
+                                nc.relative_mask |= 1u16 << 4;
+                            } else {
+                                // Change major tri to minor tri
+                                let major_3rd_bit = 1u16 << 4;
+                                nc.relative_mask &= !major_3rd_bit;
+                                nc.relative_mask |= 1u16 << 3;
+                            }
+                        }
+                        Modifier::No3 => {
+                            // Remove both major and minor 3rd
+                            nc.relative_mask &= !(1u16 << 3);
+                            nc.relative_mask &= !(1u16 << 4);
+                        }
+                        Modifier::RestorePerfect5 => {
+                            // Change minor 3rd to major 3rd if present
+                            let p5_bit = 1u16 << 7;
+                            let dim5_bit = 1u16 << 6;
+                            let aug5_bit = 1u16 << 8;
+                            nc.relative_mask &= !dim5_bit;
+                            nc.relative_mask &= !aug5_bit;
+                            nc.relative_mask |= p5_bit;
+                        }
+                        Modifier::ChangeKey => {
+                            // Set transpose to the chord's root
+                            self.transpose = Transpose(nc.root.0 as i16);
+                            if self.transpose.0 > 6 {
+                                self.transpose.0 -= 12;
+                            }
+                        }
+                        Modifier::Pulse => {
+                            pulse = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Delayed so as to happen after all note adjustments have been made
+        if pulse {
+            // Play the low root of the new chord
+            self.play_note(new_chord.as_ref().unwrap().root, VELOCITY);
+            // Play higher notes of the new chord
+            for i in 12..NUM_STRINGS {
+                let note = UnkeyedNote(i as i16);
+                if self.is_note_in_chord(note) {
+                    let vel = (VELOCITY * 2 / 3) as u8;
+                    self.play_note(note, vel);
+                }
+            }
+        }
+
+        // If the notes aren't the same, do the switch
+        if old_chord.map_or(true, |old| {
+            new_chord.as_ref().map_or(true, |new| {
+                old.root != new.root || old.relative_mask != new.relative_mask
+            })
+        }) {
+            // Stop any playing notes that are not in the new chord
+            if let Some(new) = new_chord {
+                let notes_to_stop: Vec<MidiNote> = self
+                    .active_notes
+                    .iter()
+                    .filter(|&&note| {
+                        self.is_note_in_chord(note - LOWEST_NOTE - self.transpose) == false
+                    })
+                    .cloned()
+                    .collect();
+                for note in notes_to_stop {
+                    self.stop_note(note);
+                }
+            }
+            self.active_chord = new_chord;
+            self.window.request_redraw();
+        }
     }
-    let on = 0x90 | (channel & 0x0F);
-    let _ = c.send(&[on, note.0, vel]);
-}
-fn send_note_off(c: &mut MidiOutputConnection, channel: u8, note: MidiNote) {
-    let off = 0x80 | (channel & 0x0F);
-    let _ = c.send(&[off, note.0, 0]);
-}
 
-fn play_note(
-    conn: &mut Option<MidiOutputConnection>,
-    note: UnbottomedNote,
-    active_notes: &mut HashSet<MidiNote>,
-    velocity: u8,
-) {
-    if let Some(c) = conn {
+    fn handle_resize(&mut self, physical_size: winit::dpi::PhysicalSize<u32>) {
+        self.surface
+            .resize(
+                NonZeroU32::new(physical_size.width).unwrap(),
+                NonZeroU32::new(physical_size.height).unwrap(),
+            )
+            .unwrap();
+
+        let window_width = physical_size.width as f32;
+
+        compute_note_positions(&mut self.note_positions, window_width);
+
+        // Redraw lines on resize
+        self.draw_strings();
+    }
+
+    // Decide chord from current chord_keys_down and previous chord state.
+    fn decide_chord_base(
+        old_chord: Option<&BuiltChord>,
+        chord_keys_down: &HashSet<ChordButton>,
+    ) -> Option<BuiltChord> {
+        if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
+            return Some(build_with(ROOT_I, &[0, 2, 4, 5, 7, 9, 11]));
+        }
+
+        let chord_builders: Vec<(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> BuiltChord)> = vec![
+            (ChordButton::VII, ROOT_VII, diminished_tri),
+            (ChordButton::III, ROOT_III, minor_tri),
+            (ChordButton::VI, ROOT_VI, minor_tri),
+            (ChordButton::II, ROOT_II, minor_tri),
+            (ChordButton::V, ROOT_V, major_tri),
+            (ChordButton::I, ROOT_I, major_tri),
+            (ChordButton::IV, ROOT_IV, major_tri),
+            (ChordButton::VIIB, ROOT_VIIB, major_tri),
+        ];
+
+        for (button, root, builder) in chord_builders {
+            if chord_keys_down.contains(&button) {
+                if let Some(old) = old_chord {
+                    if old.root == root {
+                        return Some(old.clone());
+                    }
+                }
+                return Some(builder(root));
+            }
+        }
+
+        // No keys down: preserve chord if we just went from 1 -> 0
+        if let Some(old) = old_chord {
+            return Some(old.clone());
+        }
+
+        None
+    }
+
+    fn _compute_string_positions(width: f32) -> Vec<f32> {
+        let mut positions: Vec<f32> = vec![0.0; NUM_STRINGS];
+
+        for i in 0..NUM_STRINGS {
+            positions[i] = UNSCALED_RELATIVE_X_POSITIONS[i] * width;
+        }
+
+        positions
+    }
+
+    fn compute_note_positions(positions: &mut [f32], width: f32) {
+        let mut i = 0;
+
+        // Add as many notes til we go off the right side of the screen.
+        for octave in 0.. {
+            for uknote in 0..12 {
+                let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
+                let string = octave * 7 + string_in_octave;
+                if string >= NUM_STRINGS.into() {
+                    return;
+                }
+                let x = UNSCALED_RELATIVE_X_POSITIONS[string] * width;
+                positions[i] = x;
+                i += 1;
+            }
+        }
+    }
+
+    fn play_note(&mut self, note: UnbottomedNote, velocity: u8) {
+        if self.midi_connection.is_none() {
+            return;
+        }
         let midi_note = LOWEST_NOTE + note;
 
         // Crossfade between bass and main
@@ -910,68 +832,128 @@ fn play_note(
         }
 
         // Send to main channel and bass
-        send_note_on(c, MAIN_CHANNEL, midi_note, main_vel);
+        send_note_on(self.midi_connection, MAIN_CHANNEL, midi_note, main_vel);
 
         // Send an off to bass first to get a solid rearticulation
-        send_note_off(c, BASS_CHANNEL, midi_note);
-        send_note_on(c, BASS_CHANNEL, midi_note, bass_vel);
+        send_note_off(self.midi_connection, BASS_CHANNEL, midi_note);
+        send_note_on(self.midi_connection, BASS_CHANNEL, midi_note, bass_vel);
 
-        active_notes.insert(midi_note);
+        self.active_notes.insert(midi_note);
     }
-}
 
-fn stop_note(
-    conn: &mut Option<MidiOutputConnection>,
-    note: MidiNote,
-    active_notes: &mut HashSet<MidiNote>,
-) {
-    if let Some(c) = conn {
+    fn stop_note(&mut self, note: MidiNote) {
         // Send Note Off on both channels to ensure silence
-        send_note_off(c, MAIN_CHANNEL, note);
-        send_note_off(c, BASS_CHANNEL, note);
-        active_notes.remove(&note);
+        send_note_off(&self.midi_connection, MAIN_CHANNEL, note);
+        send_note_off(&self.midi_connection, BASS_CHANNEL, note);
+        self.active_notes.remove(&note);
     }
-}
+    /// Minimalist drawing function.
+    /// Fills buffer with black and draws vertical lines for active strings.
+    fn draw_strings(
+        &mut self,
+    ) {
+        let width = self.window.inner_size().width;
+        let height = self.window.inner_size().height;
+        let mut buffer = self.surface.buffer_mut().unwrap();
+        buffer.fill(0); // Fill with black
 
-/// Minimalist drawing function.
-/// Fills buffer with black and draws vertical lines for active strings.
-fn draw_strings(
-    surface: &mut Surface<Rc<Window>, Rc<Window>>,
-    width: u32,
-    height: u32,
-    active_chord: &Option<BuiltChord>,
-    positions: &[f32],
-) {
-    let mut buffer = surface.buffer_mut().unwrap();
-    buffer.fill(0); // Fill with black
+        if self.active_chord.is_none() {
+            buffer.present().unwrap();
+            return;
+        }
 
-    if active_chord.is_none() {
-        buffer.present().unwrap();
-        return;
-    }
+        for i in 0..self.note_positions.len() {
+            let uknote = UnkeyedNote(i as i16);
+            if is_note_in_chord(uknote, &self.active_chord) {
+                let x = self.note_positions[i].round() as u32;
+                if x >= width {
+                    continue;
+                }
 
-    for i in 0..positions.len() {
-        let uknote = UnkeyedNote(i as i16);
-        if is_note_in_chord(uknote, active_chord) {
-            let x = positions[i].round() as u32;
-            if x >= width {
-                continue;
-            }
+                let color = if is_note_root_of_chord(uknote, &self.active_chord) {
+                    0xFF0000 // Red for root
+                } else {
+                    0xFFFFFF // White for other active notes
+                };
 
-            let color = if is_note_root_of_chord(uknote, active_chord) {
-                0xFF0000 // Red for root
-            } else {
-                0xFFFFFF // White for other active notes
-            };
-
-            for y in 0..height {
-                let index = (y * width + x) as usize;
-                if index < buffer.len() {
-                    buffer[index] = color;
+                for y in 0..height {
+                    let index = (y * width + x) as usize;
+                    if index < buffer.len() {
+                        buffer[index] = color;
+                    }
                 }
             }
         }
-    }
 
-    buffer.present().unwrap();
+        buffer.present().unwrap();
+    }
+} // End impl HarpApp
+
+fn send_note_on(con: &mut Option<MidiOutputConnection>, channel: u8, note: MidiNote, vel: u8) {
+
+        if vel == 0 {
+            send_note_off(c, channel, note);
+            return;
+        }
+        if let Some(ref mut c) = con {
+            let on = 0x90 | (channel & 0x0F);
+            let _ = c.send(&[on, note.0, vel]);
+        }
 }
+fn send_note_off(con: &mut Option<MidiOutputConnection>, channel: u8, note: MidiNote) {
+    if let Some(ref mut c) = con {
+        let off = 0x80 | (channel & 0x0F);
+        let _ = c.send(&[off, note.0, 0]);
+    }
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
+
+    let event_loop = EventLoop::new()?;
+    let mut app = HarpApp::new(&event_loop)?;
+
+    // 4. Run Event Loop
+    event_loop.run(move |event, elwt| {
+        // Set ControlFlow to Wait. This is efficient; it sleeps until an event (like mouse move) arrives.
+        // For a controller, this provides immediate response upon OS interrupt.
+        elwt.set_control_flow(ControlFlow::Wait);
+
+        match event {
+            Event::WindowEvent { window_id, event } if window_id == app.window.id() => {
+                match event {
+                    WindowEvent::CloseRequested => {
+                        // Turn off all active notes before closing
+                        let notes_to_stop: Vec<MidiNote> =
+                            app.active_notes.iter().cloned().collect();
+                        for note in notes_to_stop {
+                            self.stop_note(note);
+                        }
+                        elwt.exit();
+                    }
+
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        if button == winit::event::MouseButton::Left {
+                            app.is_mouse_down = state == winit::event::ElementState::Pressed;
+                        }
+                    }
+
+                    WindowEvent::CursorMoved { position, .. } => {
+                        app.handle_mouse_move(position.x as f32, position.y as f32);
+                    }
+
+                    WindowEvent::RedrawRequested => {
+                        let size = app.window.inner_size();
+                        app.draw_strings();
+                    }
+
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    })?;
+
+    Ok(())
+}
+
