@@ -27,7 +27,7 @@ use softbuffer::{Context, Surface};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::num::NonZeroU32;
-use std::ops::{Add, Rem, Sub};
+use std::ops::{Add, Sub};
 use std::rc::Rc;
 use winit::{
     event::{Event, WindowEvent},
@@ -37,13 +37,6 @@ use winit::{
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 struct MidiNote(u8);
-
-impl Rem<u8> for MidiNote {
-    type Output = u8;
-    fn rem(self, rhs: u8) -> u8 {
-        self.0 % rhs
-    }
-}
 
 impl Sub for MidiNote {
     type Output = Interval;
