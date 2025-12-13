@@ -188,7 +188,7 @@ const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
 const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
 
 #[derive(Clone, Copy)]
-struct BuiltChord {
+struct Chord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
     //name: &'static str,
     root: UnkeyedNote,
@@ -213,7 +213,7 @@ fn get_note_above_root(note: UnkeyedNote, root: UnkeyedNote) -> UnrootedNote {
     UnrootedNote::new(note - root)
 }
 
-fn is_note_in_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool {
+fn is_note_in_chord(note: UnkeyedNote, chord: &Option<Chord>) -> bool {
     if let Some(chord) = chord {
         let rel = get_note_above_root(note, chord.root);
         chord.relative_mask & (1u16 << (rel.0 as usize)) != 0
@@ -223,7 +223,7 @@ fn is_note_in_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool {
     }
 }
 
-fn is_note_root_of_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool {
+fn is_note_root_of_chord(note: UnkeyedNote, chord: &Option<Chord>) -> bool {
     if let Some(chord) = chord {
         // Make a new chord with only the one note
         let chord_of_one = build_with(chord.root, &[0]);
@@ -233,13 +233,13 @@ fn is_note_root_of_chord(note: UnkeyedNote, chord: &Option<BuiltChord>) -> bool 
     }
 }
 
-fn build_with(root: UnkeyedNote, rels: &[u8]) -> BuiltChord {
+fn build_with(root: UnkeyedNote, rels: &[u8]) -> Chord {
     let mut mask: u16 = 0;
     for &r in rels.iter() {
         let rel = (r as usize) % 12;
         mask |= 1u16 << rel;
     }
-    BuiltChord {
+    Chord {
         root,
         relative_mask: mask,
     }
@@ -254,13 +254,13 @@ const ROOT_VI: UnkeyedNote = UnkeyedNote(9);
 const ROOT_III: UnkeyedNote = UnkeyedNote(4);
 const ROOT_VII: UnkeyedNote = UnkeyedNote(11);
 
-fn major_tri(root: UnkeyedNote) -> BuiltChord {
+fn major_tri(root: UnkeyedNote) -> Chord {
     build_with(root, &[0, 4, 7])
 }
-fn minor_tri(root: UnkeyedNote) -> BuiltChord {
+fn minor_tri(root: UnkeyedNote) -> Chord {
     build_with(root, &[0, 3, 7])
 }
-fn diminished_tri(root: UnkeyedNote) -> BuiltChord {
+fn diminished_tri(root: UnkeyedNote) -> Chord {
     build_with(root, &[0, 3, 6])
 }
 
@@ -346,7 +346,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut prev_pos: Option<(f32, f32)> = None;
 
     let mut is_mouse_down = false;
-    let mut active_chord: Option<BuiltChord> = Some(major_tri(ROOT_I));
+    let mut active_chord: Option<Chord> = Some(major_tri(ROOT_I));
     if let Some(ref mut nc) = active_chord {
         nc.relative_mask |= 1u16 << 2; // AddMajor2
     }
@@ -735,14 +735,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 // Decide chord from current chord_keys_down and previous chord state.
 fn decide_chord_base(
-    old_chord: Option<&BuiltChord>,
+    old_chord: Option<&Chord>,
     chord_keys_down: &HashSet<ChordButton>,
-) -> Option<BuiltChord> {
+) -> Option<Chord> {
     if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
         return Some(build_with(ROOT_I, &[0, 2, 4, 5, 7, 9, 11]));
     }
 
-    let chord_builders: Vec<(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> BuiltChord)> = vec![
+    let chord_builders: Vec<(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> Chord)> = vec![
         (ChordButton::VII, ROOT_VII, diminished_tri),
         (ChordButton::III, ROOT_III, minor_tri),
         (ChordButton::VI, ROOT_VI, minor_tri),
@@ -806,7 +806,7 @@ fn check_pluck(
     x1: f32,
     x2: f32,
     conn: &mut Option<MidiOutputConnection>,
-    active_chord: &Option<BuiltChord>,
+    active_chord: &Option<Chord>,
     active_notes: &mut HashSet<MidiNote>,
     transpose: Transpose,
     note_positions: &[f32],
@@ -939,7 +939,7 @@ fn draw_strings(
     surface: &mut Surface<Rc<Window>, Rc<Window>>,
     width: u32,
     height: u32,
-    active_chord: &Option<BuiltChord>,
+    active_chord: &Option<Chord>,
     positions: &[f32],
 ) {
     let mut buffer = surface.buffer_mut().unwrap();
