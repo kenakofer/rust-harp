@@ -100,7 +100,7 @@ impl Sub<Transpose> for MidiNote {
 // Note before transposing into the key or building on the BOTTOM_NOTE.
 // This is basically solfege: Do = 0, Re = 2, etc. Can go beyond 12 or below 0
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct UnkeyedNote(i16);
 
 impl Sub for UnkeyedNote {
@@ -203,7 +203,7 @@ impl PitchClassSet {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 struct Chord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
     //name: &'static str,
@@ -653,11 +653,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         modifier_stage.clear();
 
                         // If the notes aren't the same, do the switch
-                        if old_chord.map_or(true, |old| {
-                            new_chord
-                                .as_ref()
-                                .map_or(true, |new| old.root != new.root || old.mask != new.mask)
-                        }) {
+                        if old_chord != new_chord.as_ref() {
                             // Stop any playing notes that are not in the new chord
                             let notes_to_stop: Vec<MidiNote> = active_notes
                                 .iter()
