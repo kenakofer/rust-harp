@@ -21,7 +21,6 @@
 //!     - Pulse in wonky in other keys
 
 use bitflags::bitflags;
-use bitflags::Flags;
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
@@ -650,7 +649,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 }
                             }
                         }
-                        modifier_stage.clear();
+                        modifier_stage = Modifiers::empty();
 
                         // If the notes aren't the same, do the switch
                         if old_chord != new_chord.as_ref() {
