@@ -328,7 +328,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // If we have a virtual/hardware connection, set the instruments
-    if let Some(ref mut conn) = conn_out {
+    if let Some(conn) = conn_out.as_mut() {
         // Set main channel (channel 0) to main program
         let _ = conn.send(&[0xC0 | MAIN_CHANNEL, MAIN_PROGRAM]);
         // Set bass channel program
@@ -355,7 +355,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut is_mouse_down = false;
     let mut active_chord: Option<Chord> = Some(major_tri(ROOT_I));
-    if let Some(ref mut nc) = active_chord {
+    if let Some(nc) = active_chord.as_mut() {
         nc.mask.insert(UnrootedNote(2));
     }
 
@@ -466,10 +466,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     mod_keys_down.insert(*button);
                                     modifier_stage.insert(modifier.clone());
                                 }
-                            } else if let winit::keyboard::Key::Named(
-                                winit::keyboard::NamedKey::Control,
-                            ) = event.logical_key
-                            {
+                            } else if matches!(
+                                event.logical_key,
+                                winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control)
+                            ) {
                                 if event.location == winit::keyboard::KeyLocation::Left {
                                     if !chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
                                         chord_keys_down.insert(ChordButton::HeptatonicMajor);
@@ -561,7 +561,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord, then remove it.
                         if !modifier_stage.is_empty() {
-                            if let Some(ref mut nc) = new_chord {
+                            if let Some(nc) = new_chord.as_mut() {
                                 for m in modifier_stage.drain() {
                                     match m {
                                         Modifier::AddMajor2 => {
@@ -850,7 +850,7 @@ fn check_pluck(
         if string_x != note_positions[i] {
             if crossed_pos && !played_note_at_pos {
                 // Play the MICRO sound
-                if let Some(ref mut c) = conn {
+                if let Some(c) = conn.as_mut() {
                     send_note_on(c, MICRO_CHANNEL, MICRO_NOTE, MICRO_VELOCITY);
                     send_note_off(c, MICRO_CHANNEL, MICRO_NOTE);
                 }
