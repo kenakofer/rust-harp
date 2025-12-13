@@ -210,6 +210,39 @@ struct Chord {
     root: UnkeyedNote,
     mask: PitchClassSet, // bits 0..11
 }
+
+trait ChordExt {
+    fn contains(&self, note: UnkeyedNote) -> bool;
+    fn has_root(&self, note: UnkeyedNote) -> bool;
+}
+
+impl ChordExt for Option<Chord> {
+    fn contains(&self, note: UnkeyedNote) -> bool {
+        match self {
+            Some(chord) => {
+                let rel = get_note_above_root(note, chord.root);
+                chord.mask.contains(rel)
+            }
+            None => true,
+        }
+    }
+
+    fn has_root(&self, note: UnkeyedNote) -> bool {
+        self.as_ref().is_some_and(|chord| note == chord.root)
+    } 
+}
+impl ChordExt for Chord {
+    fn contains(&self, note: UnkeyedNote) -> bool {
+        let rel = get_note_above_root(note, self.root);
+        self.mask.contains(rel)
+    }
+
+    fn has_root(&self, note: UnkeyedNote) -> bool {
+        note == self.root
+    }
+}
+
+
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct Modifiers: u16 {
@@ -228,26 +261,6 @@ bitflags! {
 
 fn get_note_above_root(note: UnkeyedNote, root: UnkeyedNote) -> UnrootedNote {
     UnrootedNote::new(note - root)
-}
-
-fn is_note_in_chord(note: UnkeyedNote, chord: &Option<Chord>) -> bool {
-    if let Some(chord) = chord {
-        let rel = get_note_above_root(note, chord.root);
-        chord.mask.contains(rel)
-    } else {
-        // If no chord is active, all notes are "in"
-        true
-    }
-}
-
-fn is_note_root_of_chord(note: UnkeyedNote, chord: &Option<Chord>) -> bool {
-    if let Some(chord) = chord {
-        // Make a new chord with only the one note
-        let chord_of_one = build_with(chord.root, &[0]);
-        is_note_in_chord(note, &Some(chord_of_one))
-    } else {
-        false
-    }
 }
 
 fn build_with(root: UnkeyedNote, rels: &[u8]) -> Chord {
@@ -629,7 +642,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     // Play higher notes of the new chord
                                     for i in 12..NUM_STRINGS {
                                         let note = UnkeyedNote(i as i16);
-                                        if is_note_in_chord(note, &Some(*nc)) {
+                                        if nc.contains(note) {
                                             let vel = (VELOCITY * 2 / 3) as u8;
                                             play_note(
                                                 &mut midi_connection,
@@ -655,8 +668,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 let notes_to_stop: Vec<MidiNote> = active_notes
                                     .iter()
                                     .filter(|&&note| {
-                                        is_note_in_chord(note - LOWEST_NOTE - transpose, &Some(new))
-                                            == false
+                                        !new.contains(note - LOWEST_NOTE - transpose)
                                     })
                                     .cloned()
                                     .collect();
@@ -854,7 +866,7 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            if is_note_in_chord(uknote, active_chord) {
+            if active_chord.contains(uknote) {
                 let vel = VELOCITY as u8;
                 play_note(conn, ubnote, active_notes, vel);
                 played_note_at_pos = true;
@@ -943,13 +955,13 @@ fn draw_strings(
 
     for i in 0..positions.len() {
         let uknote = UnkeyedNote(i as i16);
-        if is_note_in_chord(uknote, active_chord) {
+        if active_chord.contains(uknote) {
             let x = positions[i].round() as u32;
             if x >= width {
                 continue;
             }
 
-            let color = if is_note_root_of_chord(uknote, active_chord) {
+            let color = if active_chord.has_root(uknote) {
                 0xFF0000 // Red for root
             } else {
                 0xFFFFFF // White for other active notes
