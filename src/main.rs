@@ -27,7 +27,7 @@ use softbuffer::{Context, Surface};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::num::NonZeroU32;
-use std::ops::{Add, Div, Rem, Sub};
+use std::ops::{Add, Rem, Sub};
 use std::rc::Rc;
 use winit::{
     event::{Event, WindowEvent},
@@ -121,10 +121,9 @@ impl UnrootedNote {
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct Interval(i16);
 
-impl Div for Interval {
-    type Output = f32;
-    fn div(self, rhs: Interval) -> f32 {
-        (self.0 as f32) / (rhs.0 as f32)
+impl Interval {
+    fn ratio(self, denom: Interval) -> f32 {
+        self.0 as f32 / denom.0 as f32
     }
 }
 
@@ -879,7 +878,7 @@ fn play_note(
         } else if midi_note >= MAIN_BASS_TOP {
             1.0
         } else {
-            (midi_note - MAIN_BASS_BOTTOM) / (MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
+            (midi_note - MAIN_BASS_BOTTOM).ratio(MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
         };
         let bass_factor = 1.0 - main_factor;
 
