@@ -19,6 +19,7 @@
 //!     - Check bass balance on keychange
 //!     - Fix held pulse key triggering rapid repeat
 //!     - Pulse in wonky in other keys
+//!     - Explore additive chords (I + vi = vi7, I + iii = Imaj7)
 
 use bitflags::bitflags;
 use midir::os::unix::VirtualOutput;
@@ -218,16 +219,14 @@ trait ChordExt {
 impl ChordExt for Option<Chord> {
     fn contains(&self, note: UnkeyedNote) -> bool {
         match self {
-            Some(chord) => {
-                chord.contains(note)
-            }
+            Some(chord) => chord.contains(note),
             None => true,
         }
     }
 
     fn has_root(&self, note: UnkeyedNote) -> bool {
         self.as_ref().is_some_and(|chord| chord.has_root(note))
-    } 
+    }
 }
 impl ChordExt for Chord {
     fn contains(&self, note: UnkeyedNote) -> bool {
@@ -239,7 +238,6 @@ impl ChordExt for Chord {
         note == self.root
     }
 }
-
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -311,6 +309,25 @@ enum ModButton {
     No3,
     ChangeKey,
     Pulse,
+}
+
+fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
+    use winit::keyboard::Key::Character;
+    use winit::keyboard::Key::Named;
+    use winit::keyboard::NamedKey::Control;
+
+    match key {
+        Character(s) if s == "a" => Some(ChordButton::VIIB),
+        Character(s) if s == "s" => Some(ChordButton::IV),
+        Character(s) if s == "d" => Some(ChordButton::I),
+        Character(s) if s == "f" => Some(ChordButton::V),
+        Character(s) if s == "z" => Some(ChordButton::II),
+        Character(s) if s == "x" => Some(ChordButton::VI),
+        Character(s) if s == "c" => Some(ChordButton::III),
+        Character(s) if s == "v" => Some(ChordButton::VII),
+        Named(Control) => Some(ChordButton::HeptatonicMajor),
+        _ => None,
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -387,29 +404,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut midi_connection = conn_out;
     let mut note_positions: Vec<f32> = Vec::new();
 
-    let chord_key_map: HashMap<winit::keyboard::Key, ChordButton> = [
-        (
-            winit::keyboard::Key::Character("a".into()),
-            ChordButton::VIIB,
-        ),
-        (winit::keyboard::Key::Character("s".into()), ChordButton::IV),
-        (winit::keyboard::Key::Character("d".into()), ChordButton::I),
-        (winit::keyboard::Key::Character("f".into()), ChordButton::V),
-        (winit::keyboard::Key::Character("z".into()), ChordButton::II),
-        (winit::keyboard::Key::Character("x".into()), ChordButton::VI),
-        (
-            winit::keyboard::Key::Character("c".into()),
-            ChordButton::III,
-        ),
-        (
-            winit::keyboard::Key::Character("v".into()),
-            ChordButton::VII,
-        ),
-    ]
-    .iter()
-    .cloned()
-    .collect();
-
     let mod_key_map: HashMap<winit::keyboard::Key, (ModButton, Modifiers)> = [
         (
             winit::keyboard::Key::Character("5".into()),
@@ -470,7 +464,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let mut chord_was_pressed = false;
 
                         if event.state == winit::event::ElementState::Pressed {
-                            if let Some(&button) = chord_key_map.get(&event.logical_key) {
+                            if let Some(button) = chord_button_for(&event.logical_key) {
                                 if !chord_keys_down.contains(&button) {
                                     chord_keys_down.insert(button);
                                     chord_was_pressed = true;
@@ -480,32 +474,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                             {
                                 if !mod_keys_down.contains(button) {
                                     mod_keys_down.insert(*button);
-                                    modifier_stage.insert(modifier.clone());
-                                }
-                            } else if matches!(
-                                event.logical_key,
-                                winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control)
-                            ) {
-                                if event.location == winit::keyboard::KeyLocation::Left {
-                                    if !chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
-                                        chord_keys_down.insert(ChordButton::HeptatonicMajor);
-                                        chord_was_pressed = true;
-                                    }
+                                    modifier_stage.insert(*modifier);
                                 }
                             }
                         } else {
                             // Released
-                            if let Some(button) = chord_key_map.get(&event.logical_key) {
-                                chord_keys_down.remove(button);
+                            if let Some(button) = chord_button_for(&event.logical_key) {
+                                chord_keys_down.remove(&button);
                             } else if let Some((button, _)) = mod_key_map.get(&event.logical_key) {
                                 mod_keys_down.remove(button);
-                            } else if let winit::keyboard::Key::Named(
-                                winit::keyboard::NamedKey::Control,
-                            ) = event.logical_key
-                            {
-                                if event.location == winit::keyboard::KeyLocation::Left {
-                                    chord_keys_down.remove(&ChordButton::HeptatonicMajor);
-                                }
                             }
                         }
 
