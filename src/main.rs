@@ -179,7 +179,7 @@ struct PitchClassSet(u16);
 
 impl PitchClassSet {
     fn contains(&self, pc: UnrootedNote) -> bool {
-        self.0 & (1 << pc.0) != 0 
+        self.0 & (1 << pc.0) != 0
     }
 
     fn insert(&mut self, pc: UnrootedNote) {
@@ -242,10 +242,7 @@ fn build_with(root: UnkeyedNote, rels: &[u8]) -> Chord {
     for &r in rels.iter() {
         mask.insert(UnrootedNote(r));
     }
-    Chord {
-        root,
-        mask: mask,
-    }
+    Chord { root, mask: mask }
 }
 
 const ROOT_VIIB: UnkeyedNote = UnkeyedNote(10);
@@ -269,7 +266,15 @@ fn diminished_tri(root: UnkeyedNote) -> Chord {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 enum ChordButton {
-  VIIB, IV, I, V, II, VI, III, VII, HeptatonicMajor,
+    VIIB,
+    IV,
+    I,
+    V,
+    II,
+    VI,
+    III,
+    VII,
+    HeptatonicMajor,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -367,14 +372,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut note_positions: [f32; NUM_STRINGS * 2] = [0.0; NUM_STRINGS * 2];
 
     let chord_key_map: HashMap<winit::keyboard::Key, ChordButton> = [
-        (winit::keyboard::Key::Character("a".into()), ChordButton::VIIB),
+        (
+            winit::keyboard::Key::Character("a".into()),
+            ChordButton::VIIB,
+        ),
         (winit::keyboard::Key::Character("s".into()), ChordButton::IV),
         (winit::keyboard::Key::Character("d".into()), ChordButton::I),
         (winit::keyboard::Key::Character("f".into()), ChordButton::V),
         (winit::keyboard::Key::Character("z".into()), ChordButton::II),
         (winit::keyboard::Key::Character("x".into()), ChordButton::VI),
-        (winit::keyboard::Key::Character("c".into()), ChordButton::III),
-        (winit::keyboard::Key::Character("v".into()), ChordButton::VII),
+        (
+            winit::keyboard::Key::Character("c".into()),
+            ChordButton::III,
+        ),
+        (
+            winit::keyboard::Key::Character("v".into()),
+            ChordButton::VII,
+        ),
     ]
     .iter()
     .cloned()
@@ -551,20 +565,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 for m in modifier_stage.drain() {
                                     match m {
                                         Modifier::AddMajor2 => {
-                                                nc.mask.insert(UnrootedNote(2));
+                                            nc.mask.insert(UnrootedNote(2));
                                         }
                                         Modifier::AddMinor7 => {
-                                                nc.mask.insert(UnrootedNote(10));
+                                            nc.mask.insert(UnrootedNote(10));
                                         }
                                         Modifier::Minor3ToMajor => {
-                                                nc.mask.remove(UnrootedNote(3));
-                                                nc.mask.insert(UnrootedNote(4));
+                                            nc.mask.remove(UnrootedNote(3));
+                                            nc.mask.insert(UnrootedNote(4));
                                         }
                                         Modifier::AddSus4 => {
                                             // Remove major/minor third (bits 3 and 4) and add perfect 4th (bit 5)
-                                                nc.mask.remove(UnrootedNote(3));
-                                                nc.mask.remove(UnrootedNote(4));
-                                                nc.mask.insert(UnrootedNote(5));
+                                            nc.mask.remove(UnrootedNote(3));
+                                            nc.mask.remove(UnrootedNote(4));
+                                            nc.mask.insert(UnrootedNote(5));
                                         }
                                         Modifier::AddMajor7 => {
                                             // Add major 7th (interval 11)
@@ -641,9 +655,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                         // If the notes aren't the same, do the switch
                         if old_chord.map_or(true, |old| {
-                            new_chord.as_ref().map_or(true, |new| {
-                                old.root != new.root || old.mask != new.mask
-                            })
+                            new_chord
+                                .as_ref()
+                                .map_or(true, |new| old.root != new.root || old.mask != new.mask)
                         }) {
                             // Stop any playing notes that are not in the new chord
                             if let Some(new) = new_chord {
@@ -706,7 +720,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     &active_chord,
                                     &mut active_notes,
                                     transpose,
-                                    &note_positions
+                                    &note_positions,
                                 );
                             }
                         }
@@ -717,7 +731,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                     WindowEvent::RedrawRequested => {
                         // Initial draw if needed, though Resized usually handles it on startup
                         let size = window.inner_size();
-                        draw_strings(&mut surface, size.width, size.height, &active_chord, &note_positions);
+                        draw_strings(
+                            &mut surface,
+                            size.width,
+                            size.height,
+                            &active_chord,
+                            &note_positions,
+                        );
                     }
 
                     _ => {}
@@ -754,7 +774,7 @@ fn decide_chord_base(
         if chord_keys_down.contains(&button) {
             if let Some(old) = old_chord {
                 if old.root == root {
-                    return old_chord.copied()
+                    return old_chord.copied();
                 }
             }
             return Some(builder(root));
@@ -763,7 +783,7 @@ fn decide_chord_base(
 
     // No keys down: preserve chord if we just went from 1 -> 0
     if let Some(_) = old_chord {
-        return old_chord.copied()
+        return old_chord.copied();
     }
 
     None
@@ -788,11 +808,11 @@ fn compute_note_positions(positions: &mut [f32], width: f32) {
             let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
             let string = octave * 7 + string_in_octave;
             if string >= NUM_STRINGS.into() {
-                return
+                return;
             }
             let x = UNSCALED_RELATIVE_X_POSITIONS[string] * width;
             positions[i] = x;
-            i+=1;
+            i += 1;
         }
     }
 }
