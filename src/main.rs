@@ -17,7 +17,6 @@
 //!     - Pedal toggle/mod?
 //!     - Phone app version?
 //!     - Check bass balance on keychange
-//!     - Refactor to avoid mod logic duplication
 //!     - Fix held pulse key triggering rapid repeat
 //!     - Pulse in wonky in other keys
 
@@ -208,6 +207,19 @@ enum Modifier {
     Pulse,
 }
 
+const MODIFIER_ORDER: &[Modifier] = &[
+    Modifier::AddMajor2,
+    Modifier::AddMinor7,
+    Modifier::AddMajor7,
+    Modifier::Minor3ToMajor,
+    Modifier::RestorePerfect5,
+    Modifier::AddSus4,
+    Modifier::SwitchMinorMajor,
+    Modifier::No3,
+    Modifier::ChangeKey,
+    Modifier::Pulse,
+];
+
 fn get_note_above_root(note: UnkeyedNote, root: UnkeyedNote) -> UnrootedNote {
     UnrootedNote::new(note - root)
 }
@@ -283,14 +295,6 @@ enum ModButton {
     ChangeKey,
     Pulse,
 }
-/*const MINOR_7_BUTTON: &str = "MINOR_7_BUTTON";
-const MAJOR_2_BUTTON: &str = "MAJOR_2_BUTTON";
-const MAJOR_7_BUTTON: &str = "MAJOR_7_BUTTON";
-const SUS4_BUTTON: &str = "SUS4_BUTTON";
-const MINOR_MAJOR_BUTTON: &str = "MINOR_MAJOR_BUTTON";
-const NO_3_BUTTON: &str = "MINOR_MAJOR_BUTTON";
-const CHANGE_KEY_BUTTON: &str = "CHANGE_KEY_BUTTON";
-const PULSE_BUTTON: &str = "PULSE_BUTTON";*/
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -358,7 +362,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Key tracking using named buttons
     let mut chord_keys_down: HashSet<ChordButton> = HashSet::new();
     let mut mod_keys_down: HashSet<ModButton> = HashSet::new();
-    // Modifier queue: modifiers queued and applied on next chord key press
+    // Modifier: modifiers queued and applied on next chord key press
     let mut modifier_stage: HashSet<Modifier> = HashSet::new();
     // Transpose in semitones (0-11) applied to played notes
     let mut transpose: Transpose = Transpose(0);
@@ -551,13 +555,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                             modifier_stage.insert(Modifier::Pulse);
                         }
 
-                        let mut pulse = false;
-
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord, then remove it.
                         if !modifier_stage.is_empty() {
                             if let Some(nc) = new_chord.as_mut() {
-                                for m in modifier_stage.drain() {
+                                for m in
+                                    MODIFIER_ORDER.iter().filter(|m| modifier_stage.contains(m))
+                                {
                                     match m {
                                         Modifier::AddMajor2 => {
                                             nc.mask.insert(UnrootedNote(2));
@@ -617,36 +621,32 @@ fn main() -> Result<(), Box<dyn Error>> {
                                             }
                                         }
                                         Modifier::Pulse => {
-                                            pulse = true;
+                                            // Play the low root of the new chord
+                                            play_note(
+                                                &mut midi_connection,
+                                                transpose + nc.root,
+                                                &mut active_notes,
+                                                VELOCITY,
+                                            );
+                                            // Play higher notes of the new chord
+                                            for i in 12..NUM_STRINGS {
+                                                let note = UnkeyedNote(i as i16);
+                                                if is_note_in_chord(note, &Some(*nc)) {
+                                                    let vel = (VELOCITY * 2 / 3) as u8;
+                                                    play_note(
+                                                        &mut midi_connection,
+                                                        transpose + note,
+                                                        &mut active_notes,
+                                                        vel,
+                                                    );
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-
-                        // Delayed so as to happen after all note adjustments have been made
-                        if pulse {
-                            // Play the low root of the new chord
-                            play_note(
-                                &mut midi_connection,
-                                transpose + new_chord.as_ref().unwrap().root,
-                                &mut active_notes,
-                                VELOCITY,
-                            );
-                            // Play higher notes of the new chord
-                            for i in 12..NUM_STRINGS {
-                                let note = UnkeyedNote(i as i16);
-                                if is_note_in_chord(note, &new_chord) {
-                                    let vel = (VELOCITY * 2 / 3) as u8;
-                                    play_note(
-                                        &mut midi_connection,
-                                        transpose + note,
-                                        &mut active_notes,
-                                        vel,
-                                    );
-                                }
-                            }
-                        }
+                        modifier_stage.clear();
 
                         // If the notes aren't the same, do the switch
                         if old_chord.map_or(true, |old| {
