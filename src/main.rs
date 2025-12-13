@@ -220,15 +220,14 @@ impl ChordExt for Option<Chord> {
     fn contains(&self, note: UnkeyedNote) -> bool {
         match self {
             Some(chord) => {
-                let rel = get_note_above_root(note, chord.root);
-                chord.mask.contains(rel)
+                chord.contains(note)
             }
             None => true,
         }
     }
 
     fn has_root(&self, note: UnkeyedNote) -> bool {
-        self.as_ref().is_some_and(|chord| note == chord.root)
+        self.as_ref().is_some_and(|chord| chord.has_root(note))
     } 
 }
 impl ChordExt for Chord {
@@ -620,13 +619,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     nc.mask.remove(UnrootedNote(4));
                                 }
                                 if modifier_stage.contains(Modifiers::RestorePerfect5) {
-                                    // Change minor 3rd to major 3rd if present
-                                    let p5_bit = UnrootedNote(7);
-                                    let dim5_bit = UnrootedNote(6);
-                                    let aug5_bit = UnrootedNote(8);
-                                    nc.mask.remove(dim5_bit);
-                                    nc.mask.remove(aug5_bit);
-                                    nc.mask.insert(p5_bit)
+                                    nc.mask.remove(UnrootedNote(6));
+                                    nc.mask.remove(UnrootedNote(8));
+                                    nc.mask.insert(UnrootedNote(7))
                                 }
                                 if modifier_stage.contains(Modifiers::ChangeKey) {
                                     transpose = Transpose(nc.root.0 as i16).normalize_octave()
@@ -664,17 +659,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 .map_or(true, |new| old.root != new.root || old.mask != new.mask)
                         }) {
                             // Stop any playing notes that are not in the new chord
-                            if let Some(new) = new_chord {
-                                let notes_to_stop: Vec<MidiNote> = active_notes
-                                    .iter()
-                                    .filter(|&&note| {
-                                        !new.contains(note - LOWEST_NOTE - transpose)
-                                    })
-                                    .cloned()
-                                    .collect();
-                                for note in notes_to_stop {
-                                    stop_note(&mut midi_connection, note, &mut active_notes);
-                                }
+                            let notes_to_stop: Vec<MidiNote> = active_notes
+                                .iter()
+                                .filter(|&&note| {
+                                    !new_chord.contains(note - LOWEST_NOTE - transpose)
+                                })
+                                .cloned()
+                                .collect();
+                            for note in notes_to_stop {
+                                stop_note(&mut midi_connection, note, &mut active_notes);
                             }
                             active_chord = new_chord;
                             window.request_redraw();
