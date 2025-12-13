@@ -364,7 +364,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut transpose: Transpose = Transpose(0);
     // We move conn_out into the event loop
     let mut midi_connection = conn_out;
-    let mut note_positions: [f32; NUM_STRINGS * 2] = [0.0; NUM_STRINGS * 2];
+    let mut note_positions: Vec<f32> = Vec::new();
 
     let chord_key_map: HashMap<winit::keyboard::Key, ChordButton> = [
         (
@@ -683,7 +683,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                         let window_width = physical_size.width as f32;
 
-                        compute_note_positions(&mut note_positions, window_width);
+                        recompute_note_positions(&mut note_positions, window_width);
 
                         // Redraw lines on resize
                         draw_strings(
@@ -794,8 +794,8 @@ fn _compute_string_positions(width: f32) -> Vec<f32> {
     positions
 }
 
-fn compute_note_positions(positions: &mut [f32], width: f32) {
-    let mut i = 0;
+fn recompute_note_positions(positions: &mut Vec<f32>, width: f32) {
+    positions.clear(); // Keeps the memory allocated for fast re-use
 
     // Add as many notes til we go off the right side of the screen.
     for octave in 0.. {
@@ -806,8 +806,7 @@ fn compute_note_positions(positions: &mut [f32], width: f32) {
                 return;
             }
             let x = UNSCALED_RELATIVE_X_POSITIONS[string] * width;
-            positions[i] = x;
-            i += 1;
+            positions.push(x);
         }
     }
 }
