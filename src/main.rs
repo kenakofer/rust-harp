@@ -56,7 +56,7 @@ struct UnbottomedNote(i16); // Note before building on the BOTTOM_NOTE
 struct Transpose(i16); // Basically an interval
                        //
 impl Transpose {
-    fn normalize_octave(self) -> Transpose {
+    fn center_octave(self) -> Transpose {
         if self.0 > 6 {
             Transpose(self.0 - 12)
         } else {
@@ -107,6 +107,12 @@ impl Sub for UnkeyedNote {
     type Output = Interval;
     fn sub(self, rhs: UnkeyedNote) -> Interval {
         Interval(self.0 - rhs.0)
+    }
+}
+
+impl UnkeyedNote {
+    fn wrap_to_octave(self) -> i16 {
+        self.0.rem_euclid(12)
     }
 }
 
@@ -235,7 +241,7 @@ impl ChordExt for Chord {
     }
 
     fn has_root(&self, note: UnkeyedNote) -> bool {
-        note == self.root
+        note.wrap_to_octave() == self.root.wrap_to_octave()
     }
 }
 
@@ -600,7 +606,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     nc.mask.insert(UnrootedNote(7))
                                 }
                                 if modifier_stage.contains(Modifiers::ChangeKey) {
-                                    transpose = Transpose(nc.root.0 as i16).normalize_octave()
+                                    transpose = Transpose(nc.root.0 as i16).center_octave()
                                 }
                                 if modifier_stage.contains(Modifiers::Pulse) {
                                     // Play the low root of the new chord
