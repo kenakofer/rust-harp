@@ -71,13 +71,8 @@ impl Add<UnbottomedNote> for Transpose {
     fn add(self, rhs: UnbottomedNote) -> MidiNote {
         let sum: i16 = (self.0 as i16) + (rhs.0 as i16);
         if sum < 0 {
-            eprintln!("Warning: MIDI note out of range: {}, using 0 instead", sum);
             return MidiNote(0);
         } else if sum > 127 {
-            eprintln!(
-                "Warning: MIDI note out of range: {}, using 127 instead",
-                sum
-            );
             return MidiNote(127);
         }
         MidiNote(sum as u8)
@@ -742,7 +737,7 @@ fn decide_chord_base(
         return Some(build_with(ROOT_I, &[0, 2, 4, 5, 7, 9, 11]));
     }
 
-    let chord_builders: Vec<(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> Chord)> = vec![
+    const CHORD_BUILDERS: [(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> Chord); 8] = [
         (ChordButton::VII, ROOT_VII, diminished_tri),
         (ChordButton::III, ROOT_III, minor_tri),
         (ChordButton::VI, ROOT_VI, minor_tri),
@@ -753,11 +748,11 @@ fn decide_chord_base(
         (ChordButton::VIIB, ROOT_VIIB, major_tri),
     ];
 
-    for (button, root, builder) in chord_builders {
+    for (button, root, builder) in CHORD_BUILDERS {
         if chord_keys_down.contains(&button) {
             if let Some(old) = old_chord {
                 if old.root == root {
-                    return Some(old.clone());
+                    return old_chord.copied()
                 }
             }
             return Some(builder(root));
@@ -765,8 +760,8 @@ fn decide_chord_base(
     }
 
     // No keys down: preserve chord if we just went from 1 -> 0
-    if let Some(old) = old_chord {
-        return Some(old.clone());
+    if let Some(_) = old_chord {
+        return old_chord.copied()
     }
 
     None
