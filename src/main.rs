@@ -25,7 +25,7 @@ use bitflags::bitflags;
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::ops::{Add, Sub};
@@ -336,6 +336,24 @@ fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
     }
 }
 
+fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> {
+    use winit::keyboard::Key::Character;
+    use winit::keyboard::Key::Named;
+    use winit::keyboard::NamedKey::Tab;
+
+    match key {
+        Character(s) if s == "5" => Some((ModButton::Major2, Modifiers::AddMajor2)),
+        Character(s) if s == "b" => Some((ModButton::Major7, Modifiers::AddMajor7)),
+        Character(s) if s == "6" => Some((ModButton::Minor7, Modifiers::AddMinor7)),
+        Character(s) if s == "3" => Some((ModButton::Sus4, Modifiers::AddSus4)),
+        Character(s) if s == "4" => Some((ModButton::MinorMajor, Modifiers::SwitchMinorMajor)),
+        Character(s) if s == "." => Some((ModButton::No3, Modifiers::No3)),
+        Character(s) if s == "1" => Some((ModButton::ChangeKey, Modifiers::ChangeKey)),
+        Named(Tab) => Some((ModButton::Pulse, Modifiers::Pulse)),
+        _ => None,
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
@@ -410,44 +428,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut midi_connection = conn_out;
     let mut note_positions: Vec<f32> = Vec::new();
 
-    let mod_key_map: HashMap<winit::keyboard::Key, (ModButton, Modifiers)> = [
-        (
-            winit::keyboard::Key::Character("5".into()),
-            (ModButton::Major2, Modifiers::AddMajor2),
-        ),
-        (
-            winit::keyboard::Key::Character("b".into()),
-            (ModButton::Major7, Modifiers::AddMajor7),
-        ),
-        (
-            winit::keyboard::Key::Character("6".into()),
-            (ModButton::Minor7, Modifiers::AddMinor7),
-        ),
-        (
-            winit::keyboard::Key::Character("3".into()),
-            (ModButton::Sus4, Modifiers::AddSus4),
-        ),
-        (
-            winit::keyboard::Key::Character("4".into()),
-            (ModButton::MinorMajor, Modifiers::SwitchMinorMajor),
-        ),
-        (
-            winit::keyboard::Key::Character(".".into()),
-            (ModButton::No3, Modifiers::No3),
-        ),
-        (
-            winit::keyboard::Key::Character("1".into()),
-            (ModButton::ChangeKey, Modifiers::ChangeKey),
-        ),
-        (
-            winit::keyboard::Key::Named(winit::keyboard::NamedKey::Tab),
-            (ModButton::Pulse, Modifiers::Pulse),
-        ),
-    ]
-    .iter()
-    .cloned()
-    .collect();
-
     // 4. Run Event Loop
     event_loop.run(move |event, elwt| {
         // Set ControlFlow to Wait. This is efficient; it sleeps until an event (like mouse move) arrives.
@@ -476,19 +456,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     chord_was_pressed = true;
                                 }
                             } else if let Some((button, modifier)) =
-                                mod_key_map.get(&event.logical_key)
+                                mod_button_for(&event.logical_key)
                             {
-                                if !mod_keys_down.contains(button) {
-                                    mod_keys_down.insert(*button);
-                                    modifier_stage.insert(*modifier);
+                                if !mod_keys_down.contains(&button) {
+                                    mod_keys_down.insert(button);
+                                    modifier_stage.insert(modifier);
                                 }
                             }
                         } else {
                             // Released
                             if let Some(button) = chord_button_for(&event.logical_key) {
                                 chord_keys_down.remove(&button);
-                            } else if let Some((button, _)) = mod_key_map.get(&event.logical_key) {
-                                mod_keys_down.remove(button);
+                            } else if let Some((button, _)) = mod_button_for(&event.logical_key) {
+                                mod_keys_down.remove(&button);
                             }
                         }
 
