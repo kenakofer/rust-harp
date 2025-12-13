@@ -36,6 +36,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 struct MidiNote(u8);
 
@@ -46,9 +47,11 @@ impl Sub for MidiNote {
     }
 }
 
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct UnbottomedNote(i16); // Note before building on the BOTTOM_NOTE
 
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct Transpose(i16); // Basically an interval
                        //
@@ -96,6 +99,7 @@ impl Sub<Transpose> for MidiNote {
 
 // Note before transposing into the key or building on the BOTTOM_NOTE.
 // This is basically solfege: Do = 0, Re = 2, etc. Can go beyond 12 or below 0
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct UnkeyedNote(i16);
 
@@ -117,6 +121,7 @@ impl UnrootedNote {
 }
 
 // Difference in half steps
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct Interval(i16);
 
@@ -180,6 +185,7 @@ const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
 
 const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
 
+#[repr(transparent)]
 #[derive(Clone, Copy, Eq, PartialEq)]
 struct PitchClassSet(u16);
 
