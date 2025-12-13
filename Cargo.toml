@@ -13,3 +13,4 @@ midir = "0.9"
 # Log is used to output errors without crashing
 log = "0.4"
 env_logger = "0.11"
+bitflags = "2.10.0"

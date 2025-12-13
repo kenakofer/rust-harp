@@ -20,6 +20,8 @@
 //!     - Fix held pulse key triggering rapid repeat
 //!     - Pulse in wonky in other keys
 
+use bitflags::bitflags;
+use bitflags::Flags;
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
@@ -192,33 +194,21 @@ struct Chord {
     root: UnkeyedNote,
     mask: PitchClassSet, // bits 0..11
 }
-
-#[derive(Eq, Hash, PartialEq, Clone)]
-enum Modifier {
-    AddMajor2,
-    AddMinor7,
-    AddMajor7,
-    Minor3ToMajor,
-    RestorePerfect5,
-    AddSus4,
-    SwitchMinorMajor,
-    No3,
-    ChangeKey,
-    Pulse,
+bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct Modifiers: u16 {
+        const AddMajor2 = 1 << 0;
+        const AddMinor7 = 1 << 1;
+        const AddMajor7 = 1 << 2;
+        const Minor3ToMajor = 1 << 3;
+        const RestorePerfect5 = 1 << 4;
+        const AddSus4 = 1 << 5;
+        const SwitchMinorMajor = 1 << 6;
+        const No3 = 1 << 7;
+        const ChangeKey = 1 << 8;
+        const Pulse = 1 << 9;
+    }
 }
-
-const MODIFIER_ORDER: &[Modifier] = &[
-    Modifier::AddMajor2,
-    Modifier::AddMinor7,
-    Modifier::AddMajor7,
-    Modifier::Minor3ToMajor,
-    Modifier::RestorePerfect5,
-    Modifier::AddSus4,
-    Modifier::SwitchMinorMajor,
-    Modifier::No3,
-    Modifier::ChangeKey,
-    Modifier::Pulse,
-];
 
 fn get_note_above_root(note: UnkeyedNote, root: UnkeyedNote) -> UnrootedNote {
     UnrootedNote::new(note - root)
@@ -363,7 +353,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut chord_keys_down: HashSet<ChordButton> = HashSet::new();
     let mut mod_keys_down: HashSet<ModButton> = HashSet::new();
     // Modifier: modifiers queued and applied on next chord key press
-    let mut modifier_stage: HashSet<Modifier> = HashSet::new();
+    let mut modifier_stage = Modifiers::empty();
     // Transpose in semitones (0-11) applied to played notes
     let mut transpose: Transpose = Transpose(0);
     // We move conn_out into the event loop
@@ -393,38 +383,38 @@ fn main() -> Result<(), Box<dyn Error>> {
     .cloned()
     .collect();
 
-    let mod_key_map: HashMap<winit::keyboard::Key, (ModButton, Modifier)> = [
+    let mod_key_map: HashMap<winit::keyboard::Key, (ModButton, Modifiers)> = [
         (
             winit::keyboard::Key::Character("5".into()),
-            (ModButton::Major2, Modifier::AddMajor2),
+            (ModButton::Major2, Modifiers::AddMajor2),
         ),
         (
             winit::keyboard::Key::Character("b".into()),
-            (ModButton::Major7, Modifier::AddMajor7),
+            (ModButton::Major7, Modifiers::AddMajor7),
         ),
         (
             winit::keyboard::Key::Character("6".into()),
-            (ModButton::Minor7, Modifier::AddMinor7),
+            (ModButton::Minor7, Modifiers::AddMinor7),
         ),
         (
             winit::keyboard::Key::Character("3".into()),
-            (ModButton::Sus4, Modifier::AddSus4),
+            (ModButton::Sus4, Modifiers::AddSus4),
         ),
         (
             winit::keyboard::Key::Character("4".into()),
-            (ModButton::MinorMajor, Modifier::SwitchMinorMajor),
+            (ModButton::MinorMajor, Modifiers::SwitchMinorMajor),
         ),
         (
             winit::keyboard::Key::Character(".".into()),
-            (ModButton::No3, Modifier::No3),
+            (ModButton::No3, Modifiers::No3),
         ),
         (
             winit::keyboard::Key::Character("1".into()),
-            (ModButton::ChangeKey, Modifier::ChangeKey),
+            (ModButton::ChangeKey, Modifiers::ChangeKey),
         ),
         (
             winit::keyboard::Key::Named(winit::keyboard::NamedKey::Tab),
-            (ModButton::Pulse, Modifier::Pulse),
+            (ModButton::Pulse, Modifiers::Pulse),
         ),
     ]
     .iter()
@@ -523,124 +513,118 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 || (chord_keys_down.contains(&ChordButton::V)
                                     && chord_keys_down.contains(&ChordButton::II))
                             {
-                                modifier_stage.insert(Modifier::AddMinor7);
-                                modifier_stage.insert(Modifier::Minor3ToMajor);
-                                modifier_stage.insert(Modifier::RestorePerfect5);
+                                modifier_stage.insert(Modifiers::AddMinor7);
+                                modifier_stage.insert(Modifiers::Minor3ToMajor);
+                                modifier_stage.insert(Modifiers::RestorePerfect5);
                             }
                         }
 
                         // Inserting here supports held mods
                         if mod_keys_down.contains(&ModButton::Major2) {
-                            modifier_stage.insert(Modifier::AddMajor2);
+                            modifier_stage.insert(Modifiers::AddMajor2);
                         }
                         if mod_keys_down.contains(&ModButton::Minor7) {
-                            modifier_stage.insert(Modifier::AddMinor7);
+                            modifier_stage.insert(Modifiers::AddMinor7);
                         }
                         if mod_keys_down.contains(&ModButton::Sus4) {
-                            modifier_stage.insert(Modifier::AddSus4);
+                            modifier_stage.insert(Modifiers::AddSus4);
                         }
                         if mod_keys_down.contains(&ModButton::MinorMajor) {
-                            modifier_stage.insert(Modifier::SwitchMinorMajor);
+                            modifier_stage.insert(Modifiers::SwitchMinorMajor);
                         }
                         if mod_keys_down.contains(&ModButton::No3) {
-                            modifier_stage.insert(Modifier::RestorePerfect5);
+                            modifier_stage.insert(Modifiers::RestorePerfect5);
                         }
                         if mod_keys_down.contains(&ModButton::Major7) {
-                            modifier_stage.insert(Modifier::AddMajor7);
+                            modifier_stage.insert(Modifiers::AddMajor7);
                         }
                         if mod_keys_down.contains(&ModButton::ChangeKey) {
-                            modifier_stage.insert(Modifier::ChangeKey);
+                            modifier_stage.insert(Modifiers::ChangeKey);
                         }
                         if mod_keys_down.contains(&ModButton::Pulse) {
-                            modifier_stage.insert(Modifier::Pulse);
+                            modifier_stage.insert(Modifiers::Pulse);
                         }
 
                         // If there are modifiers queued and a chord key is down, apply them now to
                         // the freshly constructed chord, then remove it.
                         if !modifier_stage.is_empty() {
                             if let Some(nc) = new_chord.as_mut() {
-                                for m in
-                                    MODIFIER_ORDER.iter().filter(|m| modifier_stage.contains(m))
-                                {
-                                    match m {
-                                        Modifier::AddMajor2 => {
-                                            nc.mask.insert(UnrootedNote(2));
-                                        }
-                                        Modifier::AddMinor7 => {
-                                            nc.mask.insert(UnrootedNote(10));
-                                        }
-                                        Modifier::Minor3ToMajor => {
-                                            nc.mask.remove(UnrootedNote(3));
-                                            nc.mask.insert(UnrootedNote(4));
-                                        }
-                                        Modifier::AddSus4 => {
-                                            // Remove major/minor third (bits 3 and 4) and add perfect 4th (bit 5)
-                                            nc.mask.remove(UnrootedNote(3));
-                                            nc.mask.remove(UnrootedNote(4));
-                                            nc.mask.insert(UnrootedNote(5));
-                                        }
-                                        Modifier::AddMajor7 => {
-                                            // Add major 7th (interval 11)
-                                            nc.mask.insert(UnrootedNote(11));
-                                        }
-                                        Modifier::SwitchMinorMajor => {
-                                            // Based on root to be stable on multiple runs
-                                            if nc.root == ROOT_II
-                                                || nc.root == ROOT_III
-                                                || nc.root == ROOT_VI
-                                                || nc.root == ROOT_VII
-                                            {
-                                                // Change minor tri to major tri
-                                                nc.mask.remove(UnrootedNote(3));
-                                                nc.mask.insert(UnrootedNote(4));
-                                            } else {
-                                                // Change major tri to minor tri
-                                                nc.mask.remove(UnrootedNote(4));
-                                                nc.mask.insert(UnrootedNote(3));
-                                            }
-                                        }
-                                        Modifier::No3 => {
-                                            // Remove both major and minor 3rd
-                                            nc.mask.remove(UnrootedNote(3));
-                                            nc.mask.remove(UnrootedNote(4));
-                                        }
-                                        Modifier::RestorePerfect5 => {
-                                            // Change minor 3rd to major 3rd if present
-                                            let p5_bit = UnrootedNote(7);
-                                            let dim5_bit = UnrootedNote(6);
-                                            let aug5_bit = UnrootedNote(8);
-                                            nc.mask.remove(dim5_bit);
-                                            nc.mask.remove(aug5_bit);
-                                            nc.mask.insert(p5_bit)
-                                        }
-                                        Modifier::ChangeKey => {
-                                            // Set transpose to the chord's root
-                                            transpose = Transpose(nc.root.0 as i16);
-                                            if transpose.0 > 6 {
-                                                transpose.0 -= 12;
-                                            }
-                                        }
-                                        Modifier::Pulse => {
-                                            // Play the low root of the new chord
+                                if modifier_stage.contains(Modifiers::AddMajor2) {
+                                    nc.mask.insert(UnrootedNote(2));
+                                }
+                                if modifier_stage.contains(Modifiers::AddMinor7) {
+                                    nc.mask.insert(UnrootedNote(10));
+                                }
+                                if modifier_stage.contains(Modifiers::Minor3ToMajor) {
+                                    nc.mask.remove(UnrootedNote(3));
+                                    nc.mask.insert(UnrootedNote(4));
+                                }
+                                if modifier_stage.contains(Modifiers::AddSus4) {
+                                    // Remove major/minor third (bits 3 and 4) and add perfect 4th (bit 5)
+                                    nc.mask.remove(UnrootedNote(3));
+                                    nc.mask.remove(UnrootedNote(4));
+                                    nc.mask.insert(UnrootedNote(5));
+                                }
+                                if modifier_stage.contains(Modifiers::AddMajor7) {
+                                    // Add major 7th (interval 11)
+                                    nc.mask.insert(UnrootedNote(11));
+                                }
+                                if modifier_stage.contains(Modifiers::SwitchMinorMajor) {
+                                    // Based on root to be stable on multiple runs
+                                    if nc.root == ROOT_II
+                                        || nc.root == ROOT_III
+                                        || nc.root == ROOT_VI
+                                        || nc.root == ROOT_VII
+                                    {
+                                        // Change minor tri to major tri
+                                        nc.mask.remove(UnrootedNote(3));
+                                        nc.mask.insert(UnrootedNote(4));
+                                    } else {
+                                        // Change major tri to minor tri
+                                        nc.mask.remove(UnrootedNote(4));
+                                        nc.mask.insert(UnrootedNote(3));
+                                    }
+                                }
+                                if modifier_stage.contains(Modifiers::No3) {
+                                    // Remove both major and minor 3rd
+                                    nc.mask.remove(UnrootedNote(3));
+                                    nc.mask.remove(UnrootedNote(4));
+                                }
+                                if modifier_stage.contains(Modifiers::RestorePerfect5) {
+                                    // Change minor 3rd to major 3rd if present
+                                    let p5_bit = UnrootedNote(7);
+                                    let dim5_bit = UnrootedNote(6);
+                                    let aug5_bit = UnrootedNote(8);
+                                    nc.mask.remove(dim5_bit);
+                                    nc.mask.remove(aug5_bit);
+                                    nc.mask.insert(p5_bit)
+                                }
+                                if modifier_stage.contains(Modifiers::ChangeKey) {
+                                    // Set transpose to the chord's root
+                                    transpose = Transpose(nc.root.0 as i16);
+                                    if transpose.0 > 6 {
+                                        transpose.0 -= 12;
+                                    }
+                                }
+                                if modifier_stage.contains(Modifiers::Pulse) {
+                                    // Play the low root of the new chord
+                                    play_note(
+                                        &mut midi_connection,
+                                        transpose + nc.root,
+                                        &mut active_notes,
+                                        VELOCITY,
+                                    );
+                                    // Play higher notes of the new chord
+                                    for i in 12..NUM_STRINGS {
+                                        let note = UnkeyedNote(i as i16);
+                                        if is_note_in_chord(note, &Some(*nc)) {
+                                            let vel = (VELOCITY * 2 / 3) as u8;
                                             play_note(
                                                 &mut midi_connection,
-                                                transpose + nc.root,
+                                                transpose + note,
                                                 &mut active_notes,
-                                                VELOCITY,
+                                                vel,
                                             );
-                                            // Play higher notes of the new chord
-                                            for i in 12..NUM_STRINGS {
-                                                let note = UnkeyedNote(i as i16);
-                                                if is_note_in_chord(note, &Some(*nc)) {
-                                                    let vel = (VELOCITY * 2 / 3) as u8;
-                                                    play_note(
-                                                        &mut midi_connection,
-                                                        transpose + note,
-                                                        &mut active_notes,
-                                                        vel,
-                                                    );
-                                                }
-                                            }
                                         }
                                     }
                                 }
