@@ -63,12 +63,7 @@ impl Add<UnbottomedNote> for Transpose {
     type Output = MidiNote;
     fn add(self, rhs: UnbottomedNote) -> MidiNote {
         let sum: i16 = (self.0 as i16) + (rhs.0 as i16);
-        if sum < 0 {
-            return MidiNote(0);
-        } else if sum > 127 {
-            return MidiNote(127);
-        }
-        MidiNote(sum as u8)
+        return MidiNote(sum.clamp(0, 127) as u8);
     }
 }
 
@@ -895,43 +890,27 @@ fn play_note(
     if let Some(c) = conn {
         let midi_note = LOWEST_NOTE + note;
 
-        // Crossfade between bass and main
-        let main_factor = if midi_note <= MAIN_BASS_BOTTOM {
-            0.0
-        } else if midi_note >= MAIN_BASS_TOP {
-            1.0
-        } else {
-            (midi_note - MAIN_BASS_BOTTOM).ratio(MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
-        };
+        let main_factor = (midi_note - MAIN_BASS_BOTTOM)
+            .ratio(MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
+            .clamp(0.0, 1.0);
         let bass_factor = 1.0 - main_factor;
 
         // On second thought, lets give main_factor twice as long of a fade
         let main_factor = 1.0 - 0.5 * (1.0 - main_factor);
 
-        // Scale velocities
-        let main_vel = ((velocity as f32) * main_factor).round() as u8;
-        let bass_vel = ((velocity as f32) * bass_factor * BASS_VELOCITY_MULTIPLIER).round() as u8;
-
-        // Clamp velocities to max
-        let main_vel = if main_vel > 127 { 127 } else { main_vel };
-        let bass_vel = if bass_vel > 127 { 127 } else { bass_vel };
-
-        // Clamp small nonzero factors to at least velocity 1 so they are audible
-        let mut main_vel = main_vel;
-        let mut bass_vel = bass_vel;
-        if main_factor > 0.0 && main_vel == 0 {
-            main_vel = 1
+        if main_factor > 0.0 {
+            let mut main_vel = ((velocity as f32) * main_factor).round() as u8;
+            main_vel = main_vel.clamp(1, 127);
+            send_note_on(c, MAIN_CHANNEL, midi_note, main_vel);
         }
-        if bass_factor > 0.0 && bass_vel == 0 {
-            bass_vel = 1
+        if bass_factor > 0.0 {
+            let mut bass_vel =
+                ((velocity as f32) * bass_factor * BASS_VELOCITY_MULTIPLIER).round() as u8;
+            bass_vel = bass_vel.clamp(1, 127);
+            // Send an off to bass first to get a solid rearticulation
+            send_note_off(c, BASS_CHANNEL, midi_note);
+            send_note_on(c, BASS_CHANNEL, midi_note, bass_vel);
         }
-
-        // Send to main channel and bass
-        send_note_on(c, MAIN_CHANNEL, midi_note, main_vel);
-
-        // Send an off to bass first to get a solid rearticulation
-        send_note_off(c, BASS_CHANNEL, midi_note);
-        send_note_on(c, BASS_CHANNEL, midi_note, bass_vel);
 
         active_notes.insert(midi_note);
     }
