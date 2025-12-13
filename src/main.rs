@@ -51,6 +51,16 @@ struct UnbottomedNote(i16); // Note before building on the BOTTOM_NOTE
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct Transpose(i16); // Basically an interval
+                       //
+impl Transpose {
+    fn normalize_octave(self) -> Transpose {
+        if self.0 > 6 {
+            Transpose(self.0 - 12)
+        } else {
+            Transpose(self.0)
+        }
+    }
+}
 
 impl Add<UnkeyedNote> for Transpose {
     type Output = UnbottomedNote;
@@ -600,11 +610,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     nc.mask.insert(p5_bit)
                                 }
                                 if modifier_stage.contains(Modifiers::ChangeKey) {
-                                    // Set transpose to the chord's root
-                                    transpose = Transpose(nc.root.0 as i16);
-                                    if transpose.0 > 6 {
-                                        transpose.0 -= 12;
-                                    }
+                                    transpose = Transpose(nc.root.0 as i16).normalize_octave()
                                 }
                                 if modifier_stage.contains(Modifiers::Pulse) {
                                     // Play the low root of the new chord
