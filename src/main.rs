@@ -138,7 +138,7 @@ impl Interval {
 }
 
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
-const LOWEST_NOTE: Transpose = Transpose(24); // Do in the active key
+const LOWEST_NOTE: Transpose = Transpose(36); // Do in the active key
 const VELOCITY: u8 = 70;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
