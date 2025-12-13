@@ -174,12 +174,29 @@ const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
 
 const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct PitchClassSet(u16);
+
+impl PitchClassSet {
+    fn contains(&self, pc: UnrootedNote) -> bool {
+        self.0 & (1 << pc.0) != 0 
+    }
+
+    fn insert(&mut self, pc: UnrootedNote) {
+        self.0 |= 1 << pc.0;
+    }
+
+    fn remove(&mut self, pc: UnrootedNote) {
+        self.0 &= !(1 << pc.0);
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Chord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
     //name: &'static str,
     root: UnkeyedNote,
-    relative_mask: u16, // bits 0..11
+    mask: PitchClassSet, // bits 0..11
 }
 
 #[derive(Eq, Hash, PartialEq, Clone)]
@@ -203,7 +220,7 @@ fn get_note_above_root(note: UnkeyedNote, root: UnkeyedNote) -> UnrootedNote {
 fn is_note_in_chord(note: UnkeyedNote, chord: &Option<Chord>) -> bool {
     if let Some(chord) = chord {
         let rel = get_note_above_root(note, chord.root);
-        chord.relative_mask & (1u16 << (rel.0 as usize)) != 0
+        chord.mask.contains(rel)
     } else {
         // If no chord is active, all notes are "in"
         true
@@ -221,14 +238,13 @@ fn is_note_root_of_chord(note: UnkeyedNote, chord: &Option<Chord>) -> bool {
 }
 
 fn build_with(root: UnkeyedNote, rels: &[u8]) -> Chord {
-    let mut mask: u16 = 0;
+    let mut mask = PitchClassSet(0);
     for &r in rels.iter() {
-        let rel = (r as usize) % 12;
-        mask |= 1u16 << rel;
+        mask.insert(UnrootedNote(r));
     }
     Chord {
         root,
-        relative_mask: mask,
+        mask: mask,
     }
 }
 
@@ -335,7 +351,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut is_mouse_down = false;
     let mut active_chord: Option<Chord> = Some(major_tri(ROOT_I));
     if let Some(ref mut nc) = active_chord {
-        nc.relative_mask |= 1u16 << 2; // AddMajor2
+        nc.mask.insert(UnrootedNote(2));
     }
 
     let mut active_notes = HashSet::new();
@@ -535,28 +551,24 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 for m in modifier_stage.drain() {
                                     match m {
                                         Modifier::AddMajor2 => {
-                                            nc.relative_mask |= 1u16 << 2;
+                                                nc.mask.insert(UnrootedNote(2));
                                         }
                                         Modifier::AddMinor7 => {
-                                            nc.relative_mask |= 1u16 << 10;
+                                                nc.mask.insert(UnrootedNote(10));
                                         }
                                         Modifier::Minor3ToMajor => {
-                                            // Change minor 3rd to major 3rd if present
-                                            let minor_3rd_bit = 1u16 << 3;
-                                            if (nc.relative_mask & minor_3rd_bit) != 0 {
-                                                nc.relative_mask &= !minor_3rd_bit;
-                                                nc.relative_mask |= 1u16 << 4;
-                                            }
+                                                nc.mask.remove(UnrootedNote(3));
+                                                nc.mask.insert(UnrootedNote(4));
                                         }
                                         Modifier::AddSus4 => {
                                             // Remove major/minor third (bits 3 and 4) and add perfect 4th (bit 5)
-                                            nc.relative_mask &= !(1u16 << 3);
-                                            nc.relative_mask &= !(1u16 << 4);
-                                            nc.relative_mask |= 1u16 << 5;
+                                                nc.mask.remove(UnrootedNote(3));
+                                                nc.mask.remove(UnrootedNote(4));
+                                                nc.mask.insert(UnrootedNote(5));
                                         }
                                         Modifier::AddMajor7 => {
                                             // Add major 7th (interval 11)
-                                            nc.relative_mask |= 1u16 << 11;
+                                            nc.mask.insert(UnrootedNote(11));
                                         }
                                         Modifier::SwitchMinorMajor => {
                                             // Based on root to be stable on multiple runs
@@ -566,29 +578,27 @@ fn main() -> Result<(), Box<dyn Error>> {
                                                 || nc.root == ROOT_VII
                                             {
                                                 // Change minor tri to major tri
-                                                let minor_3rd_bit = 1u16 << 3;
-                                                nc.relative_mask &= !minor_3rd_bit;
-                                                nc.relative_mask |= 1u16 << 4;
+                                                nc.mask.remove(UnrootedNote(3));
+                                                nc.mask.insert(UnrootedNote(4));
                                             } else {
                                                 // Change major tri to minor tri
-                                                let major_3rd_bit = 1u16 << 4;
-                                                nc.relative_mask &= !major_3rd_bit;
-                                                nc.relative_mask |= 1u16 << 3;
+                                                nc.mask.remove(UnrootedNote(4));
+                                                nc.mask.insert(UnrootedNote(3));
                                             }
                                         }
                                         Modifier::No3 => {
                                             // Remove both major and minor 3rd
-                                            nc.relative_mask &= !(1u16 << 3);
-                                            nc.relative_mask &= !(1u16 << 4);
+                                            nc.mask.remove(UnrootedNote(3));
+                                            nc.mask.remove(UnrootedNote(4));
                                         }
                                         Modifier::RestorePerfect5 => {
                                             // Change minor 3rd to major 3rd if present
-                                            let p5_bit = 1u16 << 7;
-                                            let dim5_bit = 1u16 << 6;
-                                            let aug5_bit = 1u16 << 8;
-                                            nc.relative_mask &= !dim5_bit;
-                                            nc.relative_mask &= !aug5_bit;
-                                            nc.relative_mask |= p5_bit;
+                                            let p5_bit = UnrootedNote(7);
+                                            let dim5_bit = UnrootedNote(6);
+                                            let aug5_bit = UnrootedNote(8);
+                                            nc.mask.remove(dim5_bit);
+                                            nc.mask.remove(aug5_bit);
+                                            nc.mask.insert(p5_bit)
                                         }
                                         Modifier::ChangeKey => {
                                             // Set transpose to the chord's root
@@ -632,7 +642,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // If the notes aren't the same, do the switch
                         if old_chord.map_or(true, |old| {
                             new_chord.as_ref().map_or(true, |new| {
-                                old.root != new.root || old.relative_mask != new.relative_mask
+                                old.root != new.root || old.mask != new.mask
                             })
                         }) {
                             // Stop any playing notes that are not in the new chord
