@@ -244,17 +244,12 @@ fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
 }
 
 fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> {
-    use winit::keyboard::Key::Character;
-
-    match key {
-        Character(s) if s == "5" => Some((ModButton::Major2, Modifiers::AddMajor2)),
-        Character(s) if s == "b" => Some((ModButton::Major7, Modifiers::AddMajor7)),
-        Character(s) if s == "6" => Some((ModButton::Minor7, Modifiers::AddMinor7)),
-        Character(s) if s == "3" => Some((ModButton::Sus4, Modifiers::Add4 | Modifiers::No3)),
-        Character(s) if s == "4" => Some((ModButton::MinorMajor, Modifiers::SwitchMinorMajor)),
-        Character(s) if s == "." => Some((ModButton::No3, Modifiers::No3)),
-        _ => None,
+    for entry in MOD_BUTTON_TABLE.iter() {
+        if (entry.key_check)(key) {
+            return Some((entry.button, entry.modifiers));
+        }
     }
+    return None
 }
 
 fn action_button_for(key: &winit::keyboard::Key) -> Option<(ActionButton, Actions)> {
@@ -434,24 +429,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         // Inserting here supports held mods
-                        if mod_keys_down.contains(&ModButton::Major2) {
-                            modifier_stage.insert(Modifiers::AddMajor2);
+                        for entry in MOD_BUTTON_TABLE.iter() {
+                            if mod_keys_down.contains(&entry.button) {
+                                modifier_stage.insert(entry.modifiers);
+                            }
                         }
-                        if mod_keys_down.contains(&ModButton::Minor7) {
-                            modifier_stage.insert(Modifiers::AddMinor7);
-                        }
-                        if mod_keys_down.contains(&ModButton::Sus4) {
-                            modifier_stage.insert(Modifiers::Add4);
-                        }
-                        if mod_keys_down.contains(&ModButton::MinorMajor) {
-                            modifier_stage.insert(Modifiers::SwitchMinorMajor);
-                        }
-                        if mod_keys_down.contains(&ModButton::No3) {
-                            modifier_stage.insert(Modifiers::No3);
-                        }
-                        if mod_keys_down.contains(&ModButton::Major7) {
-                            modifier_stage.insert(Modifiers::AddMajor7);
-                        }
+
+                        // TODO action table
                         if action_keys_down.contains(&ActionButton::ChangeKey) {
                             action_stage.insert(Actions::ChangeKey);
                         }
