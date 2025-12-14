@@ -20,6 +20,7 @@
 //!     - Fix held pulse key triggering rapid repeat
 //!     - Pulse in wonky in other keys
 //!     - Explore additive chords (I + vi = vi7, I + iii = Imaj7)
+//!     - Currently the top note is Ti when the bottom is Do. Can we fit one more?
 
 mod chord;
 mod notes;
@@ -435,7 +436,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
 
-                        // TODO action table
+                        // TODO action table? Would be hard because the fn() would access so much
                         if action_keys_down.contains(&ActionButton::ChangeKey) {
                             action_stage.insert(Actions::ChangeKey);
                         }

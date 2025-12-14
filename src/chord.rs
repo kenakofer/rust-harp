@@ -38,11 +38,12 @@ impl Chord {
     const MINOR_ROOTS: [i16; 3] = [2, 4, 9];
     const DIMIN_ROOTS: [i16; 1] = [11];
 
-    const MOD_APPLICATIONS: [(Modifiers, ModifierFn); 11] = [
+    const MOD_APPLICATIONS: [(Modifiers, ModifierFn); 12] = [
         (Modifiers::MajorTri, |c| c.mask = PitchClassSet::MAJOR_TRI),
         (Modifiers::MinorTri, |c| c.mask = PitchClassSet::MINOR_TRI),
         (Modifiers::DiminTri, |c| c.mask = PitchClassSet::DIMIN_TRI),
         (Modifiers::AddMajor2, |c| c.mask.insert(UnrootedNote(2))),
+        (Modifiers::AddMajor6, |c| c.mask.insert(UnrootedNote(9))),
         (Modifiers::AddMinor7, |c| c.mask.insert(UnrootedNote(10))),
         (Modifiers::AddMajor7, |c| c.mask.insert(UnrootedNote(11))),
         (Modifiers::Minor3ToMajor, |c| {
