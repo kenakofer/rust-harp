@@ -35,19 +35,34 @@ pub struct Chord {
 type ModifierFn = fn(&mut Chord);
 impl Chord {
 
+    // Set of the major chord roots
+    const _MAJOR_ROOTS: [i16; 3] = [0, 5, 7,];
+    const MINOR_ROOTS: [i16; 3] = [2, 4, 9];
+    const DIMIN_ROOTS: [i16; 1] = [11];
+
     const MOD_APPLICATIONS: [(Modifiers, ModifierFn); 11] = [
         (Modifiers::MajorTri, |c| c.mask = PitchClassSet::MAJOR_TRI),
         (Modifiers::MinorTri, |c| c.mask = PitchClassSet::MINOR_TRI),
         (Modifiers::DiminTri, |c| c.mask = PitchClassSet::DIMIN_TRI),
         (Modifiers::AddMajor2, |c| c.mask.insert(UnrootedNote(2))),
-        (Modifiers::AddMinor7, |c| c.mask.insert(UnrootedNote(2))),
-        (Modifiers::AddMajor7, |c| c.mask.insert(UnrootedNote(2))),
-        (Modifiers::Minor3ToMajor, |c| c.mask.insert(UnrootedNote(2))),
-        (Modifiers::RestorePerfect5, |c| c.mask.insert(UnrootedNote(2))),
-        (Modifiers::Add4, |c| c.mask.insert(UnrootedNote(2))),
-        (Modifiers::SwitchMinorMajor, |c| c.mask.insert(UnrootedNote(2))),
-        (Modifiers::No3, |c| c.mask.insert(UnrootedNote(2))),
-    ];
+        (Modifiers::AddMinor7, |c| c.mask.insert(UnrootedNote(10))),
+        (Modifiers::AddMajor7, |c| c.mask.insert(UnrootedNote(11))),
+        (Modifiers::Minor3ToMajor, |c| { c.mask.remove(UnrootedNote(3)); c.mask.insert(UnrootedNote(4)) }),
+        (Modifiers::RestorePerfect5, |c| { c.mask.remove(UnrootedNote(6)); c.mask.remove(UnrootedNote(8)); c.mask.insert(UnrootedNote(7)) }),
+        (Modifiers::Add4, |c| c.mask.insert(UnrootedNote(5))),
+        (Modifiers::SwitchMinorMajor, |c| {
+            if Chord::MINOR_ROOTS.contains(&c.root.wrap_to_octave()) {
+                c.mask.remove(UnrootedNote(3));
+                c.mask.insert(UnrootedNote(4));
+            } else if Chord::DIMIN_ROOTS.contains(&c.root.wrap_to_octave()) {
+                c.mask.remove(UnrootedNote(3));
+                c.mask.insert(UnrootedNote(4));
+            } else {
+                c.mask.remove(UnrootedNote(4));
+                c.mask.insert(UnrootedNote(3));
+            }
+        }),
+        (Modifiers::No3, |c| { c.mask.remove(UnrootedNote(3)); c.mask.remove(UnrootedNote(4)); }),    ];
 
     pub fn new(rt: UnkeyedNote, mods: Modifiers) -> Self {
         let mut c = Self { root: rt, mask: PitchClassSet::ROOT_ONLY, mods: mods };
