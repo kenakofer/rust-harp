@@ -104,6 +104,60 @@ const ROOT_VI: UnkeyedNote = UnkeyedNote(9);
 const ROOT_III: UnkeyedNote = UnkeyedNote(4);
 const ROOT_VII: UnkeyedNote = UnkeyedNote(11);
 
+struct ChordButtonTableEntry {
+    root: UnkeyedNote,
+    button: ChordButton,
+    key_check: fn(&winit::keyboard::Key) -> bool,
+}
+
+const CHORD_BUTTON_TABLE: [ChordButtonTableEntry; 9] = [
+    ChordButtonTableEntry {
+        root: ROOT_VIIB,
+        button: ChordButton::VIIB,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "a"),
+    },
+    ChordButtonTableEntry {
+        root: ROOT_IV,
+        button: ChordButton::IV,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "s"),
+    },
+    ChordButtonTableEntry {
+        root: ROOT_I,
+        button: ChordButton::I,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "d"),
+    },
+    ChordButtonTableEntry {
+        root: ROOT_V,
+        button: ChordButton::V,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "f"),
+    },
+    ChordButtonTableEntry {
+        root: ROOT_II,
+        button: ChordButton::II,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "z"),
+    },
+    ChordButtonTableEntry {
+        root: ROOT_VI,
+        button: ChordButton::VI,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "x"),
+    },
+    ChordButtonTableEntry {
+        root: ROOT_III,
+        button: ChordButton::III,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "c"),
+    },
+    ChordButtonTableEntry {
+        root: ROOT_VII,
+        button: ChordButton::VII,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "v"),
+    },
+    ChordButtonTableEntry {
+        root: ROOT_I,
+        button: ChordButton::HeptatonicMajor,
+        key_check: |k| matches!(k, winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control)),
+    },
+];
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 enum ChordButton {
     VIIB,
@@ -141,23 +195,13 @@ bitflags! {
     }
 }
 
-fn chord_button_for(key: &winit::keyboard::Key) -> Option<(ChordButton, UnkeyedNote)> {
-    use winit::keyboard::Key::Character;
-    use winit::keyboard::Key::Named;
-    use winit::keyboard::NamedKey::Control;
-
-    match key {
-        Character(s) if s == "a" => Some((ChordButton::VIIB, ROOT_VIIB)),
-        Character(s) if s == "s" => Some((ChordButton::IV, ROOT_VI)),
-        Character(s) if s == "d" => Some((ChordButton::I, ROOT_I)),
-        Character(s) if s == "f" => Some((ChordButton::V, ROOT_V)),
-        Character(s) if s == "z" => Some((ChordButton::II, ROOT_II)),
-        Character(s) if s == "x" => Some((ChordButton::VI, ROOT_VI)),
-        Character(s) if s == "c" => Some((ChordButton::III, ROOT_III)),
-        Character(s) if s == "v" => Some((ChordButton::VII, ROOT_VII)),
-        Named(Control) => Some(ChordButton::HeptatonicMajor),
-        _ => None,
+fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
+    for entry in CHORD_BUTTON_TABLE.iter() {
+        if (entry.key_check)(key) {
+            return Some(entry.button);
+        }
     }
+    return None
 }
 
 fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> {
@@ -284,7 +328,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let mut chord_was_pressed = false;
 
                         if event.state == winit::event::ElementState::Pressed {
-                            if let Some(button, _) = chord_button_for(&event.logical_key) {
+                            if let Some(button) = chord_button_for(&event.logical_key) {
                                 if !chord_keys_down.contains(&button) {
                                     chord_keys_down.insert(button);
                                     chord_was_pressed = true;
@@ -306,7 +350,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         } else {
                             // Released
-                            if let Some(button, _) = chord_button_for(&event.logical_key) {
+                            if let Some(button) = chord_button_for(&event.logical_key) {
                                 chord_keys_down.remove(&button);
                             } else if let Some((button, _)) = mod_button_for(&event.logical_key) {
                                 mod_keys_down.remove(&button);
@@ -516,14 +560,14 @@ fn decide_chord_base(
         ));
     }
 
-    for (button, root, builder) in CHORD_BUILDERS {
-        if chord_keys_down.contains(&button) {
+    for entry in CHORD_BUTTON_TABLE.iter() {
+        if chord_keys_down.contains(&entry.button) {
             if let Some(old) = old_chord {
-                if old.get_root() == root {
+                if old.get_root() == entry.root {
                     return old_chord.copied();
                 }
             }
-            return Some(builder(root));
+            return Some(Chord::new_triad(entry.root));
         }
     }
 
