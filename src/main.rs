@@ -104,16 +104,6 @@ const ROOT_VI: UnkeyedNote = UnkeyedNote(9);
 const ROOT_III: UnkeyedNote = UnkeyedNote(4);
 const ROOT_VII: UnkeyedNote = UnkeyedNote(11);
 
-fn major_tri(root: UnkeyedNote) -> Chord {
-    Chord::new(root, Modifiers::MajorTri)
-}
-fn minor_tri(root: UnkeyedNote) -> Chord {
-    Chord::new(root, Modifiers::MinorTri)
-}
-fn diminished_tri(root: UnkeyedNote) -> Chord {
-    Chord::new(root, Modifiers::DiminTri)
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 enum ChordButton {
     VIIB,
@@ -151,20 +141,20 @@ bitflags! {
     }
 }
 
-fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
+fn chord_button_for(key: &winit::keyboard::Key) -> Option<(ChordButton, UnkeyedNote)> {
     use winit::keyboard::Key::Character;
     use winit::keyboard::Key::Named;
     use winit::keyboard::NamedKey::Control;
 
     match key {
-        Character(s) if s == "a" => Some(ChordButton::VIIB),
-        Character(s) if s == "s" => Some(ChordButton::IV),
-        Character(s) if s == "d" => Some(ChordButton::I),
-        Character(s) if s == "f" => Some(ChordButton::V),
-        Character(s) if s == "z" => Some(ChordButton::II),
-        Character(s) if s == "x" => Some(ChordButton::VI),
-        Character(s) if s == "c" => Some(ChordButton::III),
-        Character(s) if s == "v" => Some(ChordButton::VII),
+        Character(s) if s == "a" => Some((ChordButton::VIIB, ROOT_VIIB)),
+        Character(s) if s == "s" => Some((ChordButton::IV, ROOT_VI)),
+        Character(s) if s == "d" => Some((ChordButton::I, ROOT_I)),
+        Character(s) if s == "f" => Some((ChordButton::V, ROOT_V)),
+        Character(s) if s == "z" => Some((ChordButton::II, ROOT_II)),
+        Character(s) if s == "x" => Some((ChordButton::VI, ROOT_VI)),
+        Character(s) if s == "c" => Some((ChordButton::III, ROOT_III)),
+        Character(s) if s == "v" => Some((ChordButton::VII, ROOT_VII)),
         Named(Control) => Some(ChordButton::HeptatonicMajor),
         _ => None,
     }
@@ -253,7 +243,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut prev_pos: Option<(f32, f32)> = None;
 
     let mut is_mouse_down = false;
-    let mut active_chord: Option<Chord> = Some(major_tri(ROOT_I));
+    let mut active_chord: Option<Chord> = Some(Chord::new_triad(ROOT_I));
     if let Some(nc) = active_chord.as_mut() {
         nc.add_mods_now(Modifiers::AddMajor2);
     }
@@ -294,7 +284,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let mut chord_was_pressed = false;
 
                         if event.state == winit::event::ElementState::Pressed {
-                            if let Some(button) = chord_button_for(&event.logical_key) {
+                            if let Some(button, _) = chord_button_for(&event.logical_key) {
                                 if !chord_keys_down.contains(&button) {
                                     chord_keys_down.insert(button);
                                     chord_was_pressed = true;
@@ -316,7 +306,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         } else {
                             // Released
-                            if let Some(button) = chord_button_for(&event.logical_key) {
+                            if let Some(button, _) = chord_button_for(&event.logical_key) {
                                 chord_keys_down.remove(&button);
                             } else if let Some((button, _)) = mod_button_for(&event.logical_key) {
                                 mod_keys_down.remove(&button);
@@ -525,17 +515,6 @@ fn decide_chord_base(
                 | Modifiers::AddMajor7,
         ));
     }
-
-    const CHORD_BUILDERS: [(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> Chord); 8] = [
-        (ChordButton::VII, ROOT_VII, diminished_tri),
-        (ChordButton::III, ROOT_III, minor_tri),
-        (ChordButton::VI, ROOT_VI, minor_tri),
-        (ChordButton::II, ROOT_II, minor_tri),
-        (ChordButton::V, ROOT_V, major_tri),
-        (ChordButton::I, ROOT_I, major_tri),
-        (ChordButton::IV, ROOT_IV, major_tri),
-        (ChordButton::VIIB, ROOT_VIIB, major_tri),
-    ];
 
     for (button, root, builder) in CHORD_BUILDERS {
         if chord_keys_down.contains(&button) {

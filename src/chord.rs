@@ -34,7 +34,7 @@ pub struct Chord {
 type ModifierFn = fn(&mut Chord);
 impl Chord {
     // Set of the major chord roots
-    const _MAJOR_ROOTS: [i16; 3] = [0, 5, 7];
+    const MAJOR_ROOTS: [i16; 3] = [0, 5, 7];
     const MINOR_ROOTS: [i16; 3] = [2, 4, 9];
     const DIMIN_ROOTS: [i16; 1] = [11];
 
@@ -81,6 +81,15 @@ impl Chord {
         };
         c.regen_mask();
         c
+    }
+    pub fn new_triad(rt: UnkeyedNote) -> Self {
+        let mods = match rt.wrap_to_octave() {
+            x if Chord::MAJOR_ROOTS.contains(&x) => Modifiers::MajorTri,
+            x if Chord::MINOR_ROOTS.contains(&x) => Modifiers::MinorTri,
+            x if Chord::DIMIN_ROOTS.contains(&x) => Modifiers::DiminTri,
+            _ => Modifiers::MajorTri,
+        };
+        Self::new(rt, mods)
     }
 
     pub fn get_root(&self) -> UnkeyedNote {
