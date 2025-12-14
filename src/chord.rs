@@ -1,10 +1,10 @@
-use crate::notes::{UnkeyedNote, UnrootedNote};
+use crate::notes::{UnkeyedNote, UnrootedNote, PitchClassSet};
 
 use bitflags::bitflags;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct Modifiers: u16 {
+    pub struct Modifiers: u16 {
         const MajorTri = 1 << 0;
         const MinorTri = 1 << 1;
         const DiminTri = 1 << 2;
@@ -23,24 +23,6 @@ bitflags! {
 }
 
 
-#[repr(transparent)]
-#[derive(Clone, Copy, Eq, PartialEq)]
-struct PitchClassSet(u16);
-
-impl PitchClassSet {
-    fn contains(&self, pc: UnrootedNote) -> bool {
-        self.0 & (1 << pc.0) != 0
-    }
-
-    fn insert(&mut self, pc: UnrootedNote) {
-        self.0 |= 1 << pc.0;
-    }
-
-    fn remove(&mut self, pc: UnrootedNote) {
-        self.0 &= !(1 << pc.0);
-    }
-}
-
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Chord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
@@ -54,9 +36,9 @@ type ModifierFn = fn(&mut Chord);
 impl Chord {
 
     const MOD_APPLICATIONS: [(Modifiers, ModifierFn); 11] = [
-        (Modifiers::MajorTri, |c| c.mask = PitchClassSet(0b000010010001)),
-        (Modifiers::MinorTri, |c| c.mask = PitchClassSet(0b000010001001)),
-        (Modifiers::DiminTri, |c| c.mask = PitchClassSet(0b000001001001)),
+        (Modifiers::MajorTri, |c| c.mask = PitchClassSet::MAJOR_TRI),
+        (Modifiers::MinorTri, |c| c.mask = PitchClassSet::MINOR_TRI),
+        (Modifiers::DiminTri, |c| c.mask = PitchClassSet::DIMIN_TRI),
         (Modifiers::AddMajor2, |c| c.mask.insert(UnrootedNote(2))),
         (Modifiers::AddMinor7, |c| c.mask.insert(UnrootedNote(2))),
         (Modifiers::AddMajor7, |c| c.mask.insert(UnrootedNote(2))),
@@ -68,7 +50,7 @@ impl Chord {
     ];
 
     pub fn new(rt: UnkeyedNote, mods: Modifiers) -> Self {
-        let mut c = Self { root: rt, mask: PitchClassSet(1), mods: mods }; // 1 to include the root (0th bit on)
+        let mut c = Self { root: rt, mask: PitchClassSet::ROOT_ONLY, mods: mods };
         c.regen_mask();
         c
     }

@@ -2,7 +2,7 @@ use std::ops::{Add, Sub};
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
-struct MidiNote(u8);
+pub struct MidiNote(pub u8);
 
 impl Sub for MidiNote {
     type Output = Interval;
@@ -13,11 +13,11 @@ impl Sub for MidiNote {
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
-struct UnbottomedNote(i16); // Note before building on the BOTTOM_NOTE
+pub struct UnbottomedNote(i16); // Note before building on the BOTTOM_NOTE
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
-struct Transpose(i16); // Basically an interval
+pub struct Transpose(pub i16); // Basically an interval
                        //
 impl Transpose {
     fn center_octave(self) -> Transpose {
@@ -65,7 +65,7 @@ impl Sub<Transpose> for MidiNote {
 // This is basically solfege: Do = 0, Re = 2, etc. Can go beyond 12 or below 0
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-struct UnkeyedNote(i16);
+pub struct UnkeyedNote(pub i16);
 
 impl Sub for UnkeyedNote {
     type Output = Interval;
@@ -75,7 +75,7 @@ impl Sub for UnkeyedNote {
 }
 
 impl UnkeyedNote {
-    fn wrap_to_octave(self) -> i16 {
+    pub fn wrap_to_octave(self) -> i16 {
         self.0.rem_euclid(12)
     }
 }
@@ -83,7 +83,7 @@ impl UnkeyedNote {
 // Position above the root of the chord
 // "The fifth in the chord" would be 7 for example
 //#[derive(Copy, Clone, Debug, PartialEq)]
-struct UnrootedNote(u8);
+pub struct UnrootedNote(pub u8);
 impl UnrootedNote {
     pub fn new(i: Interval) -> Self {
         Self(i.0.rem_euclid(12) as u8)
@@ -93,11 +93,34 @@ impl UnrootedNote {
 // Difference in half steps
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
-struct Interval(i16);
+pub struct Interval(i16);
 
 impl Interval {
     fn ratio(self, denom: Interval) -> f32 {
         self.0 as f32 / denom.0 as f32
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct PitchClassSet(u16);
+
+impl PitchClassSet {
+    pub const ROOT_ONLY: PitchClassSet = PitchClassSet(0b000000000001);
+    pub const MAJOR_TRI: PitchClassSet = PitchClassSet(0b000010010001);
+    pub const MINOR_TRI: PitchClassSet = PitchClassSet(0b000010001001);
+    pub const DIMIN_TRI: PitchClassSet = PitchClassSet(0b000001001001);
+
+    pub fn contains(&self, pc: UnrootedNote) -> bool {
+        self.0 & (1 << pc.0) != 0
+    }
+
+    pub fn insert(&mut self, pc: UnrootedNote) {
+        self.0 |= 1 << pc.0;
+    }
+
+    pub fn remove(&mut self, pc: UnrootedNote) {
+        self.0 &= !(1 << pc.0);
     }
 }
 

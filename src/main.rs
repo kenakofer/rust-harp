@@ -24,7 +24,8 @@
 mod chord;
 mod notes;
 
-use chord::Chord;
+use notes::{MidiNote, Transpose, UnkeyedNote, UnrootedNote, UnbottomedNote};
+use chord::{Chord, Modifiers};
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
@@ -32,7 +33,6 @@ use softbuffer::{Context, Surface};
 use std::collections::HashSet;
 use std::error::Error;
 use std::num::NonZeroU32;
-use std::ops::{Add, Sub};
 use std::rc::Rc;
 use winit::{
     event::{Event, WindowEvent},
