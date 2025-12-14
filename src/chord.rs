@@ -28,8 +28,8 @@ pub struct Chord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
     //name: &'static str,
     root: UnkeyedNote,
-    mask: PitchClassSet, // bits 0..11
     mods: Modifiers,
+    mask: PitchClassSet, // bits 0..11
 }
 
 type ModifierFn = fn(&mut Chord);
@@ -55,8 +55,17 @@ impl Chord {
         c
     }
 
-    pub fn add_mod_now(&mut self, mods: Modifiers) {
+    pub fn get_root(&self) -> UnkeyedNote {
+        self.root
+    }
+
+    pub fn add_mods_now(&mut self, mods: Modifiers) {
         self.mods |= mods;
+        self.regen_mask()
+    }
+
+    pub fn set_mods_now(&mut self, mods: Modifiers) {
+        self.mods = mods;
         self.regen_mask()
     }
 
@@ -75,7 +84,7 @@ impl Chord {
     }
 }
 
-trait ChordExt {
+pub trait ChordExt {
     fn contains(&self, note: UnkeyedNote) -> bool;
     fn has_root(&self, note: UnkeyedNote) -> bool;
 }

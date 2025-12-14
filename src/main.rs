@@ -24,8 +24,8 @@
 mod chord;
 mod notes;
 
-use notes::{MidiNote, Transpose, UnkeyedNote, UnrootedNote, UnbottomedNote};
-use chord::{Chord, Modifiers};
+use notes::{MidiNote, Transpose, UnkeyedNote, UnbottomedNote};
+use chord::{Chord, ChordExt, Modifiers};
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
@@ -234,7 +234,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut is_mouse_down = false;
     let mut active_chord: Option<Chord> = Some(major_tri(ROOT_I));
     if let Some(nc) = active_chord.as_mut() {
-        nc.mask.iinsert(UnrootedNote(2));
+        nc.add_mods_now(Modifiers::AddMajor2);
     }
 
     let mut active_notes = HashSet::new();
@@ -360,60 +360,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // the freshly constructed chord, then remove it.
                         if !modifier_stage.is_empty() {
                             if let Some(nc) = new_chord.as_mut() {
-                                if modifier_stage.contains(Modifiers::AddMajor2) {
-                                    nc.mask.insert(UnrootedNote(2));
-                                }
-                                if modifier_stage.contains(Modifiers::AddMinor7) {
-                                    nc.mask.insert(UnrootedNote(10));
-                                }
-                                if modifier_stage.contains(Modifiers::Minor3ToMajor) {
-                                    nc.mask.remove(UnrootedNote(3));
-                                    nc.mask.insert(UnrootedNote(4));
-                                }
-                                if modifier_stage.contains(Modifiers::Add4) {
-                                    // Remove major/minor third (bits 3 and 4) and add perfect 4th (bit 5)
-                                    nc.mask.remove(UnrootedNote(3));
-                                    nc.mask.remove(UnrootedNote(4));
-                                    nc.mask.insert(UnrootedNote(5));
-                                }
-                                if modifier_stage.contains(Modifiers::AddMajor7) {
-                                    // Add major 7th (interval 11)
-                                    nc.mask.insert(UnrootedNote(11));
-                                }
-                                if modifier_stage.contains(Modifiers::SwitchMinorMajor) {
-                                    // Based on root to be stable on multiple runs
-                                    if nc.root == ROOT_II
-                                        || nc.root == ROOT_III
-                                        || nc.root == ROOT_VI
-                                        || nc.root == ROOT_VII
-                                    {
-                                        // Change minor tri to major tri
-                                        nc.mask.remove(UnrootedNote(3));
-                                        nc.mask.insert(UnrootedNote(4));
-                                    } else {
-                                        // Change major tri to minor tri
-                                        nc.mask.remove(UnrootedNote(4));
-                                        nc.mask.insert(UnrootedNote(3));
-                                    }
-                                }
-                                if modifier_stage.contains(Modifiers::No3) {
-                                    // Remove both major and minor 3rd
-                                    nc.mask.remove(UnrootedNote(3));
-                                    nc.mask.remove(UnrootedNote(4));
-                                }
-                                if modifier_stage.contains(Modifiers::RestorePerfect5) {
-                                    nc.mask.remove(UnrootedNote(6));
-                                    nc.mask.remove(UnrootedNote(8));
-                                    nc.mask.insert(UnrootedNote(7))
-                                }
+                                nc.set_mods_now(modifier_stage);
                                 if modifier_stage.contains(Modifiers::ChangeKey) {
-                                    transpose = Transpose(nc.root.0 as i16).center_octave()
+                                    transpose = Transpose(nc.get_root().as_i16()).center_octave()
                                 }
                                 if modifier_stage.contains(Modifiers::Pulse) {
                                     // Play the low root of the new chord
                                     play_note(
                                         &mut midi_connection,
-                                        transpose + nc.root,
+                                        transpose + nc.get_root(),
                                         &mut active_notes,
                                         VELOCITY,
                                     );
@@ -548,7 +503,7 @@ fn decide_chord_base(
     for (button, root, builder) in CHORD_BUILDERS {
         if chord_keys_down.contains(&button) {
             if let Some(old) = old_chord {
-                if old.root == root {
+                if old.get_root() == root {
                     return old_chord.copied();
                 }
             }

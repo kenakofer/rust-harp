@@ -20,7 +20,7 @@ pub struct UnbottomedNote(i16); // Note before building on the BOTTOM_NOTE
 pub struct Transpose(pub i16); // Basically an interval
                        //
 impl Transpose {
-    fn center_octave(self) -> Transpose {
+    pub fn center_octave(self) -> Transpose {
         if self.0 > 6 {
             Transpose(self.0 - 12)
         } else {
@@ -78,6 +78,11 @@ impl UnkeyedNote {
     pub fn wrap_to_octave(self) -> i16 {
         self.0.rem_euclid(12)
     }
+
+    // Allow coercing to i16
+    pub fn as_i16(self) -> i16 {
+        self.0
+    }
 }
 
 // Position above the root of the chord
@@ -96,7 +101,7 @@ impl UnrootedNote {
 pub struct Interval(i16);
 
 impl Interval {
-    fn ratio(self, denom: Interval) -> f32 {
+    pub fn ratio(self, denom: Interval) -> f32 {
         self.0 as f32 / denom.0 as f32
     }
 }
