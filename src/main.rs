@@ -245,6 +245,64 @@ impl ChordExt for Chord {
     }
 }
 
+//Modifiers need:
+// - Iteration of types in detemined order
+// - Map from keypress to modifier
+// - Map from keypress to button
+// - Map from modifier to function
+// - Are buttons necessary? Can we just check if the modifier is active?
+//      - Issue there is we want to press and release a button, and have it enqueued for the next
+//      chord, not active on the current chord.
+//      - Ok, then it sounds like we need two independent booleans: mod_active and mod_enqueued
+//      - Is mod_active really a thing? When we pop it off the queue it modifies the chord. Then
+//      the chord sticks like that.
+//      - Maybe having the chord necessarily stick isn't very elegant, like we can't undo a mod if we wanted
+//      to. the information about mods that have been applied is no longer available.
+//      - Ok, so lets pivot to a (mod_enqueued, mod_active setup) dynamic state for each mod. Is
+//      that all the dynamic mod state we need? Obv. there's static info we want to track.
+//      - The wider picture of dynamic state is:
+//          - Midi
+//              - Connection
+//          - Window
+//              - Window
+//              - Surface
+//          - Mouse
+//              - down
+//              - last pos
+//          - Transpose
+//          - Notes Playing
+//          - Chord State
+//              root: UnkeyedNote,
+//              mask: PitchClassSet, // bits 0..11
+//              (Mod state)
+//                  - For each mod
+//                      - mod_active
+//          - mod_enqueued
+//
+//          Trouble is we can represent impossible states with both mod state and chord mask. mod
+//          state is a superset of chord mask, so if we want both, maybe we should only do that
+//          one, and compute the mask at the top of each loop? So it's not technically part of the
+//          state.
+//
+//          Recalculating at the top of each loop could still be confusing. Can we make it more
+//          impossible to represent undesirable states?
+//
+//          What if modifying active_mods immediately and necessarily recalculates chord mask?
+//
+//          mod_active could maybe go inside the Chord struct, but mod_enqueued is not information
+//          about a chord.
+//
+//          With mod_active inside the chord, we have interesting equality decisions, but that's
+//          not a dealbreaker.
+//
+//          By putting it inside, we can control write access to the data and have simple
+//          assurances that it's always in a good state.
+//
+//          Cool, I think that's our first implementation step: add a Modifier: active_mods to the
+//          Chord struct, and prohibit outside write access to the mask
+//
+//
+//
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct Modifiers: u16 {
