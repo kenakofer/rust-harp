@@ -374,7 +374,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             modifier_stage.insert(Modifiers::SwitchMinorMajor);
                         }
                         if mod_keys_down.contains(&ModButton::No3) {
-                            modifier_stage.insert(Modifiers::RestorePerfect5);
+                            modifier_stage.insert(Modifiers::No3);
                         }
                         if mod_keys_down.contains(&ModButton::Major7) {
                             modifier_stage.insert(Modifiers::AddMajor7);
