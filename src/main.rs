@@ -24,8 +24,8 @@
 mod chord;
 mod notes;
 
-use notes::{MidiNote, Transpose, UnkeyedNote, UnbottomedNote};
 use chord::{Chord, ChordExt, Modifiers};
+use notes::{MidiNote, Transpose, UnbottomedNote, UnkeyedNote};
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
@@ -486,7 +486,14 @@ fn decide_chord_base(
     chord_keys_down: &HashSet<ChordButton>,
 ) -> Option<Chord> {
     if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
-        return Some(Chord::new(ROOT_I, Modifiers::MajorTri | Modifiers::AddMajor2 | Modifiers::Add4 | Modifiers::AddMajor6 | Modifiers::AddMajor7))
+        return Some(Chord::new(
+            ROOT_I,
+            Modifiers::MajorTri
+                | Modifiers::AddMajor2
+                | Modifiers::Add4
+                | Modifiers::AddMajor6
+                | Modifiers::AddMajor7,
+        ));
     }
 
     const CHORD_BUILDERS: [(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> Chord); 8] = [

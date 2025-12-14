@@ -18,7 +18,7 @@ pub struct UnbottomedNote(i16); // Note before building on the BOTTOM_NOTE
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Transpose(pub i16); // Basically an interval
-                       //
+
 impl Transpose {
     pub fn center_octave(self) -> Transpose {
         if self.0 > 6 {
@@ -128,4 +128,3 @@ impl PitchClassSet {
         self.0 &= !(1 << pc.0);
     }
 }
-

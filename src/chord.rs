@@ -1,4 +1,4 @@
-use crate::notes::{UnkeyedNote, UnrootedNote, PitchClassSet};
+use crate::notes::{PitchClassSet, UnkeyedNote, UnrootedNote};
 
 use bitflags::bitflags;
 
@@ -22,7 +22,6 @@ bitflags! {
     }
 }
 
-
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Chord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
@@ -34,9 +33,8 @@ pub struct Chord {
 
 type ModifierFn = fn(&mut Chord);
 impl Chord {
-
     // Set of the major chord roots
-    const _MAJOR_ROOTS: [i16; 3] = [0, 5, 7,];
+    const _MAJOR_ROOTS: [i16; 3] = [0, 5, 7];
     const MINOR_ROOTS: [i16; 3] = [2, 4, 9];
     const DIMIN_ROOTS: [i16; 1] = [11];
 
@@ -47,8 +45,15 @@ impl Chord {
         (Modifiers::AddMajor2, |c| c.mask.insert(UnrootedNote(2))),
         (Modifiers::AddMinor7, |c| c.mask.insert(UnrootedNote(10))),
         (Modifiers::AddMajor7, |c| c.mask.insert(UnrootedNote(11))),
-        (Modifiers::Minor3ToMajor, |c| { c.mask.remove(UnrootedNote(3)); c.mask.insert(UnrootedNote(4)) }),
-        (Modifiers::RestorePerfect5, |c| { c.mask.remove(UnrootedNote(6)); c.mask.remove(UnrootedNote(8)); c.mask.insert(UnrootedNote(7)) }),
+        (Modifiers::Minor3ToMajor, |c| {
+            c.mask.remove(UnrootedNote(3));
+            c.mask.insert(UnrootedNote(4))
+        }),
+        (Modifiers::RestorePerfect5, |c| {
+            c.mask.remove(UnrootedNote(6));
+            c.mask.remove(UnrootedNote(8));
+            c.mask.insert(UnrootedNote(7))
+        }),
         (Modifiers::Add4, |c| c.mask.insert(UnrootedNote(5))),
         (Modifiers::SwitchMinorMajor, |c| {
             if Chord::MINOR_ROOTS.contains(&c.root.wrap_to_octave()) {
@@ -62,10 +67,18 @@ impl Chord {
                 c.mask.insert(UnrootedNote(3));
             }
         }),
-        (Modifiers::No3, |c| { c.mask.remove(UnrootedNote(3)); c.mask.remove(UnrootedNote(4)); }),    ];
+        (Modifiers::No3, |c| {
+            c.mask.remove(UnrootedNote(3));
+            c.mask.remove(UnrootedNote(4));
+        }),
+    ];
 
     pub fn new(rt: UnkeyedNote, mods: Modifiers) -> Self {
-        let mut c = Self { root: rt, mask: PitchClassSet::ROOT_ONLY, mods: mods };
+        let mut c = Self {
+            root: rt,
+            mask: PitchClassSet::ROOT_ONLY,
+            mods: mods,
+        };
         c.regen_mask();
         c
     }
@@ -87,7 +100,6 @@ impl Chord {
     pub fn get_note_above_root(&self, note: UnkeyedNote) -> UnrootedNote {
         UnrootedNote::new(note - self.root)
     }
-
 
     // Crucial to call this immediately after every change to self.mods
     fn regen_mask(&mut self) {
