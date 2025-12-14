@@ -1,27 +1,3 @@
-//! # Rust MIDI Harp
-//!
-//! A low-latency, windowed MIDI controller application designed for Linux.
-//!
-//! ## Functionality
-//! * **Interaction**: Dragging the mouse cursor across a line triggers a MIDI Note On event.
-//! * **Sound**: Acts as a virtual MIDI device (ALSA sequencer) named "Rust Harp Output".
-//!     Connect this output to any DAW or synthesizer to produce sound.
-//! * **Latency**: Prioritizes low-latency input handling by processing events directly
-//!     in the `winit` event loop without waiting for frame redraws.
-//! * **Visuals**: Super low priority. Displays a window with evenly spaced vertical lines
-//!     representing strings.
-//!
-//!
-//!     TODO:
-//!     - rearrange mods/4 doesn't remove 3
-//!     - Pedal toggle/mod?
-//!     - Phone app version?
-//!     - Check bass balance on keychange
-//!     - Fix held pulse key triggering rapid repeat
-//!     - Pulse in wonky in other keys
-//!     - Explore additive chords (I + vi = vi7, I + iii = Imaj7)
-//!     - Currently the top note is Ti when the bottom is Do. Can we fit one more?
-
 mod chord;
 mod notes;
 
