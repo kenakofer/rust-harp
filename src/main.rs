@@ -215,6 +215,40 @@ struct Chord {
     //name: &'static str,
     root: UnkeyedNote,
     mask: PitchClassSet, // bits 0..11
+    mods: Modifiers,
+}
+
+type ModifierFn = fn(&mut Chord);
+impl Chord {
+
+    const MOD_APPLICATIONS: [(Modifiers, ModifierFn); 11] = [
+        (Modifiers::MajorTri, |c| c.mask = PitchClassSet(0b000010010001)),
+        (Modifiers::MinorTri, |c| c.mask = PitchClassSet(0b000010001001)),
+        (Modifiers::DiminTri, |c| c.mask = PitchClassSet(0b000001001001)),
+        (Modifiers::AddMajor2, |c| c.mask.insert(UnrootedNote(2))),
+        (Modifiers::AddMinor7, |c| c.mask.insert(UnrootedNote(2))),
+        (Modifiers::AddMajor7, |c| c.mask.insert(UnrootedNote(2))),
+        (Modifiers::Minor3ToMajor, |c| c.mask.insert(UnrootedNote(2))),
+        (Modifiers::RestorePerfect5, |c| c.mask.insert(UnrootedNote(2))),
+        (Modifiers::Add4, |c| c.mask.insert(UnrootedNote(2))),
+        (Modifiers::SwitchMinorMajor, |c| c.mask.insert(UnrootedNote(2))),
+        (Modifiers::No3, |c| c.mask.insert(UnrootedNote(2))),
+    ];
+
+    pub fn new(rt: UnkeyedNote, mods: Modifiers) -> Self {
+        let mut c = Self { root: rt, mask: PitchClassSet(1), mods: mods }; // 1 to include the root (0th bit on)
+        c.regen_mask();
+        c
+    }
+
+    // Crucial to call this immediately after every change to self.mods
+    fn regen_mask(&mut self) {
+        for (modifier, func) in Self::MOD_APPLICATIONS {
+            if self.mods.contains(modifier) {
+                func(self);
+            }
+        }
+    }
 }
 
 trait ChordExt {
@@ -302,33 +336,45 @@ impl ChordExt for Chord {
 //          Chord struct, and prohibit outside write access to the mask
 //
 //
+//          ...Hmmm
+//
+//          Now that I've started, I realize we haven't planned for ChangeKey or Pulse. These
+//          really aren't chord modifiers in a pure sense. They can be enqueued and applied
+//          though. Maybe enqueued state has both a Modifiers component and a Actions component
+//
+//          Ooooo, next puzzle. Do we throw on base modifiers (like to form a major triad) at application time? What if those last minute mods overrule the enqueued mods the user pressed? Two options:
+//           - Don't use chord-button-caused mods in the chord construction
+//              - In that case, the active mods will not, on their own, fully determine the mask. Sad
+//              - But perhaps the root (which determines major/minor/dim) along with mods can.
+//           - When using chord-button-caused mods, use the lowest priority mods that can always be overruled.
+//              - Example: enqueue
+//
+//           Example:
+//
+//
 //
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct Modifiers: u16 {
-        const AddMajor2 = 1 << 0;
-        const AddMinor7 = 1 << 1;
-        const AddMajor7 = 1 << 2;
-        const Minor3ToMajor = 1 << 3;
-        const RestorePerfect5 = 1 << 4;
-        const AddSus4 = 1 << 5;
-        const SwitchMinorMajor = 1 << 6;
-        const No3 = 1 << 7;
-        const ChangeKey = 1 << 8;
-        const Pulse = 1 << 9;
+        const MajorTri = 1 << 0;
+        const MinorTri = 1 << 1;
+        const DiminTri = 1 << 2;
+        const AddMajor2 = 1 << 3;
+        const AddMajor6 = 1 << 4;
+        const AddMinor7 = 1 << 5;
+        const AddMajor7 = 1 << 6;
+        const Minor3ToMajor = 1 << 7;
+        const RestorePerfect5 = 1 << 8;
+        const Add4 = 1 << 9;
+        const SwitchMinorMajor = 1 << 10;
+        const No3 = 1 << 11;
+        const ChangeKey = 1 << 12;
+        const Pulse = 1 << 13;
     }
 }
 
 fn get_note_above_root(note: UnkeyedNote, root: UnkeyedNote) -> UnrootedNote {
     UnrootedNote::new(note - root)
-}
-
-fn build_with(root: UnkeyedNote, rels: &[u8]) -> Chord {
-    let mut mask = PitchClassSet(0);
-    for &r in rels.iter() {
-        mask.insert(UnrootedNote(r));
-    }
-    Chord { root, mask: mask }
 }
 
 const ROOT_VIIB: UnkeyedNote = UnkeyedNote(10);
@@ -341,13 +387,13 @@ const ROOT_III: UnkeyedNote = UnkeyedNote(4);
 const ROOT_VII: UnkeyedNote = UnkeyedNote(11);
 
 fn major_tri(root: UnkeyedNote) -> Chord {
-    build_with(root, &[0, 4, 7])
+    Chord::new(root, Modifiers::MajorTri)
 }
 fn minor_tri(root: UnkeyedNote) -> Chord {
-    build_with(root, &[0, 3, 7])
+    Chord::new(root, Modifiers::MinorTri)
 }
 fn diminished_tri(root: UnkeyedNote) -> Chord {
-    build_with(root, &[0, 3, 6])
+    Chord::new(root, Modifiers::DiminTri)
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -403,7 +449,7 @@ fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> 
         Character(s) if s == "5" => Some((ModButton::Major2, Modifiers::AddMajor2)),
         Character(s) if s == "b" => Some((ModButton::Major7, Modifiers::AddMajor7)),
         Character(s) if s == "6" => Some((ModButton::Minor7, Modifiers::AddMinor7)),
-        Character(s) if s == "3" => Some((ModButton::Sus4, Modifiers::AddSus4)),
+        Character(s) if s == "3" => Some((ModButton::Sus4, Modifiers::Add4)),
         Character(s) if s == "4" => Some((ModButton::MinorMajor, Modifiers::SwitchMinorMajor)),
         Character(s) if s == "." => Some((ModButton::No3, Modifiers::No3)),
         Character(s) if s == "1" => Some((ModButton::ChangeKey, Modifiers::ChangeKey)),
@@ -575,7 +621,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             modifier_stage.insert(Modifiers::AddMinor7);
                         }
                         if mod_keys_down.contains(&ModButton::Sus4) {
-                            modifier_stage.insert(Modifiers::AddSus4);
+                            modifier_stage.insert(Modifiers::Add4);
                         }
                         if mod_keys_down.contains(&ModButton::MinorMajor) {
                             modifier_stage.insert(Modifiers::SwitchMinorMajor);
@@ -607,7 +653,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     nc.mask.remove(UnrootedNote(3));
                                     nc.mask.insert(UnrootedNote(4));
                                 }
-                                if modifier_stage.contains(Modifiers::AddSus4) {
+                                if modifier_stage.contains(Modifiers::Add4) {
                                     // Remove major/minor third (bits 3 and 4) and add perfect 4th (bit 5)
                                     nc.mask.remove(UnrootedNote(3));
                                     nc.mask.remove(UnrootedNote(4));
@@ -768,7 +814,7 @@ fn decide_chord_base(
     chord_keys_down: &HashSet<ChordButton>,
 ) -> Option<Chord> {
     if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
-        return Some(build_with(ROOT_I, &[0, 2, 4, 5, 7, 9, 11]));
+        return Some(Chord::new(ROOT_I, Modifiers::MajorTri | Modifiers::AddMajor2 | Modifiers::Add4 | Modifiers::AddMajor6 | Modifiers::AddMajor7))
     }
 
     const CHORD_BUILDERS: [(ChordButton, UnkeyedNote, fn(UnkeyedNote) -> Chord); 8] = [
