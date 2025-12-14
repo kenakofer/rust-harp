@@ -181,6 +181,45 @@ enum ModButton {
     No3,
 }
 
+struct ModButtonTableEntry {
+    button: ModButton,
+    key_check: fn(&winit::keyboard::Key) -> bool,
+    modifiers: Modifiers,
+}
+
+const MOD_BUTTON_TABLE: [ModButtonTableEntry; 6] = [
+    ModButtonTableEntry {
+        button: ModButton::Major2,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "5"),
+        modifiers: Modifiers::AddMajor2,
+    },
+    ModButtonTableEntry {
+        button: ModButton::Major7,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "b"),
+        modifiers: Modifiers::AddMajor7,
+    },
+    ModButtonTableEntry {
+        button: ModButton::Minor7,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "6"),
+        modifiers: Modifiers::AddMinor7,
+    },
+    ModButtonTableEntry {
+        button: ModButton::Sus4,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "3"),
+        modifiers: Modifiers::Sus4,
+    },
+    ModButtonTableEntry {
+        button: ModButton::MinorMajor,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "4"),
+        modifiers: Modifiers::SwitchMinorMajor,
+    },
+    ModButtonTableEntry {
+        button: ModButton::No3,
+        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "."),
+        modifiers: Modifiers::No3,
+    },
+];
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 enum ActionButton {
     ChangeKey,
@@ -425,7 +464,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if !modifier_stage.is_empty() {
                             if let Some(nc) = new_chord.as_mut() {
                                 nc.set_mods_now(modifier_stage);
-                                if modifier_stage.contains(Modifiers::ChangeKey) {
+                                if action_stage.contains(Actions::ChangeKey) {
                                     transpose = Transpose(nc.get_root().as_i16()).center_octave()
                                 }
                                 if action_stage.contains(Actions::Pulse) {

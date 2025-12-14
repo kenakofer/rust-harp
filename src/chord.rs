@@ -14,11 +14,11 @@ bitflags! {
         const AddMajor7 = 1 << 6;
         const Minor3ToMajor = 1 << 7;
         const RestorePerfect5 = 1 << 8;
-        const Add4 = 1 << 9;
         const SwitchMinorMajor = 1 << 10;
+        const Add4 = 1 << 9;
         const No3 = 1 << 11;
-        const ChangeKey = 1 << 12;
-        const Pulse = 1 << 13;
+
+        const Sus4 = Modifiers::Add4.bits() | Modifiers::No3.bits();
     }
 }
 
