@@ -27,6 +27,7 @@ mod notes;
 use chord::{Chord, ChordExt, Modifiers};
 use notes::{MidiNote, Transpose, UnbottomedNote, UnkeyedNote};
 
+use bitflags::bitflags;
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
@@ -134,8 +135,20 @@ enum ModButton {
     Sus4,
     MinorMajor,
     No3,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+enum ActionButton {
     ChangeKey,
     Pulse,
+}
+
+bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct Actions: u16 {
+        const Pulse = 1 << 0;
+        const ChangeKey = 1 << 1;
+    }
 }
 
 fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
@@ -159,8 +172,6 @@ fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
 
 fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> {
     use winit::keyboard::Key::Character;
-    use winit::keyboard::Key::Named;
-    use winit::keyboard::NamedKey::Tab;
 
     match key {
         Character(s) if s == "5" => Some((ModButton::Major2, Modifiers::AddMajor2)),
@@ -169,8 +180,18 @@ fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> 
         Character(s) if s == "3" => Some((ModButton::Sus4, Modifiers::Add4 | Modifiers::No3)),
         Character(s) if s == "4" => Some((ModButton::MinorMajor, Modifiers::SwitchMinorMajor)),
         Character(s) if s == "." => Some((ModButton::No3, Modifiers::No3)),
-        Character(s) if s == "1" => Some((ModButton::ChangeKey, Modifiers::ChangeKey)),
-        Named(Tab) => Some((ModButton::Pulse, Modifiers::Pulse)),
+        _ => None,
+    }
+}
+
+fn action_button_for(key: &winit::keyboard::Key) -> Option<(ActionButton, Actions)> {
+    use winit::keyboard::Key::Character;
+    use winit::keyboard::Key::Named;
+    use winit::keyboard::NamedKey::Tab;
+
+    match key {
+        Character(s) if s == "1" => Some((ActionButton::ChangeKey, Actions::ChangeKey)),
+        Named(Tab) => Some((ActionButton::Pulse, Actions::Pulse)),
         _ => None,
     }
 }
@@ -241,8 +262,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Key tracking using named buttons
     let mut chord_keys_down: HashSet<ChordButton> = HashSet::new();
     let mut mod_keys_down: HashSet<ModButton> = HashSet::new();
+    let mut action_keys_down: HashSet<ActionButton> = HashSet::new();
     // Modifier: modifiers queued and applied on next chord key press
     let mut modifier_stage = Modifiers::empty();
+    let mut action_stage = Actions::empty();
     // Transpose in semitones (0-11) applied to played notes
     let mut transpose: Transpose = Transpose(0);
     // We move conn_out into the event loop
@@ -282,6 +305,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 if !mod_keys_down.contains(&button) {
                                     mod_keys_down.insert(button);
                                     modifier_stage.insert(modifier);
+                                }
+                            } else if let Some((button, action)) =
+                                action_button_for(&event.logical_key)
+                            {
+                                if !action_keys_down.contains(&button) {
+                                    action_keys_down.insert(button);
+                                    action_stage.insert(action);
                                 }
                             }
                         } else {
@@ -349,11 +379,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                         if mod_keys_down.contains(&ModButton::Major7) {
                             modifier_stage.insert(Modifiers::AddMajor7);
                         }
-                        if mod_keys_down.contains(&ModButton::ChangeKey) {
-                            modifier_stage.insert(Modifiers::ChangeKey);
+                        if action_keys_down.contains(&ActionButton::ChangeKey) {
+                            action_stage.insert(Actions::ChangeKey);
                         }
-                        if mod_keys_down.contains(&ModButton::Pulse) {
-                            modifier_stage.insert(Modifiers::Pulse);
+                        if action_keys_down.contains(&ActionButton::Pulse) {
+                            action_stage.insert(Actions::Pulse);
                         }
 
                         // If there are modifiers queued and a chord key is down, apply them now to
@@ -364,7 +394,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 if modifier_stage.contains(Modifiers::ChangeKey) {
                                     transpose = Transpose(nc.get_root().as_i16()).center_octave()
                                 }
-                                if modifier_stage.contains(Modifiers::Pulse) {
+                                if action_stage.contains(Actions::Pulse) {
                                     // Play the low root of the new chord
                                     play_note(
                                         &mut midi_connection,
