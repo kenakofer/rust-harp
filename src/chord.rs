@@ -42,7 +42,6 @@ impl Chord {
         (Modifiers::MajorTri, |m| *m = PitchClassSet::MAJOR_TRI),
         (Modifiers::MinorTri, |m| *m = PitchClassSet::MINOR_TRI),
         (Modifiers::DiminTri, |m| *m = PitchClassSet::DIMIN_TRI),
-
         // Constructive modifiers
         (Modifiers::AddMajor2, |m| m.insert(UnrootedNote(2))),
         (Modifiers::AddMajor6, |m| m.insert(UnrootedNote(9))),
@@ -59,14 +58,17 @@ impl Chord {
         }),
         (Modifiers::Add4, |m| m.insert(UnrootedNote(5))),
         (Modifiers::SwitchMinorMajor, |m| {
-            if m.contains(UnrootedNote(4)) { //Previously Major -> Minor
+            if m.contains(UnrootedNote(4)) {
+                //Previously Major -> Minor
                 m.remove(UnrootedNote(4));
                 m.insert(UnrootedNote(3));
-            } else if m.contains(UnrootedNote(6)) { //Previously Diminished -> Major
+            } else if m.contains(UnrootedNote(6)) {
+                //Previously Diminished -> Major
                 m.remove(UnrootedNote(6));
                 m.remove(UnrootedNote(3));
                 m.insert(UnrootedNote(4));
-            } else { //Probably previously Minor -> Major
+            } else {
+                //Probably previously Minor -> Major
                 m.remove(UnrootedNote(3));
                 m.insert(UnrootedNote(4));
             }
@@ -110,7 +112,7 @@ impl Chord {
     }
 
     // Crucial to call this immediately after every change to self.mods
-    fn get_mask(&self) -> PitchClassSet{
+    fn get_mask(&self) -> PitchClassSet {
         let mut mask = PitchClassSet::ROOT_ONLY;
         for (modifier, func) in Self::ORDERED_MOD_APPLICATIONS {
             if self.mods.contains(modifier) {

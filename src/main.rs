@@ -131,7 +131,12 @@ const CHORD_BUTTON_TABLE: [ChordButtonTableEntry; 9] = [
     ChordButtonTableEntry {
         root: ROOT_I,
         button: ChordButton::HeptatonicMajor,
-        key_check: |k| matches!(k, winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control)),
+        key_check: |k| {
+            matches!(
+                k,
+                winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control)
+            )
+        },
     },
 ];
 
@@ -267,9 +272,7 @@ pub enum KeyEvent {
     },
 }
 
-fn key_event_from_winit(
-    event: &winit::event::KeyEvent,
-) -> Option<KeyEvent> {
+fn key_event_from_winit(event: &winit::event::KeyEvent) -> Option<KeyEvent> {
     let state = match event.state {
         winit::event::ElementState::Pressed => KeyState::Pressed,
         winit::event::ElementState::Released => KeyState::Released,
@@ -337,59 +340,51 @@ impl AppState {
         }
     }
 
-
-
     pub fn handle_key_event(&mut self, event: KeyEvent) -> AppEffects {
         let mut effects = AppEffects::default();
         let mut chord_was_pressed = false;
 
         match event {
-            KeyEvent::Chord { state, button } => {
-                match state {
-                    KeyState::Pressed => {
-                        if self.chord_keys_down.insert(button) {
-                            chord_was_pressed = true;
-                        }
-                    }
-                    KeyState::Released => {
-                        self.chord_keys_down.remove(&button);
+            KeyEvent::Chord { state, button } => match state {
+                KeyState::Pressed => {
+                    if self.chord_keys_down.insert(button) {
+                        chord_was_pressed = true;
                     }
                 }
-            }
+                KeyState::Released => {
+                    self.chord_keys_down.remove(&button);
+                }
+            },
 
             KeyEvent::Modifier {
                 state,
                 button,
                 modifiers,
-            } => {
-                match state {
-                    KeyState::Pressed => {
-                        if self.mod_keys_down.insert(button) {
-                            self.modifier_stage.insert(modifiers);
-                        }
-                    }
-                    KeyState::Released => {
-                        self.mod_keys_down.remove(&button);
+            } => match state {
+                KeyState::Pressed => {
+                    if self.mod_keys_down.insert(button) {
+                        self.modifier_stage.insert(modifiers);
                     }
                 }
-            }
+                KeyState::Released => {
+                    self.mod_keys_down.remove(&button);
+                }
+            },
 
             KeyEvent::Action {
                 state,
                 button,
                 action,
-            } => {
-                match state {
-                    KeyState::Pressed => {
-                        if self.action_keys_down.insert(button) {
-                            self.action_stage.insert(action);
-                        }
-                    }
-                    KeyState::Released => {
-                        self.action_keys_down.remove(&button);
+            } => match state {
+                KeyState::Pressed => {
+                    if self.action_keys_down.insert(button) {
+                        self.action_stage.insert(action);
                     }
                 }
-            }
+                KeyState::Released => {
+                    self.action_keys_down.remove(&button);
+                }
+            },
         }
 
         if self.chord_keys_down.is_empty() {
@@ -416,8 +411,7 @@ impl AppState {
             }
 
             if self.action_stage.contains(Actions::ChangeKey) {
-                self.transpose =
-                    Transpose(chord.get_root().as_i16()).center_octave();
+                self.transpose = Transpose(chord.get_root().as_i16()).center_octave();
                 effects.change_key = Some(self.transpose);
             }
         }
@@ -434,7 +428,7 @@ impl AppState {
     }
 }
 
-fn detect_implied_minor7_root(chord_keys_down: &HashSet<ChordButton>,) -> Option<UnkeyedNote> {
+fn detect_implied_minor7_root(chord_keys_down: &HashSet<ChordButton>) -> Option<UnkeyedNote> {
     use ChordButton::*;
 
     let pairs = [
@@ -448,9 +442,7 @@ fn detect_implied_minor7_root(chord_keys_down: &HashSet<ChordButton>,) -> Option
     ];
 
     for (a, b) in pairs {
-        if chord_keys_down.contains(&a)
-            && chord_keys_down.contains(&b)
-        {
+        if chord_keys_down.contains(&a) && chord_keys_down.contains(&b) {
             //Set the root
             return chord_root_for(a);
         }
@@ -550,15 +542,13 @@ fn main() -> Result<(), Box<dyn Error>> {
                             if let Some(chord) = app_state.active_chord.as_ref() {
                                 let notes_to_stop: Vec<MidiNote> = (0..128)
                                     .map(|i| MidiNote(i))
-                                    .filter(|mn| !chord.contains(*mn - LOWEST_NOTE - app_state.transpose))
+                                    .filter(|mn| {
+                                        !chord.contains(*mn - LOWEST_NOTE - app_state.transpose)
+                                    })
                                     .filter(|mn| active_notes.contains(mn))
                                     .collect();
                                 for mn in notes_to_stop {
-                                    stop_note(
-                                        &mut midi_connection,
-                                        mn,
-                                        &mut active_notes
-                                    )
+                                    stop_note(&mut midi_connection, mn, &mut active_notes)
                                 }
                             }
                         }
@@ -654,11 +644,7 @@ fn decide_chord_base(
 
     // Check/apply double-held-chord sevenths
     if let Some(root) = detect_implied_minor7_root(chord_keys_down) {
-        return Some(Chord::new(
-            root,
-            Modifiers::MajorTri
-                | Modifiers::AddMinor7,
-        ));
+        return Some(Chord::new(root, Modifiers::MajorTri | Modifiers::AddMinor7));
     }
 
     for entry in CHORD_BUTTON_TABLE.iter() {
