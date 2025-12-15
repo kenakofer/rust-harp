@@ -28,60 +28,60 @@ pub struct Chord {
     //name: &'static str,
     root: UnkeyedNote,
     mods: Modifiers,
-    mask: PitchClassSet, // bits 0..11
 }
 
-type ModifierFn = fn(&mut Chord);
+type ModifierFn = fn(&mut PitchClassSet);
 impl Chord {
     // Set of the major chord roots
     const MAJOR_ROOTS: [i16; 3] = [0, 5, 7];
     const MINOR_ROOTS: [i16; 3] = [2, 4, 9];
     const DIMIN_ROOTS: [i16; 1] = [11];
 
-    const MOD_APPLICATIONS: [(Modifiers, ModifierFn); 12] = [
-        (Modifiers::MajorTri, |c| c.mask = PitchClassSet::MAJOR_TRI),
-        (Modifiers::MinorTri, |c| c.mask = PitchClassSet::MINOR_TRI),
-        (Modifiers::DiminTri, |c| c.mask = PitchClassSet::DIMIN_TRI),
-        (Modifiers::AddMajor2, |c| c.mask.insert(UnrootedNote(2))),
-        (Modifiers::AddMajor6, |c| c.mask.insert(UnrootedNote(9))),
-        (Modifiers::AddMinor7, |c| c.mask.insert(UnrootedNote(10))),
-        (Modifiers::AddMajor7, |c| c.mask.insert(UnrootedNote(11))),
-        (Modifiers::Minor3ToMajor, |c| {
-            c.mask.remove(UnrootedNote(3));
-            c.mask.insert(UnrootedNote(4))
+    const ORDERED_MOD_APPLICATIONS: [(Modifiers, ModifierFn); 12] = [
+        // Destructive, initializer modifiers, should be first
+        (Modifiers::MajorTri, |m| *m = PitchClassSet::MAJOR_TRI),
+        (Modifiers::MinorTri, |m| *m = PitchClassSet::MINOR_TRI),
+        (Modifiers::DiminTri, |m| *m = PitchClassSet::DIMIN_TRI),
+
+        // Constructive modifiers
+        (Modifiers::AddMajor2, |m| m.insert(UnrootedNote(2))),
+        (Modifiers::AddMajor6, |m| m.insert(UnrootedNote(9))),
+        (Modifiers::AddMinor7, |m| m.insert(UnrootedNote(10))),
+        (Modifiers::AddMajor7, |m| m.insert(UnrootedNote(11))),
+        (Modifiers::Minor3ToMajor, |m| {
+            m.remove(UnrootedNote(3));
+            m.insert(UnrootedNote(4))
         }),
-        (Modifiers::RestorePerfect5, |c| {
-            c.mask.remove(UnrootedNote(6));
-            c.mask.remove(UnrootedNote(8));
-            c.mask.insert(UnrootedNote(7))
+        (Modifiers::RestorePerfect5, |m| {
+            m.remove(UnrootedNote(6));
+            m.remove(UnrootedNote(8));
+            m.insert(UnrootedNote(7))
         }),
-        (Modifiers::Add4, |c| c.mask.insert(UnrootedNote(5))),
-        (Modifiers::SwitchMinorMajor, |c| {
-            if Chord::MINOR_ROOTS.contains(&c.root.wrap_to_octave()) {
-                c.mask.remove(UnrootedNote(3));
-                c.mask.insert(UnrootedNote(4));
-            } else if Chord::DIMIN_ROOTS.contains(&c.root.wrap_to_octave()) {
-                c.mask.remove(UnrootedNote(3));
-                c.mask.insert(UnrootedNote(4));
-            } else {
-                c.mask.remove(UnrootedNote(4));
-                c.mask.insert(UnrootedNote(3));
+        (Modifiers::Add4, |m| m.insert(UnrootedNote(5))),
+        (Modifiers::SwitchMinorMajor, |m| {
+            if m.contains(UnrootedNote(4)) { //Previously Major -> Minor
+                m.remove(UnrootedNote(4));
+                m.insert(UnrootedNote(3));
+            } else if m.contains(UnrootedNote(6)) { //Previously Diminished -> Major
+                m.remove(UnrootedNote(6));
+                m.remove(UnrootedNote(3));
+                m.insert(UnrootedNote(4));
+            } else { //Probably previously Minor -> Major
+                m.remove(UnrootedNote(3));
+                m.insert(UnrootedNote(4));
             }
         }),
-        (Modifiers::No3, |c| {
-            c.mask.remove(UnrootedNote(3));
-            c.mask.remove(UnrootedNote(4));
+        (Modifiers::No3, |m| {
+            m.remove(UnrootedNote(3));
+            m.remove(UnrootedNote(4));
         }),
     ];
 
     pub fn new(rt: UnkeyedNote, mods: Modifiers) -> Self {
-        let mut c = Self {
+        Self {
             root: rt,
-            mask: PitchClassSet::ROOT_ONLY,
             mods: mods,
-        };
-        c.regen_mask();
-        c
+        }
     }
     pub fn new_triad(rt: UnkeyedNote) -> Self {
         let mods = match rt.wrap_to_octave() {
@@ -99,12 +99,10 @@ impl Chord {
 
     pub fn add_mods_now(&mut self, mods: Modifiers) {
         self.mods |= mods;
-        self.regen_mask()
     }
 
-    pub fn set_mods_now(&mut self, mods: Modifiers) {
+    pub fn _set_mods_now(&mut self, mods: Modifiers) {
         self.mods = mods;
-        self.regen_mask()
     }
 
     pub fn get_note_above_root(&self, note: UnkeyedNote) -> UnrootedNote {
@@ -112,12 +110,14 @@ impl Chord {
     }
 
     // Crucial to call this immediately after every change to self.mods
-    fn regen_mask(&mut self) {
-        for (modifier, func) in Self::MOD_APPLICATIONS {
+    fn get_mask(&self) -> PitchClassSet{
+        let mut mask = PitchClassSet::ROOT_ONLY;
+        for (modifier, func) in Self::ORDERED_MOD_APPLICATIONS {
             if self.mods.contains(modifier) {
-                func(self);
+                func(&mut mask);
             }
         }
+        mask
     }
 }
 
@@ -141,7 +141,7 @@ impl ChordExt for Option<Chord> {
 impl ChordExt for Chord {
     fn contains(&self, note: UnkeyedNote) -> bool {
         let rel = self.get_note_above_root(note);
-        self.mask.contains(rel)
+        self.get_mask().contains(rel)
     }
 
     fn has_root(&self, note: UnkeyedNote) -> bool {
