@@ -296,8 +296,8 @@ fn key_event_from_winit(
 
 #[derive(Default)]
 pub struct AppEffects {
-    pub play_notes: Vec<(UnbottomedNote, u8)>,
-    pub stop_notes: Vec<MidiNote>,
+    // pub play_notes: Vec<(UnbottomedNote, u8)>,
+    // pub stop_notes: Vec<MidiNote>,
     pub redraw: bool,
     pub change_key: Option<Transpose>,
 }
@@ -414,7 +414,11 @@ impl AppState {
             return effects;
         }
 
-        let old_chord = self.active_chord.clone();
+        let old_chord = if chord_was_pressed {
+            None
+        } else {
+            self.active_chord
+        };
         let mut new_chord = decide_chord_base(old_chord.as_ref(), &self.chord_keys_down);
 
         // Check/apply double-held-chord sevenths
