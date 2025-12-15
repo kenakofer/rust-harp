@@ -119,32 +119,13 @@ impl Chord {
         }
         mask
     }
-}
 
-pub trait ChordExt {
-    fn contains(&self, note: UnkeyedNote) -> bool;
-    fn has_root(&self, note: UnkeyedNote) -> bool;
-}
-
-impl ChordExt for Option<Chord> {
-    fn contains(&self, note: UnkeyedNote) -> bool {
-        match self {
-            Some(chord) => chord.contains(note),
-            None => true,
-        }
-    }
-
-    fn has_root(&self, note: UnkeyedNote) -> bool {
-        self.as_ref().is_some_and(|chord| chord.has_root(note))
-    }
-}
-impl ChordExt for Chord {
-    fn contains(&self, note: UnkeyedNote) -> bool {
+    pub fn contains(&self, note: UnkeyedNote) -> bool {
         let rel = self.get_note_above_root(note);
         self.get_mask().contains(rel)
     }
 
-    fn has_root(&self, note: UnkeyedNote) -> bool {
+    pub fn has_root(&self, note: UnkeyedNote) -> bool {
         note.wrap_to_octave() == self.root.wrap_to_octave()
     }
 }

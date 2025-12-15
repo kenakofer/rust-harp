@@ -1,7 +1,7 @@
 mod chord;
 mod notes;
 
-use chord::{Chord, ChordExt, Modifiers};
+use chord::{Chord, Modifiers};
 use notes::{MidiNote, Transpose, UnbottomedNote, UnkeyedNote};
 
 use bitflags::bitflags;
@@ -460,7 +460,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let notes_to_stop: Vec<MidiNote> = active_notes
                                 .iter()
                                 .filter(|&&note| {
-                                    !new_chord.contains(note - LOWEST_NOTE - transpose)
+                                    new_chord.map_or(false, |c| !c.contains(note - LOWEST_NOTE - transpose))
                                 })
                                 .cloned()
                                 .collect();
@@ -653,7 +653,7 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            if active_chord.contains(uknote) {
+            if active_chord.map_or(true, |c| c.contains(uknote)) {
                 let vel = VELOCITY as u8;
                 play_note(conn, ubnote, active_notes, vel);
                 played_note_at_pos = true;
@@ -742,13 +742,13 @@ fn draw_strings(
 
     for i in 0..positions.len() {
         let uknote = UnkeyedNote(i as i16);
-        if active_chord.contains(uknote) {
+        if active_chord.map_or(true, |c| c.contains(uknote)) {
             let x = positions[i].round() as u32;
             if x >= width {
                 continue;
             }
 
-            let color = if active_chord.has_root(uknote) {
+            let color = if active_chord.map_or(false, |c| c.has_root(uknote)) {
                 0xFF0000 // Red for root
             } else {
                 0xFFFFFF // White for other active notes
