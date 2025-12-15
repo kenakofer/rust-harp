@@ -1,10 +1,11 @@
 mod chord;
 mod notes;
+mod app_state;
 
 use chord::{Chord, Modifiers};
 use notes::{MidiNote, Transpose, UnbottomedNote, UnkeyedNote};
+use app_state::{AppState, ChordButton, ModButton, ActionButton, Actions, KeyEvent, KeyState, LOWEST_NOTE};
 
-use bitflags::bitflags;
 use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
@@ -19,7 +20,6 @@ use winit::{
 };
 
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
-const LOWEST_NOTE: Transpose = Transpose(36); // Do in the active key
 const VELOCITY: u8 = 70;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
@@ -72,64 +72,46 @@ const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
 
 const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
 
-const ROOT_VIIB: UnkeyedNote = UnkeyedNote(10);
-const ROOT_IV: UnkeyedNote = UnkeyedNote(5);
-const ROOT_I: UnkeyedNote = UnkeyedNote(0);
-const ROOT_V: UnkeyedNote = UnkeyedNote(7);
-const ROOT_II: UnkeyedNote = UnkeyedNote(2);
-const ROOT_VI: UnkeyedNote = UnkeyedNote(9);
-const ROOT_III: UnkeyedNote = UnkeyedNote(4);
-const ROOT_VII: UnkeyedNote = UnkeyedNote(11);
 
 struct ChordButtonTableEntry {
-    root: UnkeyedNote,
     button: ChordButton,
     key_check: fn(&winit::keyboard::Key) -> bool,
 }
 
 const CHORD_BUTTON_TABLE: [ChordButtonTableEntry; 9] = [
     ChordButtonTableEntry {
-        root: ROOT_VIIB,
         button: ChordButton::VIIB,
         key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "a"),
     },
     ChordButtonTableEntry {
-        root: ROOT_IV,
         button: ChordButton::IV,
         key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "s"),
     },
     ChordButtonTableEntry {
-        root: ROOT_I,
         button: ChordButton::I,
         key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "d"),
     },
     ChordButtonTableEntry {
-        root: ROOT_V,
         button: ChordButton::V,
         key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "f"),
     },
     ChordButtonTableEntry {
-        root: ROOT_II,
         button: ChordButton::II,
         key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "z"),
     },
     ChordButtonTableEntry {
-        root: ROOT_VI,
         button: ChordButton::VI,
         key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "x"),
     },
     ChordButtonTableEntry {
-        root: ROOT_III,
         button: ChordButton::III,
         key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "c"),
     },
     ChordButtonTableEntry {
-        root: ROOT_VII,
         button: ChordButton::VII,
         key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "v"),
     },
     ChordButtonTableEntry {
-        root: ROOT_I,
         button: ChordButton::HeptatonicMajor,
         key_check: |k| {
             matches!(
@@ -140,28 +122,6 @@ const CHORD_BUTTON_TABLE: [ChordButtonTableEntry; 9] = [
     },
 ];
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ChordButton {
-    VIIB,
-    IV,
-    I,
-    V,
-    II,
-    VI,
-    III,
-    VII,
-    HeptatonicMajor,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ModButton {
-    Major2,
-    Minor7,
-    Major7,
-    Sus4,
-    MinorMajor,
-    No3,
-}
 
 struct ModButtonTableEntry {
     button: ModButton,
@@ -202,33 +162,12 @@ const MOD_BUTTON_TABLE: [ModButtonTableEntry; 6] = [
     },
 ];
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ActionButton {
-    ChangeKey,
-    Pulse,
-}
-
-bitflags! {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct Actions: u16 {
-        const Pulse = 1 << 0;
-        const ChangeKey = 1 << 1;
-    }
-}
-
 fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
     CHORD_BUTTON_TABLE
         .iter()
         .find(|e| (e.key_check)(key))
         .map(|e| e.button)
 }
-fn chord_root_for(button: ChordButton) -> Option<UnkeyedNote> {
-    CHORD_BUTTON_TABLE
-        .iter()
-        .find(|e| e.button == button)
-        .map(|e| e.root)
-}
-
 fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> {
     MOD_BUTTON_TABLE
         .iter()
@@ -248,29 +187,6 @@ fn action_button_for(key: &winit::keyboard::Key) -> Option<(ActionButton, Action
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyState {
-    Pressed,
-    Released,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyEvent {
-    Chord {
-        state: KeyState,
-        button: ChordButton,
-    },
-    Modifier {
-        state: KeyState,
-        button: ModButton,
-        modifiers: Modifiers,
-    },
-    Action {
-        state: KeyState,
-        button: ActionButton,
-        action: Actions,
-    },
-}
 
 fn key_event_from_winit(event: &winit::event::KeyEvent) -> Option<KeyEvent> {
     let state = match event.state {
@@ -300,153 +216,6 @@ fn key_event_from_winit(event: &winit::event::KeyEvent) -> Option<KeyEvent> {
         });
     }
 
-    None
-}
-
-#[derive(Default)]
-pub struct AppEffects {
-    // pub play_notes: Vec<(UnbottomedNote, u8)>,
-    // pub stop_notes: Vec<MidiNote>,
-    pub redraw: bool,
-    pub change_key: Option<Transpose>,
-}
-
-pub struct AppState {
-    active_chord: Option<Chord>,
-
-    chord_keys_down: HashSet<ChordButton>,
-    mod_keys_down: HashSet<ModButton>,
-    action_keys_down: HashSet<ActionButton>,
-
-    modifier_stage: Modifiers,
-    action_stage: Actions,
-
-    transpose: Transpose,
-}
-
-impl AppState {
-    pub fn new() -> Self {
-        Self {
-            active_chord: Some(Chord::new_triad(ROOT_I)),
-
-            chord_keys_down: HashSet::new(),
-            mod_keys_down: HashSet::new(),
-            action_keys_down: HashSet::new(),
-
-            modifier_stage: Modifiers::empty(),
-            action_stage: Actions::empty(),
-
-            transpose: Transpose(0),
-        }
-    }
-
-    pub fn handle_key_event(&mut self, event: KeyEvent) -> AppEffects {
-        let mut effects = AppEffects::default();
-        let mut chord_was_pressed = false;
-
-        match event {
-            KeyEvent::Chord { state, button } => match state {
-                KeyState::Pressed => {
-                    if self.chord_keys_down.insert(button) {
-                        chord_was_pressed = true;
-                    }
-                }
-                KeyState::Released => {
-                    self.chord_keys_down.remove(&button);
-                }
-            },
-
-            KeyEvent::Modifier {
-                state,
-                button,
-                modifiers,
-            } => match state {
-                KeyState::Pressed => {
-                    if self.mod_keys_down.insert(button) {
-                        self.modifier_stage.insert(modifiers);
-                    }
-                }
-                KeyState::Released => {
-                    self.mod_keys_down.remove(&button);
-                }
-            },
-
-            KeyEvent::Action {
-                state,
-                button,
-                action,
-            } => match state {
-                KeyState::Pressed => {
-                    if self.action_keys_down.insert(button) {
-                        self.action_stage.insert(action);
-                    }
-                }
-                KeyState::Released => {
-                    self.action_keys_down.remove(&button);
-                }
-            },
-        }
-
-        if self.chord_keys_down.is_empty() {
-            return effects;
-        }
-
-        let venerated_old_chord = if chord_was_pressed {
-            None
-        } else {
-            self.active_chord
-        };
-        let mut new_chord = decide_chord_base(venerated_old_chord.as_ref(), &self.chord_keys_down);
-
-        // Apply held modifiers
-        for entry in MOD_BUTTON_TABLE.iter() {
-            if self.mod_keys_down.contains(&entry.button) {
-                self.modifier_stage.insert(entry.modifiers);
-            }
-        }
-
-        if let Some(ref mut chord) = new_chord {
-            if !self.modifier_stage.is_empty() {
-                chord.add_mods_now(self.modifier_stage);
-            }
-
-            if self.action_stage.contains(Actions::ChangeKey) {
-                self.transpose = Transpose(chord.get_root().as_i16()).center_octave();
-                effects.change_key = Some(self.transpose);
-            }
-        }
-
-        self.modifier_stage = Modifiers::empty();
-        self.action_stage = Actions::empty();
-
-        if venerated_old_chord != new_chord {
-            effects.redraw = true;
-            self.active_chord = new_chord;
-        }
-
-        effects
-    }
-}
-
-fn detect_implied_minor7_root(chord_keys_down: &HashSet<ChordButton>) -> Option<UnkeyedNote> {
-    use ChordButton::*;
-
-    let pairs = [
-        (VI, II),
-        (III, VI),
-        (VII, III),
-        (I, IV),
-        (IV, VIIB),
-        (V, I),
-        (II, V),
-    ];
-
-    for (a, b) in pairs {
-        if chord_keys_down.contains(&a) && chord_keys_down.contains(&b) {
-            //Set the root
-            return chord_root_for(a);
-        }
-    }
     None
 }
 
@@ -624,46 +393,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     })?;
 
     Ok(())
-}
-
-// Decide chord from current chord_keys_down and previous chord state.
-fn decide_chord_base(
-    venerated_old_chord: Option<&Chord>,
-    chord_keys_down: &HashSet<ChordButton>,
-) -> Option<Chord> {
-    if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
-        return Some(Chord::new(
-            ROOT_I,
-            Modifiers::MajorTri
-                | Modifiers::AddMajor2
-                | Modifiers::Add4
-                | Modifiers::AddMajor6
-                | Modifiers::AddMajor7,
-        ));
-    }
-
-    // Check/apply double-held-chord sevenths
-    if let Some(root) = detect_implied_minor7_root(chord_keys_down) {
-        return Some(Chord::new(root, Modifiers::MajorTri | Modifiers::AddMinor7));
-    }
-
-    for entry in CHORD_BUTTON_TABLE.iter() {
-        if chord_keys_down.contains(&entry.button) {
-            if let Some(old) = venerated_old_chord {
-                if old.get_root() == entry.root {
-                    return venerated_old_chord.copied();
-                }
-            }
-            return Some(Chord::new_triad(entry.root));
-        }
-    }
-
-    // No keys down: preserve chord if we just went from 1 -> 0
-    if let Some(_) = venerated_old_chord {
-        return venerated_old_chord.copied();
-    }
-
-    None
 }
 
 fn _compute_string_positions(width: f32) -> Vec<f32> {
