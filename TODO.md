@@ -7,3 +7,7 @@
   - Pulse in wonky in other keys
   - Explore additive chords (I + vi = vi7, I + iii = Imaj7)
   - Currently the top note is Ti when the bottom is Do. Can we fit one more?
+  - NUM_STRINGS is really not that useful, but its used everywhere, even where we should use NUM_NOTES instead. How to find NUM_NOTES?
+  - LOWEST_NOTE is not I think the LOWEST_NOTE. Better name, or better concept?
+  - chord not cleaing on fresh press
+  - wrong sevens on two press

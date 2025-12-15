@@ -136,7 +136,7 @@ const CHORD_BUTTON_TABLE: [ChordButtonTableEntry; 9] = [
 ];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-enum ChordButton {
+pub enum ChordButton {
     VIIB,
     IV,
     I,
@@ -149,7 +149,7 @@ enum ChordButton {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-enum ModButton {
+pub enum ModButton {
     Major2,
     Minor7,
     Major7,
@@ -198,7 +198,7 @@ const MOD_BUTTON_TABLE: [ModButtonTableEntry; 6] = [
 ];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-enum ActionButton {
+pub enum ActionButton {
     ChangeKey,
     Pulse,
 }
@@ -234,6 +234,222 @@ fn action_button_for(key: &winit::keyboard::Key) -> Option<(ActionButton, Action
         Character(s) if s == "1" => Some((ActionButton::ChangeKey, Actions::ChangeKey)),
         Named(Tab) => Some((ActionButton::Pulse, Actions::Pulse)),
         _ => None,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyState {
+    Pressed,
+    Released,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyEvent {
+    Chord {
+        state: KeyState,
+        button: ChordButton,
+    },
+    Modifier {
+        state: KeyState,
+        button: ModButton,
+        modifiers: Modifiers,
+    },
+    Action {
+        state: KeyState,
+        button: ActionButton,
+        action: Actions,
+    },
+}
+
+fn key_event_from_winit(
+    event: &winit::event::KeyEvent,
+) -> Option<KeyEvent> {
+    let state = match event.state {
+        winit::event::ElementState::Pressed => KeyState::Pressed,
+        winit::event::ElementState::Released => KeyState::Released,
+    };
+
+    let key = &event.logical_key;
+
+    if let Some(button) = chord_button_for(key) {
+        return Some(KeyEvent::Chord { state, button });
+    }
+
+    if let Some((button, modifiers)) = mod_button_for(key) {
+        return Some(KeyEvent::Modifier {
+            state,
+            button,
+            modifiers,
+        });
+    }
+
+    if let Some((button, action)) = action_button_for(key) {
+        return Some(KeyEvent::Action {
+            state,
+            button,
+            action,
+        });
+    }
+
+    None
+}
+
+#[derive(Default)]
+pub struct AppEffects {
+    pub play_notes: Vec<(UnbottomedNote, u8)>,
+    pub stop_notes: Vec<MidiNote>,
+    pub redraw: bool,
+    pub change_key: Option<Transpose>,
+}
+
+pub struct AppState {
+    active_chord: Option<Chord>,
+
+    chord_keys_down: HashSet<ChordButton>,
+    mod_keys_down: HashSet<ModButton>,
+    action_keys_down: HashSet<ActionButton>,
+
+    modifier_stage: Modifiers,
+    action_stage: Actions,
+
+    transpose: Transpose,
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        Self {
+            active_chord: Some(Chord::new_triad(ROOT_I)),
+
+            chord_keys_down: HashSet::new(),
+            mod_keys_down: HashSet::new(),
+            action_keys_down: HashSet::new(),
+
+            modifier_stage: Modifiers::empty(),
+            action_stage: Actions::empty(),
+
+            transpose: Transpose(0),
+        }
+    }
+
+    fn detect_implied_minor7(&mut self) {
+        use ChordButton::*;
+
+        let pairs = [
+            (VI, II),
+            (III, VI),
+            (VII, III),
+            (IV, I),
+            (IV, VIIB),
+            (I, V),
+            (V, II),
+        ];
+
+        for (a, b) in pairs {
+            if self.chord_keys_down.contains(&a)
+                && self.chord_keys_down.contains(&b)
+            {
+                self.modifier_stage.insert(Modifiers::AddMinor7);
+                self.modifier_stage.insert(Modifiers::Minor3ToMajor);
+                self.modifier_stage.insert(Modifiers::RestorePerfect5);
+                break;
+            }
+        }
+    }
+
+
+    pub fn handle_key_event(&mut self, event: KeyEvent) -> AppEffects {
+        let mut effects = AppEffects::default();
+        let mut chord_was_pressed = false;
+
+        match event {
+            KeyEvent::Chord { state, button } => {
+                match state {
+                    KeyState::Pressed => {
+                        if self.chord_keys_down.insert(button) {
+                            chord_was_pressed = true;
+                        }
+                    }
+                    KeyState::Released => {
+                        self.chord_keys_down.remove(&button);
+                    }
+                }
+            }
+
+            KeyEvent::Modifier {
+                state,
+                button,
+                modifiers,
+            } => {
+                match state {
+                    KeyState::Pressed => {
+                        if self.mod_keys_down.insert(button) {
+                            self.modifier_stage.insert(modifiers);
+                        }
+                    }
+                    KeyState::Released => {
+                        self.mod_keys_down.remove(&button);
+                    }
+                }
+            }
+
+            KeyEvent::Action {
+                state,
+                button,
+                action,
+            } => {
+                match state {
+                    KeyState::Pressed => {
+                        if self.action_keys_down.insert(button) {
+                            self.action_stage.insert(action);
+                        }
+                    }
+                    KeyState::Released => {
+                        self.action_keys_down.remove(&button);
+                    }
+                }
+            }
+        }
+
+        if self.chord_keys_down.is_empty() {
+            return effects;
+        }
+
+        let old_chord = self.active_chord.clone();
+        let mut new_chord = decide_chord_base(old_chord.as_ref(), &self.chord_keys_down);
+
+        // Check/apply double-held-chord sevenths
+        if chord_was_pressed {
+            self.detect_implied_minor7();
+        }
+
+        // Apply held modifiers
+        for entry in MOD_BUTTON_TABLE.iter() {
+            if self.mod_keys_down.contains(&entry.button) {
+                self.modifier_stage.insert(entry.modifiers);
+            }
+        }
+
+        if let Some(ref mut chord) = new_chord {
+            if !self.modifier_stage.is_empty() {
+                chord.add_mods_now(self.modifier_stage);
+            }
+
+            if self.action_stage.contains(Actions::ChangeKey) {
+                self.transpose =
+                    Transpose(chord.get_root().as_i16()).center_octave();
+                effects.change_key = Some(self.transpose);
+            }
+        }
+
+        self.modifier_stage = Modifiers::empty();
+        self.action_stage = Actions::empty();
+
+        if old_chord != new_chord {
+            effects.redraw = true;
+            self.active_chord = new_chord;
+        }
+
+        effects
     }
 }
 
@@ -277,7 +493,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let _ = conn.send(&[0xC0 | MICRO_CHANNEL, MICRO_PROGRAM]);
     }
 
-    // 2. Setup Window
+    // Setup Window
     let event_loop = EventLoop::new()?;
     let window = Rc::new(
         WindowBuilder::new()
@@ -286,32 +502,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             .build(&event_loop)?,
     );
 
-    // 3. Setup Graphics Context
+    // Setup Graphics Context and UX state
     let context = Context::new(window.clone()).expect("Failed to create graphics context");
     let mut surface = Surface::new(&context, window.clone()).expect("Failed to create surface");
-
-    // Application State
     let mut prev_pos: Option<(f32, f32)> = None;
-
     let mut is_mouse_down = false;
-    let mut active_chord: Option<Chord> = Some(Chord::new_triad(ROOT_I));
-    if let Some(nc) = active_chord.as_mut() {
-        nc.add_mods_now(Modifiers::AddMajor2);
-    }
-
-    let mut active_notes = HashSet::new();
-    // Key tracking using named buttons
-    let mut chord_keys_down: HashSet<ChordButton> = HashSet::new();
-    let mut mod_keys_down: HashSet<ModButton> = HashSet::new();
-    let mut action_keys_down: HashSet<ActionButton> = HashSet::new();
-    // Modifier: modifiers queued and applied on next chord key press
-    let mut modifier_stage = Modifiers::empty();
-    let mut action_stage = Actions::empty();
-    // Transpose in semitones (0-11) applied to played notes
-    let mut transpose: Transpose = Transpose(0);
-    // We move conn_out into the event loop
     let mut midi_connection = conn_out;
     let mut note_positions: Vec<f32> = Vec::new();
+
+    // App State
+    let mut app_state = AppState::new();
+    let mut active_notes = HashSet::new();
 
     // 4. Run Event Loop
     event_loop.run(move |event, elwt| {
@@ -332,137 +533,29 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::KeyboardInput { event, .. } => {
-                        let mut chord_was_pressed = false;
+                        if let Some(app_event) = key_event_from_winit(&event) {
+                            let effects = app_state.handle_key_event(app_event);
 
-                        if event.state == winit::event::ElementState::Pressed {
-                            if let Some(button) = chord_button_for(&event.logical_key) {
-                                if !chord_keys_down.contains(&button) {
-                                    chord_keys_down.insert(button);
-                                    chord_was_pressed = true;
-                                }
-                            } else if let Some((button, modifier)) =
-                                mod_button_for(&event.logical_key)
-                            {
-                                if !mod_keys_down.contains(&button) {
-                                    mod_keys_down.insert(button);
-                                    modifier_stage.insert(modifier);
-                                }
-                            } else if let Some((button, action)) =
-                                action_button_for(&event.logical_key)
-                            {
-                                if !action_keys_down.contains(&button) {
-                                    action_keys_down.insert(button);
-                                    action_stage.insert(action);
-                                }
+                            if effects.redraw {
+                                window.request_redraw();
                             }
-                        } else {
-                            // Released
-                            if let Some(button) = chord_button_for(&event.logical_key) {
-                                chord_keys_down.remove(&button);
-                            } else if let Some((button, _)) = mod_button_for(&event.logical_key) {
-                                mod_keys_down.remove(&button);
+                            if let Some(transpose) = effects.change_key {
+                                println!("Changed key: {:?}", transpose);
                             }
-                        }
-
-                        if chord_keys_down.is_empty() {
-                            return;
-                        }
-
-                        let old_chord = if chord_was_pressed {
-                            None
-                        } else {
-                            active_chord.as_ref()
-                        };
-                        let mut new_chord = decide_chord_base(old_chord, &chord_keys_down);
-
-                        // If a chord key was just pressed, detect pair combos that imply a minor-7
-                        // and enqueue the AddMinor7 modifier so it is applied via the existing
-                        // modifier pipeline.
-                        if chord_was_pressed {
-                            // Pairs that imply minor 7: VI+II, III+VI, VII+III, IV+I, IV+VIIB, I+V, V+II
-                            if (chord_keys_down.contains(&ChordButton::VI)
-                                && chord_keys_down.contains(&ChordButton::II))
-                                || (chord_keys_down.contains(&ChordButton::III)
-                                    && chord_keys_down.contains(&ChordButton::VI))
-                                || (chord_keys_down.contains(&ChordButton::VII)
-                                    && chord_keys_down.contains(&ChordButton::III))
-                                || (chord_keys_down.contains(&ChordButton::IV)
-                                    && chord_keys_down.contains(&ChordButton::I))
-                                || (chord_keys_down.contains(&ChordButton::IV)
-                                    && chord_keys_down.contains(&ChordButton::VIIB))
-                                || (chord_keys_down.contains(&ChordButton::I)
-                                    && chord_keys_down.contains(&ChordButton::V))
-                                || (chord_keys_down.contains(&ChordButton::V)
-                                    && chord_keys_down.contains(&ChordButton::II))
-                            {
-                                modifier_stage.insert(Modifiers::AddMinor7);
-                                modifier_stage.insert(Modifiers::Minor3ToMajor);
-                                modifier_stage.insert(Modifiers::RestorePerfect5);
-                            }
-                        }
-
-                        // Inserting here supports held mods
-                        MOD_BUTTON_TABLE
-                            .iter()
-                            .filter(|e| mod_keys_down.contains(&e.button))
-                            .for_each(|e| modifier_stage.insert(e.modifiers));
-
-                        // TODO action table? Would be hard because the fn() would access so much
-                        if action_keys_down.contains(&ActionButton::ChangeKey) {
-                            action_stage.insert(Actions::ChangeKey);
-                        }
-                        if action_keys_down.contains(&ActionButton::Pulse) {
-                            action_stage.insert(Actions::Pulse);
-                        }
-
-                        // If there are modifiers queued and a chord key is down, apply them now to
-                        // the freshly constructed chord, then remove it.
-                        if !modifier_stage.is_empty() {
-                            if let Some(nc) = new_chord.as_mut() {
-                                nc.add_mods_now(modifier_stage);
-                                if action_stage.contains(Actions::ChangeKey) {
-                                    transpose = Transpose(nc.get_root().as_i16()).center_octave()
-                                }
-                                if action_stage.contains(Actions::Pulse) {
-                                    // Play the low root of the new chord
-                                    play_note(
+                            if let Some(chord) = app_state.active_chord.as_ref() {
+                                let notes_to_stop: Vec<MidiNote> = (0..128)
+                                    .map(|i| MidiNote(i))
+                                    .filter(|mn| !chord.contains(*mn - LOWEST_NOTE - app_state.transpose))
+                                    .filter(|mn| active_notes.contains(mn))
+                                    .collect();
+                                for mn in notes_to_stop {
+                                    stop_note(
                                         &mut midi_connection,
-                                        transpose + nc.get_root(),
-                                        &mut active_notes,
-                                        VELOCITY,
-                                    );
-                                    // Play higher notes of the new chord
-                                    (12..NUM_STRINGS)
-                                        .map(|i| UnkeyedNote(i as i16))
-                                        .filter(|note| nc.contains(*note))
-                                        .for_each(|note| {
-                                            play_note(
-                                                &mut midi_connection,
-                                                transpose + note,
-                                                &mut active_notes,
-                                                (VELOCITY * 2 / 3) as u8,
-                                            );
-                                        });
+                                        mn,
+                                        &mut active_notes
+                                    )
                                 }
                             }
-                        }
-                        modifier_stage = Modifiers::empty();
-
-                        // If the notes aren't the same, do the switch
-                        if old_chord != new_chord.as_ref() {
-                            // Stop any playing notes that are not in the new chord
-                            let notes_to_stop: Vec<MidiNote> = active_notes
-                                .iter()
-                                .filter(|&&note| {
-                                    new_chord.map_or(false, |c| !c.contains(note - LOWEST_NOTE - transpose))
-                                })
-                                .cloned()
-                                .collect();
-                            for note in notes_to_stop {
-                                stop_note(&mut midi_connection, note, &mut active_notes);
-                            }
-                            active_chord = new_chord;
-                            window.request_redraw();
                         }
                     }
 
@@ -483,7 +576,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             &mut surface,
                             physical_size.width,
                             physical_size.height,
-                            &active_chord,
+                            &app_state.active_chord,
                             &note_positions,
                         );
                     }
@@ -505,9 +598,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     last_x,
                                     curr_x,
                                     &mut midi_connection,
-                                    &active_chord,
+                                    &app_state.active_chord,
                                     &mut active_notes,
-                                    transpose,
+                                    app_state.transpose,
                                     &note_positions,
                                 );
                             }
@@ -523,7 +616,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             &mut surface,
                             size.width,
                             size.height,
-                            &active_chord,
+                            &app_state.active_chord,
                             &note_positions,
                         );
                     }

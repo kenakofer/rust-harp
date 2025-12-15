@@ -13,7 +13,7 @@ impl Sub for MidiNote {
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct UnbottomedNote(i16); // Note before building on the BOTTOM_NOTE
+pub struct UnbottomedNote(i16); // Note before building on the LOWEST_NOTE
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -61,7 +61,7 @@ impl Sub<Transpose> for MidiNote {
     }
 }
 
-// Note before transposing into the key or building on the BOTTOM_NOTE.
+// Note before transposing into the key or building on the LOWEST_NOTE.
 // This is basically solfege: Do = 0, Re = 2, etc. Can go beyond 12 or below 0
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
