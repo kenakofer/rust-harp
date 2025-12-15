@@ -414,12 +414,12 @@ impl AppState {
             return effects;
         }
 
-        let old_chord = if chord_was_pressed {
+        let venerated_old_chord = if chord_was_pressed {
             None
         } else {
             self.active_chord
         };
-        let mut new_chord = decide_chord_base(old_chord.as_ref(), &self.chord_keys_down);
+        let mut new_chord = decide_chord_base(venerated_old_chord.as_ref(), &self.chord_keys_down);
 
         // Check/apply double-held-chord sevenths
         if chord_was_pressed {
@@ -448,7 +448,7 @@ impl AppState {
         self.modifier_stage = Modifiers::empty();
         self.action_stage = Actions::empty();
 
-        if old_chord != new_chord {
+        if venerated_old_chord != new_chord {
             effects.redraw = true;
             self.active_chord = new_chord;
         }
@@ -637,7 +637,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 // Decide chord from current chord_keys_down and previous chord state.
 fn decide_chord_base(
-    old_chord: Option<&Chord>,
+    venerated_old_chord: Option<&Chord>,
     chord_keys_down: &HashSet<ChordButton>,
 ) -> Option<Chord> {
     if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
@@ -653,9 +653,9 @@ fn decide_chord_base(
 
     for entry in CHORD_BUTTON_TABLE.iter() {
         if chord_keys_down.contains(&entry.button) {
-            if let Some(old) = old_chord {
+            if let Some(old) = venerated_old_chord {
                 if old.get_root() == entry.root {
-                    return old_chord.copied();
+                    return venerated_old_chord.copied();
                 }
             }
             return Some(Chord::new_triad(entry.root));
@@ -663,8 +663,8 @@ fn decide_chord_base(
     }
 
     // No keys down: preserve chord if we just went from 1 -> 0
-    if let Some(_) = old_chord {
-        return old_chord.copied();
+    if let Some(_) = venerated_old_chord {
+        return venerated_old_chord.copied();
     }
 
     None
