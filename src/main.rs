@@ -212,21 +212,17 @@ bitflags! {
 }
 
 fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
-    for entry in CHORD_BUTTON_TABLE.iter() {
-        if (entry.key_check)(key) {
-            return Some(entry.button);
-        }
-    }
-    return None
+    CHORD_BUTTON_TABLE
+        .iter()
+        .find(|e| (e.key_check)(key))
+        .map(|e| e.button)
 }
 
 fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> {
-    for entry in MOD_BUTTON_TABLE.iter() {
-        if (entry.key_check)(key) {
-            return Some((entry.button, entry.modifiers));
-        }
-    }
-    return None
+    MOD_BUTTON_TABLE
+        .iter()
+        .find(|e| (e.key_check)(key))
+        .map(|e| (e.button, e.modifiers))
 }
 
 fn action_button_for(key: &winit::keyboard::Key) -> Option<(ActionButton, Actions)> {
@@ -406,11 +402,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         // Inserting here supports held mods
-                        for entry in MOD_BUTTON_TABLE.iter() {
-                            if mod_keys_down.contains(&entry.button) {
-                                modifier_stage.insert(entry.modifiers);
-                            }
-                        }
+                        MOD_BUTTON_TABLE
+                            .iter()
+                            .filter(|e| mod_keys_down.contains(&e.button))
+                            .for_each(|e| modifier_stage.insert(e.modifiers));
 
                         // TODO action table? Would be hard because the fn() would access so much
                         if action_keys_down.contains(&ActionButton::ChangeKey) {
@@ -437,18 +432,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                                         VELOCITY,
                                     );
                                     // Play higher notes of the new chord
-                                    for i in 12..NUM_STRINGS {
-                                        let note = UnkeyedNote(i as i16);
-                                        if nc.contains(note) {
-                                            let vel = (VELOCITY * 2 / 3) as u8;
+                                    (12..NUM_STRINGS)
+                                        .map(|i| UnkeyedNote(i as i16))
+                                        .filter(|note| nc.contains(*note))
+                                        .for_each(|note| {
                                             play_note(
                                                 &mut midi_connection,
                                                 transpose + note,
                                                 &mut active_notes,
-                                                vel,
+                                                (VELOCITY * 2 / 3) as u8,
                                             );
-                                        }
-                                    }
+                                        });
                                 }
                             }
                         }
