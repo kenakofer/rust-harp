@@ -217,6 +217,12 @@ fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
         .find(|e| (e.key_check)(key))
         .map(|e| e.button)
 }
+fn chord_root_for(button: ChordButton) -> Option<UnkeyedNote> {
+    CHORD_BUTTON_TABLE
+        .iter()
+        .find(|e| e.button == button)
+        .map(|e| e.root)
+}
 
 fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> {
     MOD_BUTTON_TABLE
@@ -331,30 +337,6 @@ impl AppState {
         }
     }
 
-    fn detect_implied_minor7(&mut self) {
-        use ChordButton::*;
-
-        let pairs = [
-            (VI, II),
-            (III, VI),
-            (VII, III),
-            (IV, I),
-            (IV, VIIB),
-            (I, V),
-            (V, II),
-        ];
-
-        for (a, b) in pairs {
-            if self.chord_keys_down.contains(&a)
-                && self.chord_keys_down.contains(&b)
-            {
-                self.modifier_stage.insert(Modifiers::AddMinor7);
-                self.modifier_stage.insert(Modifiers::Minor3ToMajor);
-                self.modifier_stage.insert(Modifiers::RestorePerfect5);
-                break;
-            }
-        }
-    }
 
 
     pub fn handle_key_event(&mut self, event: KeyEvent) -> AppEffects {
@@ -421,11 +403,6 @@ impl AppState {
         };
         let mut new_chord = decide_chord_base(venerated_old_chord.as_ref(), &self.chord_keys_down);
 
-        // Check/apply double-held-chord sevenths
-        if chord_was_pressed {
-            self.detect_implied_minor7();
-        }
-
         // Apply held modifiers
         for entry in MOD_BUTTON_TABLE.iter() {
             if self.mod_keys_down.contains(&entry.button) {
@@ -455,6 +432,30 @@ impl AppState {
 
         effects
     }
+}
+
+fn detect_implied_minor7_root(chord_keys_down: &HashSet<ChordButton>,) -> Option<UnkeyedNote> {
+    use ChordButton::*;
+
+    let pairs = [
+        (VI, II),
+        (III, VI),
+        (VII, III),
+        (I, IV),
+        (IV, VIIB),
+        (V, I),
+        (II, V),
+    ];
+
+    for (a, b) in pairs {
+        if chord_keys_down.contains(&a)
+            && chord_keys_down.contains(&b)
+        {
+            //Set the root
+            return chord_root_for(a);
+        }
+    }
+    None
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -648,6 +649,15 @@ fn decide_chord_base(
                 | Modifiers::Add4
                 | Modifiers::AddMajor6
                 | Modifiers::AddMajor7,
+        ));
+    }
+
+    // Check/apply double-held-chord sevenths
+    if let Some(root) = detect_implied_minor7_root(chord_keys_down) {
+        return Some(Chord::new(
+            root,
+            Modifiers::MajorTri
+                | Modifiers::AddMinor7,
         ));
     }
 
