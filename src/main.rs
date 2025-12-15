@@ -424,7 +424,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // the freshly constructed chord, then remove it.
                         if !modifier_stage.is_empty() {
                             if let Some(nc) = new_chord.as_mut() {
-                                nc.set_mods_now(modifier_stage);
+                                nc.add_mods_now(modifier_stage);
                                 if action_stage.contains(Actions::ChangeKey) {
                                     transpose = Transpose(nc.get_root().as_i16()).center_octave()
                                 }
