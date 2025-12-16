@@ -17,8 +17,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-// MIDI Note 48 is C3. 48 strings = 4 octaves.
-const LOWEST_NOTE: Transpose = Transpose(36); // Do in the active key //TODO privatize
+const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36); // Add with UnmidiNote to get MidiNote. MIDI Note 36 is C2
 const VELOCITY: u8 = 70;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
@@ -306,7 +305,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         // Turn off all active notes before closing
                         let notes_to_stop: Vec<UnmidiNote> = app_state.active_notes.iter().cloned().collect();
                         for note in notes_to_stop {
-                            stop_note(&mut midi_connection, LOWEST_NOTE + note );
+                            stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + note );
                         }
                         elwt.exit();
                     }
@@ -322,7 +321,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 println!("Changed key: {:?}", transpose);
                             }
                             for un in effects.stop_notes {
-                                stop_note(&mut midi_connection, LOWEST_NOTE + un )
+                                stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un )
                             }
                         }
                     }
@@ -474,7 +473,7 @@ fn check_pluck(
             if active_chord.map_or(true, |c| c.contains(uknote)) { //TODO can we move this logic
                                                                    //into app_state?
                 let vel = VELOCITY as u8;
-                play_note(conn, LOWEST_NOTE + ubnote, vel);
+                play_note(conn, MIDI_BASE_TRANSPOSE + ubnote, vel);
                 played_note_at_pos = true;
             }
         }
