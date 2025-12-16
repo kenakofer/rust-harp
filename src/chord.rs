@@ -22,7 +22,7 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct Chord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
     //name: &'static str,
@@ -202,6 +202,101 @@ mod tests {
                 EXP_MODS,
                 EXP_PCS
             );
+    }
+
+    #[test]
+    fn major_triad_contains() {
+        let c = Chord::new_triad(UnkeyedNote(0)); // C major
+
+        assert!(c.contains(UnkeyedNote(0))); // root
+        assert!(c.contains(UnkeyedNote(4))); // major third
+        assert!(c.contains(UnkeyedNote(7))); // fifth
+
+        assert!(!c.contains(UnkeyedNote(6))); // diminished fifth
+        assert!(!c.contains(UnkeyedNote(3))); // minor third
+    }
+
+    #[test]
+    fn minor_triad_contains() {
+        let c = Chord::new_triad(UnkeyedNote(2)); // D minor
+
+        assert!(c.contains(UnkeyedNote(2))); // root
+        assert!(c.contains(UnkeyedNote(5))); // minor third
+        assert!(c.contains(UnkeyedNote(9))); // fifth
+
+        assert!(!c.contains(UnkeyedNote(6))); // diminished fifth
+        assert!(!c.contains(UnkeyedNote(4))); // major third
+    }
+
+    #[test]
+    fn diminished_triad_contains() {
+        let c = Chord::new_triad(UnkeyedNote(11)); // B diminished
+
+        assert!(c.contains(UnkeyedNote(11))); // root
+        assert!(c.contains(UnkeyedNote(2))); // minor third
+        assert!(c.contains(UnkeyedNote(5))); // diminished fifth
+
+        assert!(!c.contains(UnkeyedNote(6))); // perfect fifth
+        assert!(!c.contains(UnkeyedNote(4))); // major third
+    }
+
+    #[test]
+    fn add_minor7_modifier() {
+        let mut c = Chord::new_triad(UnkeyedNote(0));
+        c.add_mods_now(Modifiers::AddMinor7);
+
+        assert!(c.contains(UnkeyedNote(10))); // minor 7
+    }
+
+    #[test]
+    fn sus4_modifier() {
+        let mut c = Chord::new_triad(UnkeyedNote(0));
+        c.add_mods_now(Modifiers::Sus4);
+
+        assert!(c.contains(UnkeyedNote(5))); // fourth
+        assert!(!c.contains(UnkeyedNote(4))); // no major third
+        assert!(!c.contains(UnkeyedNote(3))); // no minor third
+    }
+
+    #[test]
+    fn add_major7_modifier() {
+        let mut c = Chord::new_triad(UnkeyedNote(4));
+        c.add_mods_now(Modifiers::AddMajor7);
+
+        assert!(c.contains(UnkeyedNote(11))); // major 7
+    }
+
+    #[test]
+    fn add_major2_modifier() {
+        let mut c = Chord::new_triad(UnkeyedNote(4)); // iii
+        c.add_mods_now(Modifiers::AddMajor2);
+
+        assert!(c.contains(UnkeyedNote(6))); // major 2
+    }
+
+    #[test]
+    fn add_major6_modifier() {
+        let mut c = Chord::new_triad(UnkeyedNote(4));
+        c.add_mods_now(Modifiers::AddMajor6);
+
+        assert!(c.contains(UnkeyedNote(13)));
+    }
+
+    #[test]
+    fn minor3_to_major_modifier() {
+        let mut c = Chord::new_triad(UnkeyedNote(4)); // iii
+        c.add_mods_now(Modifiers::Minor3ToMajor);
+
+        println!("{:#?}", c.get_mask());
+        println!("{:#?}", c);
+        assert!(!c.contains(UnkeyedNote(7))); // no minor third
+        assert!(c.contains(UnkeyedNote(8))); // major third
+
+        let mut c = Chord::new_triad(UnkeyedNote(0)); // I
+        c.add_mods_now(Modifiers::Minor3ToMajor);
+
+        assert!(!c.contains(UnkeyedNote(3))); // no minor third
+        assert!(c.contains(UnkeyedNote(4))); // major third
     }
 }
 
