@@ -74,6 +74,7 @@ bitflags! {
     }
 }
 
+#[derive(Debug)]
 pub struct AppEffects {
     // pub play_notes: Vec<(UnmidiNote, u8)>,
     pub stop_notes: Vec<UnmidiNote>,
@@ -261,15 +262,7 @@ impl AppState {
             if !self.modifier_stage.is_empty() {
                 chord.add_mods_now(self.modifier_stage);
             }
-
-            if self.action_stage.contains(Actions::ChangeKey) {
-                self.transpose = Transpose(chord.get_root().as_i16()).center_octave();
-                effects.change_key = Some(self.transpose);
-            }
         }
-
-        self.modifier_stage = Modifiers::empty();
-        self.action_stage = Actions::empty();
 
         if venerated_old_chord != new_chord {
             effects.redraw = true;
@@ -283,6 +276,16 @@ impl AppState {
                     .collect();
             }
         }
+
+        if let Some(ref mut chord) = self.active_chord {
+            if self.action_stage.contains(Actions::ChangeKey) {
+                self.transpose = Transpose(chord.get_root().as_i16()).center_octave();
+                effects.change_key = Some(self.transpose);
+            }
+        }
+
+        self.modifier_stage = Modifiers::empty();
+        self.action_stage = Actions::empty();
 
         effects
     }
@@ -362,11 +365,11 @@ mod tests {
     use super::*;
     use crate::notes::UnmidiNote;
 
-    fn press_chord(state: &mut AppState, button: ChordButton) {
+    fn press_chord(state: &mut AppState, button: ChordButton) -> AppEffects {
         state.handle_key_event(KeyEvent::Chord {
             state: KeyState::Pressed,
             button,
-        });
+        })
     }
 
     fn press_modifier(state: &mut AppState, button: ModButton, modifiers: Modifiers) {
@@ -412,17 +415,29 @@ mod tests {
             action: Actions::ChangeKey,
         });
 
-        // No chord yet → no key change
+        // No chord yet, no key change
         assert!(effects.change_key.is_none());
 
-        press_chord(&mut state, ChordButton::V);
+        // Now key change has been enqueued, the next chord button will change it:
+        let effects = press_chord(&mut state, ChordButton::V);
+        assert_eq!(effects.change_key, Some(Transpose(-5)));
+        assert_eq!(state.transpose, Transpose(-5));
+
+        // Reset all keypresses
+        let mut state = AppState::new();
+
+        // Chord first, no key change
+        let effects = press_chord(&mut state, ChordButton::III);
+        assert!(effects.change_key.is_none());
+
+        // Changekey button, key change
         let effects = state.handle_key_event(KeyEvent::Action {
             state: KeyState::Pressed,
             button: ActionButton::ChangeKey,
             action: Actions::ChangeKey,
         });
-
-        assert_eq!(effects.change_key, Some(state.transpose));
+        assert_eq!(effects.change_key, Some(Transpose(4)));
+        assert_eq!(state.transpose, Transpose(4));
     }
 
     #[test]

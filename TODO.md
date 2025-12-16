@@ -8,5 +8,3 @@
   - Explore additive chords (I + vi = vi7, I + iii = Imaj7)
   - Currently the top note is Ti when the bottom is Do. Can we fit one more?
   - NUM_STRINGS is really not that useful, but its used everywhere, even where we should use NUM_NOTES instead. How to find NUM_NOTES?
-  - play_notes in AppEffects make sense? Maybe just for Pulsing?
-  - stop_notes in AppEffects make sense? Don't we need to know active_notes, which is outside?
