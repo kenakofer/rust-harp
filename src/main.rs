@@ -3,7 +3,7 @@ mod notes;
 mod app_state;
 
 use chord::{Chord, Modifiers};
-use notes::{MidiNote, Transpose, UnbottomedNote, UnkeyedNote};
+use notes::{MidiNote, Transpose, UnmidiNote, UnkeyedNote};
 use app_state::{AppState, ChordButton, ModButton, ActionButton, Actions, KeyEvent, KeyState};
 
 use midir::{MidiOutput, MidiOutputConnection};
@@ -304,7 +304,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match event {
                     WindowEvent::CloseRequested => {
                         // Turn off all active notes before closing
-                        let notes_to_stop: Vec<UnbottomedNote> = app_state.active_notes.iter().cloned().collect();
+                        let notes_to_stop: Vec<UnmidiNote> = app_state.active_notes.iter().cloned().collect();
                         for note in notes_to_stop {
                             stop_note(&mut midi_connection, LOWEST_NOTE + note );
                         }

@@ -13,7 +13,7 @@ impl Sub for MidiNote {
 
 #[repr(transparent)]
 #[derive(Hash, Eq, Copy, Clone, Debug, PartialEq)]
-pub struct UnbottomedNote(pub i16); // Note before building on the LOWEST_NOTE
+pub struct UnmidiNote(pub i16); // Note before building on the LOWEST_NOTE
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -30,22 +30,22 @@ impl Transpose {
 }
 
 impl Add<UnkeyedNote> for Transpose {
-    type Output = UnbottomedNote;
-    fn add(self, rhs: UnkeyedNote) -> UnbottomedNote {
+    type Output = UnmidiNote;
+    fn add(self, rhs: UnkeyedNote) -> UnmidiNote {
         let sum: i16 = (self.0 as i16) + (rhs.0 as i16);
-        UnbottomedNote(sum)
+        UnmidiNote(sum)
     }
 }
 
-impl Add<UnbottomedNote> for Transpose {
+impl Add<UnmidiNote> for Transpose {
     type Output = MidiNote;
-    fn add(self, rhs: UnbottomedNote) -> MidiNote {
+    fn add(self, rhs: UnmidiNote) -> MidiNote {
         let sum: i16 = (self.0 as i16) + (rhs.0 as i16);
         return MidiNote(sum.clamp(0, 127) as u8);
     }
 }
 
-impl Sub<Transpose> for UnbottomedNote {
+impl Sub<Transpose> for UnmidiNote {
     type Output = UnkeyedNote;
     fn sub(self, rhs: Transpose) -> UnkeyedNote {
         let diff: i16 = (self.0 as i16) - (rhs.0 as i16);
@@ -54,10 +54,10 @@ impl Sub<Transpose> for UnbottomedNote {
 }
 
 impl Sub<Transpose> for MidiNote {
-    type Output = UnbottomedNote;
-    fn sub(self, rhs: Transpose) -> UnbottomedNote {
+    type Output = UnmidiNote;
+    fn sub(self, rhs: Transpose) -> UnmidiNote {
         let diff: i16 = (self.0 as i16) - rhs.0;
-        UnbottomedNote(diff)
+        UnmidiNote(diff)
     }
 }
 
