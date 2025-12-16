@@ -131,3 +131,77 @@ impl Chord {
         note.wrap_to_octave() == self.root.wrap_to_octave()
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    trait CheckRoots {
+    fn verify_triads(self, exp_mods: Modifiers, exp_pcs: PitchClassSet);
+}
+
+    impl<'a> CheckRoots for std::slice::Iter<'a, i16> {
+        fn verify_triads(self, exp_mods: Modifiers, exp_pcs: PitchClassSet) {
+            self
+            .map(|&r| Chord::new_triad(UnkeyedNote(r)))
+            .for_each(|c| {
+                assert_eq!((c.root, c.mods), (c.root, exp_mods));
+                assert_eq!((c.root, c.get_mask()), (c.root, exp_pcs));
+            });
+        }
+    }
+
+    #[test]
+    fn major_triads() {
+        const EXP_MODS: Modifiers = Modifiers::MajorTri;
+        const EXP_PCS: PitchClassSet = PitchClassSet::MAJOR_TRI;
+        assert_eq!(EXP_PCS, PitchClassSet(0b000010010001));
+
+        [-17, -12, -7, -5, 0, 5, 7, 12, 17]
+            .iter().verify_triads(
+                EXP_MODS,
+                EXP_PCS
+            );
+    }
+
+    #[test]
+    fn minor_triads() {
+        const EXP_MODS: Modifiers = Modifiers::MinorTri;
+        const EXP_PCS: PitchClassSet = PitchClassSet::MINOR_TRI;
+        assert_eq!(EXP_PCS, PitchClassSet(0b000010001001));
+
+        [-15, -10, -8, -3, 2, 4, 9, 14 ]
+            .iter().verify_triads(
+                EXP_MODS,
+                EXP_PCS
+            );
+    }
+
+    #[test]
+    fn diminished_triads() {
+        const EXP_MODS: Modifiers = Modifiers::DiminTri;
+        const EXP_PCS: PitchClassSet = PitchClassSet::DIMIN_TRI;
+        assert_eq!(EXP_PCS, PitchClassSet(0b000001001001));
+
+        [-13, -1, 11, 23]
+            .iter().verify_triads(
+                EXP_MODS,
+                EXP_PCS
+            );
+    }
+
+    #[test]
+    fn leftover_triads_major() {
+        const EXP_MODS: Modifiers = Modifiers::MajorTri;
+        const EXP_PCS: PitchClassSet = PitchClassSet::MAJOR_TRI;
+        assert_eq!(EXP_PCS, PitchClassSet(0b000010010001));
+
+        [-11, -9, -6, -4, -2, 1, 3, 6, 8, 10, 13]
+            .iter().verify_triads(
+                EXP_MODS,
+                EXP_PCS
+            );
+    }
+}
+

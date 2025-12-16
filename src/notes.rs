@@ -21,11 +21,16 @@ pub struct Transpose(pub i16); // Basically an interval
 
 impl Transpose {
     pub fn center_octave(self) -> Transpose {
-        if self.0 > 6 {
-            Transpose(self.0 - 12)
+        let in_octave = self.wrap_to_octave();
+        if in_octave > 6 {
+            Transpose(in_octave - 12)
         } else {
-            Transpose(self.0)
+            Transpose(in_octave)
         }
+    }
+
+    pub fn wrap_to_octave(self) -> i16 {
+        self.0.rem_euclid(12)
     }
 }
 
@@ -108,7 +113,7 @@ impl Interval {
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub struct PitchClassSet(u16);
+pub struct PitchClassSet(pub u16);
 
 impl PitchClassSet {
     pub const ROOT_ONLY: PitchClassSet = PitchClassSet(0b000000000001);
@@ -126,5 +131,59 @@ impl PitchClassSet {
 
     pub fn remove(&mut self, pc: UnrootedNote) {
         self.0 &= !(1 << pc.0);
+    }
+}
+
+impl std::fmt::Debug for PitchClassSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PitchClassSet({:012b})", self.0)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transpose_center_octave() {
+        for pair in [ (0, 0), (6, 6), (7, -5), (12, 0), (13, 1), (19, -5), (-5, -5), (-6, 6), (-7, 5)] {
+            assert_eq!(Transpose(pair.0).center_octave(), Transpose(pair.1));
+        }
+    }
+
+    #[test]
+    fn transpose_add_unkeyed_note() {
+        for triple in [(0, 0, 0), (10, 5, 15), (-2, 4, 2), (-8, -10, -18)] {
+            assert_eq!(Transpose(triple.0) + UnkeyedNote(triple.1), UnmidiNote(triple.2));
+        }
+    }
+
+    #[test]
+    fn transpose_add_unmidi_note() {
+        for triple in [(0, 60, 60), (10, 60, 70), (-55, 60, 5)] {
+            assert_eq!(Transpose(triple.0) + UnmidiNote(triple.1), MidiNote(triple.2 as u8));
+        }
+    }
+
+    #[test]
+    fn transpose_add_unmidi_note_clamped() {
+        for triple in [(-61, 60, 0), (100, 200, 127), (200, 0, 127), (-200, 60, 0)] {
+            assert_eq!(Transpose(triple.0) + UnmidiNote(triple.1), MidiNote(triple.2 as u8));
+        }
+    }
+
+    #[test]
+    fn unkeyed_wraps_to_octave() {
+        for pair in [(0, 0), (12, 0), (14, 2), (-1, 11), (-14, 10)] {
+            assert_eq!(UnkeyedNote(pair.0).wrap_to_octave(), pair.1);
+        }
+    }
+
+    #[test]
+    fn interval_ratio() {
+        for triple in [(6, 12, 0.5), (4, 12, 1.0/3.0), (7, 12, 7.0/12.0), (-3, 8, -0.375)] {
+            assert_eq!(Interval(triple.0).ratio(Interval(triple.1)), triple.2);
+        }
     }
 }
