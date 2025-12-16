@@ -6,7 +6,6 @@ use chord::{Chord, Modifiers};
 use notes::{MidiNote, Transpose, UnbottomedNote, UnkeyedNote};
 use app_state::{AppState, ChordButton, ModButton, ActionButton, Actions, KeyEvent, KeyState, LOWEST_NOTE};
 
-use midir::os::unix::VirtualOutput;
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
 use std::collections::HashSet;
@@ -227,7 +226,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let midi_out = MidiOutput::new("Rust Harp Client")?;
     let mut conn_out: Option<MidiOutputConnection> = None;
 
-    // Attempt to create a virtual port.
+    // Attempt to create virtual port on systems where that exists
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     match midi_out.create_virtual("Rust Harp Output") {
         Ok(conn) => {
             println!("Created virtual MIDI port: 'Rust Harp Output'");
@@ -244,8 +244,22 @@ fn main() -> Result<(), Box<dyn Error>> {
                 );
                 conn_out = Some(midi_out.connect(port, "Rust Harp Connection")?);
             } else {
-                eprintln!("Warning: No MIDI ports found. Application will run visually but emit no sound.");
+                eprintln!("Warning: No MIDI ports found. Application will emit no sound.");
             }
+        }
+    }
+
+    // Fallback for Windows or failure
+    if conn_out.is_none() {
+        let ports = midi_out.ports();
+        if let Some(port) = ports.first() {
+            println!(
+                "Connecting to hardware MIDI port: {}",
+                midi_out.port_name(port)?
+            );
+            conn_out = Some(midi_out.connect(port, "Rust Harp Connection")?);
+        } else {
+            eprintln!("Warning: No MIDI ports found. Application will emit no sound.");
         }
     }
 
