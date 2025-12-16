@@ -356,3 +356,90 @@ fn decide_chord_base(
 
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::notes::UnmidiNote;
+
+    fn press_chord(state: &mut AppState, button: ChordButton) {
+        state.handle_key_event(KeyEvent::Chord {
+            state: KeyState::Pressed,
+            button,
+        });
+    }
+
+    fn press_modifier(state: &mut AppState, button: ModButton, modifiers: Modifiers) {
+        state.handle_key_event(KeyEvent::Modifier {
+            state: KeyState::Pressed,
+            button,
+            modifiers,
+        });
+    }
+
+    #[test]
+    fn pressing_chord_sets_active_chord() {
+        let mut state = AppState::new();
+
+        press_chord(&mut state, ChordButton::V);
+
+        let chord = state.active_chord.unwrap();
+        assert_eq!(chord.get_root(), ROOT_V);
+    }
+
+    #[test]
+    fn modifier_applies_to_next_chord() {
+        let mut state = AppState::new();
+
+        press_modifier(
+            &mut state,
+            ModButton::Minor7,
+            Modifiers::AddMinor7,
+        );
+        press_chord(&mut state, ChordButton::I);
+
+        let chord = state.active_chord.unwrap();
+        assert!(chord.contains(UnkeyedNote(10))); // minor 7
+    }
+
+    #[test]
+    fn change_key_sets_transpose() {
+        let mut state = AppState::new();
+
+        let effects = state.handle_key_event(KeyEvent::Action {
+            state: KeyState::Pressed,
+            button: ActionButton::ChangeKey,
+            action: Actions::ChangeKey,
+        });
+
+        // No chord yet → no key change
+        assert!(effects.change_key.is_none());
+
+        press_chord(&mut state, ChordButton::V);
+        let effects = state.handle_key_event(KeyEvent::Action {
+            state: KeyState::Pressed,
+            button: ActionButton::ChangeKey,
+            action: Actions::ChangeKey,
+        });
+
+        assert_eq!(effects.change_key, Some(state.transpose));
+    }
+
+    #[test]
+    fn stop_notes_only_returns_active_notes() {
+        let mut state = AppState::new();
+
+        state.active_notes.insert(UnmidiNote(0));
+        state.active_notes.insert(UnmidiNote(1));
+
+        press_chord(&mut state, ChordButton::I);
+
+        let effects = state.handle_key_event(KeyEvent::Chord {
+            state: KeyState::Pressed,
+            button: ChordButton::V,
+        });
+
+        assert!(effects.stop_notes.len() <= 2);
+    }
+}
+
