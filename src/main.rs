@@ -1,10 +1,10 @@
+mod app_state;
 mod chord;
 mod notes;
-mod app_state;
 
+use app_state::{ActionButton, Actions, AppState, ChordButton, KeyEvent, KeyState, ModButton};
 use chord::{Chord, Modifiers};
-use notes::{MidiNote, Transpose, UnmidiNote, UnkeyedNote};
-use app_state::{AppState, ChordButton, ModButton, ActionButton, Actions, KeyEvent, KeyState};
+use notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
 
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
@@ -70,7 +70,6 @@ const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
 
 const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
 
-
 struct ChordButtonTableEntry {
     button: ChordButton,
     key_check: fn(&winit::keyboard::Key) -> bool,
@@ -119,7 +118,6 @@ const CHORD_BUTTON_TABLE: [ChordButtonTableEntry; 9] = [
         },
     },
 ];
-
 
 struct ModButtonTableEntry {
     button: ModButton,
@@ -185,7 +183,6 @@ fn action_button_for(key: &winit::keyboard::Key) -> Option<(ActionButton, Action
     }
 }
 
-
 fn key_event_from_winit(event: &winit::event::KeyEvent) -> Option<KeyEvent> {
     let state = match event.state {
         winit::event::ElementState::Pressed => KeyState::Pressed,
@@ -195,7 +192,7 @@ fn key_event_from_winit(event: &winit::event::KeyEvent) -> Option<KeyEvent> {
     let key = &event.logical_key;
 
     if let Some(button) = chord_button_for(key) {
-        return Some(KeyEvent::Chord { state, button });
+        return Some(KeyEvent::Chord { state, button }); //TODO Can we move this into app_state?
     }
 
     if let Some((button, modifiers)) = mod_button_for(key) {
@@ -303,9 +300,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match event {
                     WindowEvent::CloseRequested => {
                         // Turn off all active notes before closing
-                        let notes_to_stop: Vec<UnmidiNote> = app_state.active_notes.iter().cloned().collect();
+                        let notes_to_stop: Vec<UnmidiNote> =
+                            app_state.active_notes.iter().cloned().collect();
                         for note in notes_to_stop {
-                            stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + note );
+                            stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + note);
                         }
                         elwt.exit();
                     }
@@ -321,7 +319,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 println!("Changed key: {:?}", transpose);
                             }
                             for un in effects.stop_notes {
-                                stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un )
+                                stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un)
                             }
                         }
                     }
@@ -470,8 +468,9 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            if active_chord.map_or(true, |c| c.contains(uknote)) { //TODO can we move this logic
-                                                                   //into app_state?
+            if active_chord.map_or(true, |c| c.contains(uknote)) {
+                //TODO can we move this logic
+                //into app_state?
                 let vel = VELOCITY as u8;
                 play_note(conn, MIDI_BASE_TRANSPOSE + ubnote, vel);
                 played_note_at_pos = true;
@@ -493,11 +492,7 @@ fn send_note_off(c: &mut MidiOutputConnection, channel: u8, note: MidiNote) {
     let _ = c.send(&[off, note.0, 0]);
 }
 
-fn play_note(
-    conn: &mut Option<MidiOutputConnection>,
-    midi_note: MidiNote,
-    velocity: u8,
-) {
+fn play_note(conn: &mut Option<MidiOutputConnection>, midi_note: MidiNote, velocity: u8) {
     if let Some(c) = conn {
         let main_factor = (midi_note - MAIN_BASS_BOTTOM)
             .ratio(MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
@@ -523,10 +518,7 @@ fn play_note(
     }
 }
 
-fn stop_note(
-    conn: &mut Option<MidiOutputConnection>,
-    note: MidiNote,
-) {
+fn stop_note(conn: &mut Option<MidiOutputConnection>, note: MidiNote) {
     if let Some(c) = conn {
         // Send Note Off on both channels to ensure silence
         send_note_off(c, MAIN_CHANNEL, note);

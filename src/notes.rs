@@ -140,14 +140,23 @@ impl std::fmt::Debug for PitchClassSet {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn transpose_center_octave() {
-        for pair in [ (0, 0), (6, 6), (7, -5), (12, 0), (13, 1), (19, -5), (-5, -5), (-6, 6), (-7, 5)] {
+        for pair in [
+            (0, 0),
+            (6, 6),
+            (7, -5),
+            (12, 0),
+            (13, 1),
+            (19, -5),
+            (-5, -5),
+            (-6, 6),
+            (-7, 5),
+        ] {
             assert_eq!(Transpose(pair.0).center_octave(), Transpose(pair.1));
         }
     }
@@ -155,21 +164,30 @@ mod tests {
     #[test]
     fn transpose_add_unkeyed_note() {
         for triple in [(0, 0, 0), (10, 5, 15), (-2, 4, 2), (-8, -10, -18)] {
-            assert_eq!(Transpose(triple.0) + UnkeyedNote(triple.1), UnmidiNote(triple.2));
+            assert_eq!(
+                Transpose(triple.0) + UnkeyedNote(triple.1),
+                UnmidiNote(triple.2)
+            );
         }
     }
 
     #[test]
     fn transpose_add_unmidi_note() {
         for triple in [(0, 60, 60), (10, 60, 70), (-55, 60, 5)] {
-            assert_eq!(Transpose(triple.0) + UnmidiNote(triple.1), MidiNote(triple.2 as u8));
+            assert_eq!(
+                Transpose(triple.0) + UnmidiNote(triple.1),
+                MidiNote(triple.2 as u8)
+            );
         }
     }
 
     #[test]
     fn transpose_add_unmidi_note_clamped() {
         for triple in [(-61, 60, 0), (100, 200, 127), (200, 0, 127), (-200, 60, 0)] {
-            assert_eq!(Transpose(triple.0) + UnmidiNote(triple.1), MidiNote(triple.2 as u8));
+            assert_eq!(
+                Transpose(triple.0) + UnmidiNote(triple.1),
+                MidiNote(triple.2 as u8)
+            );
         }
     }
 
@@ -182,7 +200,12 @@ mod tests {
 
     #[test]
     fn interval_ratio() {
-        for triple in [(6, 12, 0.5), (4, 12, 1.0/3.0), (7, 12, 7.0/12.0), (-3, 8, -0.375)] {
+        for triple in [
+            (6, 12, 0.5),
+            (4, 12, 1.0 / 3.0),
+            (7, 12, 7.0 / 12.0),
+            (-3, 8, -0.375),
+        ] {
             assert_eq!(Interval(triple.0).ratio(Interval(triple.1)), triple.2);
         }
     }

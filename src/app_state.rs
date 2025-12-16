@@ -1,5 +1,5 @@
-use crate::notes::{Transpose, UnkeyedNote, UnmidiNote};
 use crate::chord::{Chord, Modifiers};
+use crate::notes::{Transpose, UnkeyedNote, UnmidiNote};
 use std::collections::HashSet;
 
 use bitflags::bitflags;
@@ -74,7 +74,6 @@ bitflags! {
     }
 }
 
-
 pub struct AppEffects {
     // pub play_notes: Vec<(UnmidiNote, u8)>,
     pub stop_notes: Vec<UnmidiNote>,
@@ -140,7 +139,6 @@ const CHORD_BUTTON_TABLE: [ChordButtonTableEntry; 9] = [
     },
 ];
 
-
 struct ModButtonTableEntry {
     button: ModButton,
     modifiers: Modifiers,
@@ -191,7 +189,11 @@ impl AppState {
     }
 
     pub fn handle_key_event(&mut self, event: KeyEvent) -> AppEffects {
-        let mut effects = AppEffects { redraw: true, change_key: None, stop_notes: Vec::new() };
+        let mut effects = AppEffects {
+            redraw: true,
+            change_key: None,
+            stop_notes: Vec::new(),
+        };
         let mut chord_was_pressed = false;
 
         match event {
@@ -275,12 +277,10 @@ impl AppState {
 
             if let Some(chord) = new_chord {
                 effects.stop_notes = (0..128)
-                        .map(|i| UnmidiNote(i))
-                        .filter(|un| {
-                            !chord.contains(*un - self.transpose)
-                        })
-                        .filter(|un| self.active_notes.contains(un))
-                        .collect();
+                    .map(|i| UnmidiNote(i))
+                    .filter(|un| !chord.contains(*un - self.transpose))
+                    .filter(|un| self.active_notes.contains(un))
+                    .collect();
             }
         }
 
@@ -294,7 +294,6 @@ fn chord_root_for(button: ChordButton) -> Option<UnkeyedNote> {
         .find(|e| e.button == button)
         .map(|e| e.root)
 }
-
 
 fn detect_implied_minor7_root(chord_keys_down: &HashSet<ChordButton>) -> Option<UnkeyedNote> {
     use ChordButton::*;
@@ -357,4 +356,3 @@ fn decide_chord_base(
 
     None
 }
-
