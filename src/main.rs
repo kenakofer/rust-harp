@@ -4,11 +4,10 @@ mod app_state;
 
 use chord::{Chord, Modifiers};
 use notes::{MidiNote, Transpose, UnbottomedNote, UnkeyedNote};
-use app_state::{AppState, ChordButton, ModButton, ActionButton, Actions, KeyEvent, KeyState, LOWEST_NOTE};
+use app_state::{AppState, ChordButton, ModButton, ActionButton, Actions, KeyEvent, KeyState};
 
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
-use std::collections::HashSet;
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -19,6 +18,7 @@ use winit::{
 };
 
 // MIDI Note 48 is C3. 48 strings = 4 octaves.
+const LOWEST_NOTE: Transpose = Transpose(36); // Do in the active key //TODO privatize
 const VELOCITY: u8 = 70;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
@@ -292,7 +292,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // App State
     let mut app_state = AppState::new();
-    let mut active_notes = HashSet::new();
 
     // 4. Run Event Loop
     event_loop.run(move |event, elwt| {
@@ -305,9 +304,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match event {
                     WindowEvent::CloseRequested => {
                         // Turn off all active notes before closing
-                        let notes_to_stop: Vec<MidiNote> = active_notes.iter().cloned().collect();
+                        let notes_to_stop: Vec<UnbottomedNote> = app_state.active_notes.iter().cloned().collect();
                         for note in notes_to_stop {
-                            stop_note(&mut midi_connection, note, &mut active_notes);
+                            stop_note(&mut midi_connection, LOWEST_NOTE + note );
                         }
                         elwt.exit();
                     }
@@ -322,17 +321,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                             if let Some(transpose) = effects.change_key {
                                 println!("Changed key: {:?}", transpose);
                             }
-                            if let Some(chord) = app_state.active_chord.as_ref() {
-                                let notes_to_stop: Vec<MidiNote> = (0..128)
-                                    .map(|i| MidiNote(i))
-                                    .filter(|mn| {
-                                        !chord.contains(*mn - LOWEST_NOTE - app_state.transpose)
-                                    })
-                                    .filter(|mn| active_notes.contains(mn))
-                                    .collect();
-                                for mn in notes_to_stop {
-                                    stop_note(&mut midi_connection, mn, &mut active_notes)
-                                }
+                            for un in effects.stop_notes {
+                                stop_note(&mut midi_connection, LOWEST_NOTE + un )
                             }
                         }
                     }
@@ -377,7 +367,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     curr_x,
                                     &mut midi_connection,
                                     &app_state.active_chord,
-                                    &mut active_notes,
                                     app_state.transpose,
                                     &note_positions,
                                 );
@@ -443,7 +432,6 @@ fn check_pluck(
     x2: f32,
     conn: &mut Option<MidiOutputConnection>,
     active_chord: &Option<Chord>,
-    active_notes: &mut HashSet<MidiNote>,
     transpose: Transpose,
     note_positions: &[f32],
 ) {
@@ -483,9 +471,10 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            if active_chord.map_or(true, |c| c.contains(uknote)) {
+            if active_chord.map_or(true, |c| c.contains(uknote)) { //TODO can we move this logic
+                                                                   //into app_state?
                 let vel = VELOCITY as u8;
-                play_note(conn, ubnote, active_notes, vel);
+                play_note(conn, LOWEST_NOTE + ubnote, vel);
                 played_note_at_pos = true;
             }
         }
@@ -507,13 +496,10 @@ fn send_note_off(c: &mut MidiOutputConnection, channel: u8, note: MidiNote) {
 
 fn play_note(
     conn: &mut Option<MidiOutputConnection>,
-    note: UnbottomedNote,
-    active_notes: &mut HashSet<MidiNote>,
+    midi_note: MidiNote,
     velocity: u8,
 ) {
     if let Some(c) = conn {
-        let midi_note = LOWEST_NOTE + note;
-
         let main_factor = (midi_note - MAIN_BASS_BOTTOM)
             .ratio(MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
             .clamp(0.0, 1.0);
@@ -535,21 +521,17 @@ fn play_note(
             send_note_off(c, BASS_CHANNEL, midi_note);
             send_note_on(c, BASS_CHANNEL, midi_note, bass_vel);
         }
-
-        active_notes.insert(midi_note);
     }
 }
 
 fn stop_note(
     conn: &mut Option<MidiOutputConnection>,
     note: MidiNote,
-    active_notes: &mut HashSet<MidiNote>,
 ) {
     if let Some(c) = conn {
         // Send Note Off on both channels to ensure silence
         send_note_off(c, MAIN_CHANNEL, note);
         send_note_off(c, BASS_CHANNEL, note);
-        active_notes.remove(&note);
     }
 }
 

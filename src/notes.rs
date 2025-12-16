@@ -12,8 +12,8 @@ impl Sub for MidiNote {
 }
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct UnbottomedNote(i16); // Note before building on the LOWEST_NOTE
+#[derive(Hash, Eq, Copy, Clone, Debug, PartialEq)]
+pub struct UnbottomedNote(pub i16); // Note before building on the LOWEST_NOTE
 
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq)]
