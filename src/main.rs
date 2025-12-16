@@ -22,6 +22,7 @@ use winit::{
 
 const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36); // Add with UnmidiNote to get MidiNote. MIDI Note 36 is C2
 const VELOCITY: u8 = 70;
+const PULSE_VELOCITY: u8 = 50;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
 const MICRO_NOTE: MidiNote = MidiNote(20); // middle C for micro-step trigger
@@ -317,6 +318,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                             if let Some(transpose) = effects.change_key {
                                 println!("Changed key: {:?}", transpose);
+                            }
+                            for un in effects.pulse_notes {
+                                play_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un, PULSE_VELOCITY);
                             }
                             for un in effects.stop_notes {
                                 stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un)

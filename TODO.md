@@ -3,8 +3,10 @@
   - Pedal toggle/mod?
   - Phone app version?
   - Check bass balance on keychange
-  - Fix held pulse key triggering rapid repeat
-  - Pulse in wonky in other keys
   - Explore additive chords (I + vi = vi7, I + iii = Imaj7)
   - Currently the top note is Ti when the bottom is Do. Can we fit one more?
   - NUM_STRINGS is really not that useful, but its used everywhere, even where we should use NUM_NOTES instead. How to find NUM_NOTES?
+  - Notes never getting stopped
+  - Pulse can get removed from queue while held
+  - Need to create new event for strum note crossings to pass to app_state for filtering.
+    - This will let us keep track of notes on and off.

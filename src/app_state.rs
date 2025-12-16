@@ -76,7 +76,7 @@ bitflags! {
 
 #[derive(Debug)]
 pub struct AppEffects {
-    // pub play_notes: Vec<(UnmidiNote, u8)>,
+    pub pulse_notes: Vec<UnmidiNote>,
     pub stop_notes: Vec<UnmidiNote>,
     pub redraw: bool,
     pub change_key: Option<Transpose>,
@@ -194,6 +194,7 @@ impl AppState {
             redraw: true,
             change_key: None,
             stop_notes: Vec::new(),
+            pulse_notes: Vec::new(),
         };
         let mut chord_was_pressed = false;
 
@@ -281,6 +282,12 @@ impl AppState {
             if self.action_stage.contains(Actions::ChangeKey) {
                 self.transpose = Transpose(chord.get_root().as_i16()).center_octave();
                 effects.change_key = Some(self.transpose);
+            }
+            if self.action_stage.contains(Actions::Pulse) {
+                (-12..70)
+                    .map(|i| UnmidiNote(i))
+                    .filter(|un| chord.contains(*un - self.transpose))
+                    .for_each(|un| effects.pulse_notes.push(un));
             }
         }
 
