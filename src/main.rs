@@ -6,6 +6,9 @@ use app_state::{ActionButton, Actions, AppState, ChordButton, KeyEvent, KeyState
 use chord::{Chord, Modifiers};
 use notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use midir::os::unix::VirtualOutput;
+
 use midir::{MidiOutput, MidiOutputConnection};
 use softbuffer::{Context, Surface};
 use std::error::Error;
@@ -245,18 +248,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Fallback for Windows or failure
-    if conn_out.is_none() {
-        let ports = midi_out.ports();
-        if let Some(port) = ports.first() {
-            println!(
-                "Connecting to hardware MIDI port: {}",
-                midi_out.port_name(port)?
-            );
-            conn_out = Some(midi_out.connect(port, "Rust Harp Connection")?);
-        } else {
-            eprintln!("Warning: No MIDI ports found. Application will emit no sound.");
-        }
+    #[cfg(any(target_os = "windows"))]
+    if let Some(port) = midi_out.ports().first() {
+        println!(
+            "Connecting to hardware MIDI port: {}",
+            midi_out.port_name(port)?
+        );
+        conn_out = Some(midi_out.connect(port, "Rust Harp Connection")?);
+    } else {
+        eprintln!("Warning: No MIDI ports found. Application will emit no sound.");
     }
 
     // If we have a virtual/hardware connection, set the instruments
