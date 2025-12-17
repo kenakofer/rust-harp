@@ -37,6 +37,12 @@ pub enum KeyEvent {
     },
 }
 
+/// Emitted when the strum cursor crosses a note/string boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StrumCrossingEvent {
+    pub note: UnkeyedNote,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ChordButton {
     VIIB,
@@ -186,6 +192,16 @@ impl AppState {
             action_stage: Actions::empty(),
 
             transpose: Transpose(0),
+        }
+    }
+
+    pub fn handle_strum_crossing(&mut self, event: StrumCrossingEvent) -> Option<UnmidiNote> {
+        if self.active_chord.map_or(true, |c| c.contains(event.note)) {
+            let un = self.transpose + event.note;
+            self.active_notes.insert(un);
+            Some(un)
+        } else {
+            None
         }
     }
 
@@ -462,6 +478,34 @@ mod tests {
         });
 
         assert!(effects.stop_notes.len() <= 2);
+    }
+
+    #[test]
+    fn strum_crossing_in_chord_returns_note_and_records_active() {
+        let mut state = AppState::new();
+        state.transpose = Transpose(12);
+
+        let un = state
+            .handle_strum_crossing(StrumCrossingEvent {
+                note: UnkeyedNote(4),
+            })
+            .unwrap();
+
+        assert_eq!(un, UnmidiNote(16));
+        assert!(state.active_notes.contains(&un));
+    }
+
+    #[test]
+    fn strum_crossing_outside_chord_is_filtered_out() {
+        let mut state = AppState::new();
+        state.transpose = Transpose(12);
+
+        let un = state.handle_strum_crossing(StrumCrossingEvent {
+            note: UnkeyedNote(3),
+        });
+
+        assert!(un.is_none());
+        assert!(state.active_notes.is_empty());
     }
 }
 

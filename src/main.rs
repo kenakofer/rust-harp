@@ -2,7 +2,10 @@ mod app_state;
 mod chord;
 mod notes;
 
-use app_state::{ActionButton, Actions, AppState, ChordButton, KeyEvent, KeyState, ModButton};
+use app_state::{
+    ActionButton, Actions, AppState, ChordButton, KeyEvent, KeyState, ModButton,
+    StrumCrossingEvent,
+};
 use chord::{Chord, Modifiers};
 use notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
 
@@ -321,9 +324,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                             for un in effects.pulse_notes {
                                 play_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un, PULSE_VELOCITY);
+                                app_state.active_notes.insert(un);
                             }
                             for un in effects.stop_notes {
-                                stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un)
+                                stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un);
+                                app_state.active_notes.remove(&un);
                             }
                         }
                     }
@@ -367,8 +372,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     last_x,
                                     curr_x,
                                     &mut midi_connection,
-                                    &app_state.active_chord,
-                                    app_state.transpose,
+                                    &mut app_state,
                                     &note_positions,
                                 );
                             }
@@ -432,8 +436,7 @@ fn check_pluck(
     x1: f32,
     x2: f32,
     conn: &mut Option<MidiOutputConnection>,
-    active_chord: &Option<Chord>,
-    transpose: Transpose,
+    app_state: &mut AppState,
     note_positions: &[f32],
 ) {
     if conn.is_none() {
@@ -451,7 +454,6 @@ fn check_pluck(
     // Iterate through all string positions to see if one lies within the movement range
     for i in 0..note_positions.len() {
         let uknote = UnkeyedNote(i as i16);
-        let ubnote = transpose + uknote;
 
         // If we're proceeding to the next string position, crossed the previous one, and didn't
         // play a note at it, then play the dampened string sound.
@@ -472,11 +474,9 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            if active_chord.map_or(true, |c| c.contains(uknote)) {
-                //TODO can we move this logic
-                //into app_state?
+            if let Some(un) = app_state.handle_strum_crossing(StrumCrossingEvent { note: uknote }) {
                 let vel = VELOCITY as u8;
-                play_note(conn, MIDI_BASE_TRANSPOSE + ubnote, vel);
+                play_note(conn, MIDI_BASE_TRANSPOSE + un, vel);
                 played_note_at_pos = true;
             }
         }
