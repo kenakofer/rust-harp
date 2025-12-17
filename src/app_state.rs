@@ -4,6 +4,9 @@ use std::collections::HashSet;
 
 use bitflags::bitflags;
 
+const STRUM_VELOCITY: u8 = 70;
+const PULSE_VELOCITY: u8 = 50;
+
 const ROOT_VIIB: UnkeyedNote = UnkeyedNote(10);
 const ROOT_IV: UnkeyedNote = UnkeyedNote(5);
 const ROOT_I: UnkeyedNote = UnkeyedNote(0);
@@ -77,9 +80,15 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NoteOn {
+    pub note: UnmidiNote,
+    pub velocity: u8,
+}
+
 #[derive(Debug)]
 pub struct AppEffects {
-    pub play_notes: Vec<UnmidiNote>,
+    pub play_notes: Vec<NoteOn>,
     pub stop_notes: Vec<UnmidiNote>,
     pub redraw: bool,
     pub change_key: Option<Transpose>,
@@ -205,7 +214,10 @@ impl AppState {
             if self.active_chord.map_or(true, |c| c.contains(note)) {
                 let un = self.transpose + note;
                 self.active_notes.insert(un);
-                effects.play_notes.push(un);
+                effects.play_notes.push(NoteOn {
+                    note: un,
+                    velocity: STRUM_VELOCITY,
+                });
             }
             return effects;
         }
@@ -308,7 +320,10 @@ impl AppState {
                     .filter(|un| chord.contains(*un - self.transpose))
                     .for_each(|un| {
                         self.active_notes.insert(un);
-                        effects.play_notes.push(un);
+                        effects.play_notes.push(NoteOn {
+                            note: un,
+                            velocity: PULSE_VELOCITY,
+                        });
                     });
             }
         }
@@ -495,7 +510,13 @@ mod tests {
             note: UnkeyedNote(4),
         });
 
-        assert_eq!(effects.play_notes, vec![UnmidiNote(16)]);
+        assert_eq!(
+            effects.play_notes,
+            vec![NoteOn {
+                note: UnmidiNote(16),
+                velocity: STRUM_VELOCITY,
+            }]
+        );
         assert!(state.active_notes.contains(&UnmidiNote(16)));
     }
 

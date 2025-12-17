@@ -21,8 +21,6 @@ use winit::{
 };
 
 const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36); // Add with UnmidiNote to get MidiNote. MIDI Note 36 is C2
-const VELOCITY: u8 = 70;
-const PULSE_VELOCITY: u8 = 50;
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
 const MICRO_NOTE: MidiNote = MidiNote(20); // middle C for micro-step trigger
@@ -316,7 +314,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 effects,
                                 &mut midi_connection,
                                 Some(window.as_ref()),
-                                PULSE_VELOCITY,
                             );
                         }
                     }
@@ -424,7 +421,6 @@ fn process_app_effects(
     effects: app_state::AppEffects,
     midi_connection: &mut Option<MidiOutputConnection>,
     window: Option<&Window>,
-    play_velocity: u8,
 ) -> bool {
     let played = !effects.play_notes.is_empty();
 
@@ -437,11 +433,11 @@ fn process_app_effects(
         println!("Changed key: {:?}", transpose);
     }
 
-    for un in effects.play_notes {
+    for pn in effects.play_notes {
         play_note(
             midi_connection,
-            MIDI_BASE_TRANSPOSE + un,
-            play_velocity,
+            MIDI_BASE_TRANSPOSE + pn.note,
+            pn.velocity,
         );
     }
     for un in effects.stop_notes {
@@ -494,7 +490,7 @@ fn check_pluck(
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
             let effects = app_state.handle_key_event(KeyEvent::StrumCrossing { note: uknote });
-            if process_app_effects(effects, conn, None, VELOCITY) {
+            if process_app_effects(effects, conn, None) {
                 played_note_at_pos = true;
             }
         }
