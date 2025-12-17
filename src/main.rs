@@ -311,9 +311,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     WindowEvent::KeyboardInput { event, .. } => {
                         if let Some(app_event) = key_event_from_winit(&event) {
-                            let _ = handle_app_event(
-                                &mut app_state,
-                                app_event,
+                            let effects = app_state.handle_key_event(app_event);
+                            let _ = process_app_effects(
+                                effects,
                                 &mut midi_connection,
                                 Some(window.as_ref()),
                                 PULSE_VELOCITY,
@@ -420,14 +420,12 @@ fn recompute_note_positions(positions: &mut Vec<f32>, width: f32) {
 
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
 /// We calculate the string positions dynamically based on window width.
-fn handle_app_event(
-    app_state: &mut AppState,
-    app_event: KeyEvent,
+fn process_app_effects(
+    effects: app_state::AppEffects,
     midi_connection: &mut Option<MidiOutputConnection>,
     window: Option<&Window>,
     play_velocity: u8,
 ) -> bool {
-    let effects = app_state.handle_key_event(app_event);
     let played = !effects.play_notes.is_empty();
 
     if effects.redraw {
@@ -495,13 +493,8 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            if handle_app_event(
-                app_state,
-                KeyEvent::StrumCrossing { note: uknote },
-                conn,
-                None,
-                VELOCITY,
-            ) {
+            let effects = app_state.handle_key_event(KeyEvent::StrumCrossing { note: uknote });
+            if process_app_effects(effects, conn, None, VELOCITY) {
                 played_note_at_pos = true;
             }
         }
