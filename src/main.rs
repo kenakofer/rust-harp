@@ -4,7 +4,7 @@ mod notes;
 
 use app_state::{ActionButton, Actions, AppState, ChordButton, KeyEvent, KeyState, ModButton};
 use chord::{Chord, Modifiers};
-use notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
+use notes::{MidiNote, NoteVolume, Transpose, UnkeyedNote, UnmidiNote};
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use midir::os::unix::VirtualOutput;
@@ -417,6 +417,41 @@ fn recompute_note_positions(positions: &mut Vec<f32>, width: f32) {
 
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
 /// We calculate the string positions dynamically based on window width.
+#[derive(Clone, Copy, Debug)]
+struct MidiVelocityPair {
+    main: u8,
+    bass: u8,
+}
+
+impl MidiVelocityPair {
+    fn from_note_and_volume(midi_note: MidiNote, volume: NoteVolume) -> Self {
+        let base = volume.0;
+        if base == 0 {
+            return Self { main: 0, bass: 0 };
+        }
+
+        let main_factor = (midi_note - MAIN_BASS_BOTTOM)
+            .ratio(MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
+            .clamp(0.0, 1.0);
+        let bass_factor = 1.0 - main_factor;
+
+        // Give main_factor twice as long of a fade
+        let main_factor = 1.0 - 0.5 * (1.0 - main_factor);
+
+        let mut main = ((base as f32) * main_factor).round() as u8;
+        let mut bass = ((base as f32) * bass_factor * BASS_VELOCITY_MULTIPLIER).round() as u8;
+
+        if main > 0 {
+            main = main.clamp(1, 127);
+        }
+        if bass > 0 {
+            bass = bass.clamp(1, 127);
+        }
+
+        Self { main, bass }
+    }
+}
+
 fn process_app_effects(
     effects: app_state::AppEffects,
     midi_connection: &mut Option<MidiOutputConnection>,
@@ -437,7 +472,7 @@ fn process_app_effects(
         play_note(
             midi_connection,
             MIDI_BASE_TRANSPOSE + pn.note,
-            pn.velocity,
+            pn.volume,
         );
     }
     for un in effects.stop_notes {
@@ -510,28 +545,17 @@ fn send_note_off(c: &mut MidiOutputConnection, channel: u8, note: MidiNote) {
     let _ = c.send(&[off, note.0, 0]);
 }
 
-fn play_note(conn: &mut Option<MidiOutputConnection>, midi_note: MidiNote, velocity: u8) {
+fn play_note(conn: &mut Option<MidiOutputConnection>, midi_note: MidiNote, volume: NoteVolume) {
     if let Some(c) = conn {
-        let main_factor = (midi_note - MAIN_BASS_BOTTOM)
-            .ratio(MAIN_BASS_TOP - MAIN_BASS_BOTTOM)
-            .clamp(0.0, 1.0);
-        let bass_factor = 1.0 - main_factor;
+        let pair = MidiVelocityPair::from_note_and_volume(midi_note, volume);
 
-        // On second thought, lets give main_factor twice as long of a fade
-        let main_factor = 1.0 - 0.5 * (1.0 - main_factor);
-
-        if main_factor > 0.0 {
-            let mut main_vel = ((velocity as f32) * main_factor).round() as u8;
-            main_vel = main_vel.clamp(1, 127);
-            send_note_on(c, MAIN_CHANNEL, midi_note, main_vel);
+        if pair.main > 0 {
+            send_note_on(c, MAIN_CHANNEL, midi_note, pair.main);
         }
-        if bass_factor > 0.0 {
-            let mut bass_vel =
-                ((velocity as f32) * bass_factor * BASS_VELOCITY_MULTIPLIER).round() as u8;
-            bass_vel = bass_vel.clamp(1, 127);
+        if pair.bass > 0 {
             // Send an off to bass first to get a solid rearticulation
             send_note_off(c, BASS_CHANNEL, midi_note);
-            send_note_on(c, BASS_CHANNEL, midi_note, bass_vel);
+            send_note_on(c, BASS_CHANNEL, midi_note, pair.bass);
         }
     }
 }

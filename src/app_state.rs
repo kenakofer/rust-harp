@@ -1,11 +1,11 @@
 use crate::chord::{Chord, Modifiers};
-use crate::notes::{Transpose, UnkeyedNote, UnmidiNote};
+use crate::notes::{NoteVolume, Transpose, UnkeyedNote, UnmidiNote};
 use std::collections::HashSet;
 
 use bitflags::bitflags;
 
-const STRUM_VELOCITY: u8 = 70;
-const PULSE_VELOCITY: u8 = 50;
+const STRUM_VOLUME: NoteVolume = NoteVolume(70);
+const PULSE_VOLUME: NoteVolume = NoteVolume(50);
 
 const ROOT_VIIB: UnkeyedNote = UnkeyedNote(10);
 const ROOT_IV: UnkeyedNote = UnkeyedNote(5);
@@ -83,7 +83,7 @@ bitflags! {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NoteOn {
     pub note: UnmidiNote,
-    pub velocity: u8,
+    pub volume: NoteVolume,
 }
 
 #[derive(Debug)]
@@ -216,7 +216,7 @@ impl AppState {
                 self.active_notes.insert(un);
                 effects.play_notes.push(NoteOn {
                     note: un,
-                    velocity: STRUM_VELOCITY,
+                    volume: STRUM_VOLUME,
                 });
             }
             return effects;
@@ -322,7 +322,7 @@ impl AppState {
                         self.active_notes.insert(un);
                         effects.play_notes.push(NoteOn {
                             note: un,
-                            velocity: PULSE_VELOCITY,
+                            volume: PULSE_VOLUME,
                         });
                     });
             }
@@ -514,7 +514,7 @@ mod tests {
             effects.play_notes,
             vec![NoteOn {
                 note: UnmidiNote(16),
-                velocity: STRUM_VELOCITY,
+                volume: STRUM_VOLUME,
             }]
         );
         assert!(state.active_notes.contains(&UnmidiNote(16)));

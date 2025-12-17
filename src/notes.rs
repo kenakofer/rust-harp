@@ -4,6 +4,10 @@ use std::ops::{Add, Sub};
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub struct MidiNote(pub u8);
 
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
+pub struct NoteVolume(pub u8); // 0..=127
+
 impl Sub for MidiNote {
     type Output = Interval;
     fn sub(self, rhs: MidiNote) -> Interval {
