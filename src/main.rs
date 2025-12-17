@@ -1,9 +1,10 @@
 mod app_state;
 mod chord;
 mod notes;
+mod ui_adapter;
 
-use app_state::{ActionButton, Actions, AppState, ChordButton, KeyEvent, KeyState, ModButton};
-use chord::{Chord, Modifiers};
+use ui_adapter::AppAdapter;
+use chord::Chord;
 use notes::{MidiNote, NoteVolume, Transpose, UnkeyedNote, UnmidiNote};
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -72,149 +73,6 @@ const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
 
 const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
 
-struct ChordButtonTableEntry {
-    button: ChordButton,
-    key_check: fn(&winit::keyboard::Key) -> bool,
-}
-
-const CHORD_BUTTON_TABLE: [ChordButtonTableEntry; 9] = [
-    ChordButtonTableEntry {
-        button: ChordButton::VIIB,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "a"),
-    },
-    ChordButtonTableEntry {
-        button: ChordButton::IV,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "s"),
-    },
-    ChordButtonTableEntry {
-        button: ChordButton::I,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "d"),
-    },
-    ChordButtonTableEntry {
-        button: ChordButton::V,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "f"),
-    },
-    ChordButtonTableEntry {
-        button: ChordButton::II,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "z"),
-    },
-    ChordButtonTableEntry {
-        button: ChordButton::VI,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "x"),
-    },
-    ChordButtonTableEntry {
-        button: ChordButton::III,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "c"),
-    },
-    ChordButtonTableEntry {
-        button: ChordButton::VII,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "v"),
-    },
-    ChordButtonTableEntry {
-        button: ChordButton::HeptatonicMajor,
-        key_check: |k| {
-            matches!(
-                k,
-                winit::keyboard::Key::Named(winit::keyboard::NamedKey::Control)
-            )
-        },
-    },
-];
-
-struct ModButtonTableEntry {
-    button: ModButton,
-    key_check: fn(&winit::keyboard::Key) -> bool,
-    modifiers: Modifiers,
-}
-
-const MOD_BUTTON_TABLE: [ModButtonTableEntry; 6] = [
-    ModButtonTableEntry {
-        button: ModButton::Major2,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "5"),
-        modifiers: Modifiers::AddMajor2,
-    },
-    ModButtonTableEntry {
-        button: ModButton::Major7,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "b"),
-        modifiers: Modifiers::AddMajor7,
-    },
-    ModButtonTableEntry {
-        button: ModButton::Minor7,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "6"),
-        modifiers: Modifiers::AddMinor7,
-    },
-    ModButtonTableEntry {
-        button: ModButton::Sus4,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "3"),
-        modifiers: Modifiers::Sus4,
-    },
-    ModButtonTableEntry {
-        button: ModButton::MinorMajor,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "4"),
-        modifiers: Modifiers::SwitchMinorMajor,
-    },
-    ModButtonTableEntry {
-        button: ModButton::No3,
-        key_check: |k| matches!(k, winit::keyboard::Key::Character(s) if s == "."),
-        modifiers: Modifiers::No3,
-    },
-];
-
-fn chord_button_for(key: &winit::keyboard::Key) -> Option<ChordButton> {
-    CHORD_BUTTON_TABLE
-        .iter()
-        .find(|e| (e.key_check)(key))
-        .map(|e| e.button)
-}
-fn mod_button_for(key: &winit::keyboard::Key) -> Option<(ModButton, Modifiers)> {
-    MOD_BUTTON_TABLE
-        .iter()
-        .find(|e| (e.key_check)(key))
-        .map(|e| (e.button, e.modifiers))
-}
-
-fn action_button_for(key: &winit::keyboard::Key) -> Option<(ActionButton, Actions)> {
-    use winit::keyboard::Key::Character;
-    use winit::keyboard::Key::Named;
-    use winit::keyboard::NamedKey::Tab;
-
-    match key {
-        Character(s) if s == "1" => Some((ActionButton::ChangeKey, Actions::ChangeKey)),
-        Named(Tab) => Some((ActionButton::Pulse, Actions::Pulse)),
-        _ => None,
-    }
-}
-
-fn key_event_from_winit(event: &winit::event::KeyEvent) -> Option<KeyEvent> {
-    let state = match event.state {
-        winit::event::ElementState::Pressed => KeyState::Pressed,
-        winit::event::ElementState::Released => KeyState::Released,
-    };
-
-    let key = &event.logical_key;
-
-    if let Some(button) = chord_button_for(key) {
-        return Some(KeyEvent::Chord { state, button }); //TODO Can we move this into app_state?
-    }
-
-    if let Some((button, modifiers)) = mod_button_for(key) {
-        return Some(KeyEvent::Modifier {
-            state,
-            button,
-            modifiers,
-        });
-    }
-
-    if let Some((button, action)) = action_button_for(key) {
-        return Some(KeyEvent::Action {
-            state,
-            button,
-            action,
-        });
-    }
-
-    None
-}
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -286,7 +144,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut note_positions: Vec<f32> = Vec::new();
 
     // App State
-    let mut app_state = AppState::new();
+    let mut app = AppAdapter::new();
 
     // 4. Run Event Loop
     event_loop.run(move |event, elwt| {
@@ -299,8 +157,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match event {
                     WindowEvent::CloseRequested => {
                         // Turn off all active notes before closing
-                        let notes_to_stop: Vec<UnmidiNote> =
-                            app_state.active_notes.iter().cloned().collect();
+                        let notes_to_stop: Vec<UnmidiNote> = app.active_notes().collect();
                         for note in notes_to_stop {
                             stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + note);
                         }
@@ -308,8 +165,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
 
                     WindowEvent::KeyboardInput { event, .. } => {
-                        if let Some(app_event) = key_event_from_winit(&event) {
-                            let effects = app_state.handle_key_event(app_event);
+                        if let Some(effects) = app.handle_winit_key_event(&event) {
                             let _ = process_app_effects(
                                 effects,
                                 &mut midi_connection,
@@ -335,7 +191,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             &mut surface,
                             physical_size.width,
                             physical_size.height,
-                            &app_state.active_chord,
+                            app.active_chord(),
                             &note_positions,
                         );
                     }
@@ -357,7 +213,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     last_x,
                                     curr_x,
                                     &mut midi_connection,
-                                    &mut app_state,
+                                    &mut app,
                                     &note_positions,
                                 );
                             }
@@ -373,7 +229,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             &mut surface,
                             size.width,
                             size.height,
-                            &app_state.active_chord,
+                            app.active_chord(),
                             &note_positions,
                         );
                     }
@@ -486,7 +342,7 @@ fn check_pluck(
     x1: f32,
     x2: f32,
     conn: &mut Option<MidiOutputConnection>,
-    app_state: &mut AppState,
+    app: &mut AppAdapter,
     note_positions: &[f32],
 ) {
     if conn.is_none() {
@@ -524,7 +380,7 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            let effects = app_state.handle_key_event(KeyEvent::StrumCrossing { note: uknote });
+            let effects = app.handle_strum_crossing(uknote);
             if process_app_effects(effects, conn, None) {
                 played_note_at_pos = true;
             }
