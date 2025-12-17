@@ -532,5 +532,43 @@ mod tests {
         assert!(effects.play_notes.is_empty());
         assert!(state.active_notes.is_empty());
     }
+
+    #[test]
+    fn repeated_strum_does_not_duplicate_active_notes() {
+        let mut state = AppState::new();
+
+        let effects1 = state.handle_key_event(KeyEvent::StrumCrossing {
+            note: UnkeyedNote(0),
+        });
+        let effects2 = state.handle_key_event(KeyEvent::StrumCrossing {
+            note: UnkeyedNote(0),
+        });
+
+        assert_eq!(effects1.play_notes.len(), 1);
+        assert_eq!(effects2.play_notes.len(), 1); // current behavior: retrigger
+        assert_eq!(state.active_notes.len(), 1); // HashSet: no duplicates
+    }
+
+    #[test]
+    fn chord_change_stops_and_clears_active_notes() {
+        let mut state = AppState::new();
+
+        state.handle_key_event(KeyEvent::StrumCrossing {
+            note: UnkeyedNote(0),
+        });
+        state.handle_key_event(KeyEvent::StrumCrossing {
+            note: UnkeyedNote(4),
+        });
+
+        assert!(state.active_notes.contains(&UnmidiNote(0)));
+        assert!(state.active_notes.contains(&UnmidiNote(4)));
+
+        let effects = press_chord(&mut state, ChordButton::V);
+
+        assert!(effects.stop_notes.contains(&UnmidiNote(0)));
+        assert!(effects.stop_notes.contains(&UnmidiNote(4)));
+        assert!(!state.active_notes.contains(&UnmidiNote(0)));
+        assert!(!state.active_notes.contains(&UnmidiNote(4)));
+    }
 }
 

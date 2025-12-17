@@ -466,3 +466,30 @@ fn draw_strings(
 
     buffer.present().unwrap();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn midi_velocity_pair_zero_volume_mutes_both_channels() {
+        let p = MidiVelocityPair::from_note_and_volume(MidiNote(60), NoteVolume(0));
+        assert_eq!(p.main, 0);
+        assert_eq!(p.bass, 0);
+    }
+
+    #[test]
+    fn midi_velocity_pair_clamps_low_and_high_note_ranges() {
+        let base = NoteVolume(100);
+
+        // Below MAIN_BASS_BOTTOM: bass dominates, main is at half (per fade curve)
+        let low = MidiVelocityPair::from_note_and_volume(MidiNote(0), base);
+        assert_eq!(low.main, 50);
+        assert_eq!(low.bass, 100);
+
+        // Above MAIN_BASS_TOP: main dominates, bass off
+        let high = MidiVelocityPair::from_note_and_volume(MidiNote(127), base);
+        assert_eq!(high.main, 100);
+        assert_eq!(high.bass, 0);
+    }
+}
