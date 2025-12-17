@@ -35,12 +35,9 @@ pub enum KeyEvent {
         button: ActionButton,
         action: Actions,
     },
-}
-
-/// Emitted when the strum cursor crosses a note/string boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StrumCrossingEvent {
-    pub note: UnkeyedNote,
+    StrumCrossing {
+        note: UnkeyedNote,
+    },
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -82,7 +79,7 @@ bitflags! {
 
 #[derive(Debug)]
 pub struct AppEffects {
-    pub pulse_notes: Vec<UnmidiNote>,
+    pub play_notes: Vec<UnmidiNote>,
     pub stop_notes: Vec<UnmidiNote>,
     pub redraw: bool,
     pub change_key: Option<Transpose>,
@@ -195,23 +192,24 @@ impl AppState {
         }
     }
 
-    pub fn handle_strum_crossing(&mut self, event: StrumCrossingEvent) -> Option<UnmidiNote> {
-        if self.active_chord.map_or(true, |c| c.contains(event.note)) {
-            let un = self.transpose + event.note;
-            self.active_notes.insert(un);
-            Some(un)
-        } else {
-            None
-        }
-    }
-
     pub fn handle_key_event(&mut self, event: KeyEvent) -> AppEffects {
         let mut effects = AppEffects {
             redraw: true,
             change_key: None,
             stop_notes: Vec::new(),
-            pulse_notes: Vec::new(),
+            play_notes: Vec::new(),
         };
+
+        if let KeyEvent::StrumCrossing { note } = event {
+            effects.redraw = false;
+            if self.active_chord.map_or(true, |c| c.contains(note)) {
+                let un = self.transpose + note;
+                self.active_notes.insert(un);
+                effects.play_notes.push(un);
+            }
+            return effects;
+        }
+
         let mut chord_was_pressed = false;
 
         match event {
@@ -255,6 +253,7 @@ impl AppState {
                     self.action_keys_down.remove(&button);
                 }
             },
+            KeyEvent::StrumCrossing { .. } => unreachable!(),
         }
 
         if self.chord_keys_down.is_empty() {
@@ -291,6 +290,10 @@ impl AppState {
                     .filter(|un| !chord.contains(*un - self.transpose))
                     .filter(|un| self.active_notes.contains(un))
                     .collect();
+
+                for un in effects.stop_notes.iter() {
+                    self.active_notes.remove(un);
+                }
             }
         }
 
@@ -303,7 +306,10 @@ impl AppState {
                 (-12..70)
                     .map(|i| UnmidiNote(i))
                     .filter(|un| chord.contains(*un - self.transpose))
-                    .for_each(|un| effects.pulse_notes.push(un));
+                    .for_each(|un| {
+                        self.active_notes.insert(un);
+                        effects.play_notes.push(un);
+                    });
             }
         }
 
@@ -485,14 +491,12 @@ mod tests {
         let mut state = AppState::new();
         state.transpose = Transpose(12);
 
-        let un = state
-            .handle_strum_crossing(StrumCrossingEvent {
-                note: UnkeyedNote(4),
-            })
-            .unwrap();
+        let effects = state.handle_key_event(KeyEvent::StrumCrossing {
+            note: UnkeyedNote(4),
+        });
 
-        assert_eq!(un, UnmidiNote(16));
-        assert!(state.active_notes.contains(&un));
+        assert_eq!(effects.play_notes, vec![UnmidiNote(16)]);
+        assert!(state.active_notes.contains(&UnmidiNote(16)));
     }
 
     #[test]
@@ -500,11 +504,11 @@ mod tests {
         let mut state = AppState::new();
         state.transpose = Transpose(12);
 
-        let un = state.handle_strum_crossing(StrumCrossingEvent {
+        let effects = state.handle_key_event(KeyEvent::StrumCrossing {
             note: UnkeyedNote(3),
         });
 
-        assert!(un.is_none());
+        assert!(effects.play_notes.is_empty());
         assert!(state.active_notes.is_empty());
     }
 }

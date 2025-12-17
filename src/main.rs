@@ -2,10 +2,7 @@ mod app_state;
 mod chord;
 mod notes;
 
-use app_state::{
-    ActionButton, Actions, AppState, ChordButton, KeyEvent, KeyState, ModButton,
-    StrumCrossingEvent,
-};
+use app_state::{ActionButton, Actions, AppState, ChordButton, KeyEvent, KeyState, ModButton};
 use chord::{Chord, Modifiers};
 use notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
 
@@ -322,13 +319,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                             if let Some(transpose) = effects.change_key {
                                 println!("Changed key: {:?}", transpose);
                             }
-                            for un in effects.pulse_notes {
-                                play_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un, PULSE_VELOCITY);
-                                app_state.active_notes.insert(un);
+                            for un in effects.play_notes {
+                                play_note(
+                                    &mut midi_connection,
+                                    MIDI_BASE_TRANSPOSE + un,
+                                    PULSE_VELOCITY,
+                                );
                             }
                             for un in effects.stop_notes {
                                 stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un);
-                                app_state.active_notes.remove(&un);
                             }
                         }
                     }
@@ -474,9 +473,12 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            if let Some(un) = app_state.handle_strum_crossing(StrumCrossingEvent { note: uknote }) {
+            let effects = app_state.handle_key_event(KeyEvent::StrumCrossing { note: uknote });
+            if !effects.play_notes.is_empty() {
                 let vel = VELOCITY as u8;
-                play_note(conn, MIDI_BASE_TRANSPOSE + un, vel);
+                for un in effects.play_notes {
+                    play_note(conn, MIDI_BASE_TRANSPOSE + un, vel);
+                }
                 played_note_at_pos = true;
             }
         }
