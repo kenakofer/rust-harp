@@ -311,24 +311,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     WindowEvent::KeyboardInput { event, .. } => {
                         if let Some(app_event) = key_event_from_winit(&event) {
-                            let effects = app_state.handle_key_event(app_event);
-
-                            if effects.redraw {
-                                window.request_redraw();
-                            }
-                            if let Some(transpose) = effects.change_key {
-                                println!("Changed key: {:?}", transpose);
-                            }
-                            for un in effects.play_notes {
-                                play_note(
-                                    &mut midi_connection,
-                                    MIDI_BASE_TRANSPOSE + un,
-                                    PULSE_VELOCITY,
-                                );
-                            }
-                            for un in effects.stop_notes {
-                                stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + un);
-                            }
+                            let _ = handle_app_event(
+                                &mut app_state,
+                                app_event,
+                                &mut midi_connection,
+                                Some(window.as_ref()),
+                                PULSE_VELOCITY,
+                            );
                         }
                     }
 
@@ -431,6 +420,39 @@ fn recompute_note_positions(positions: &mut Vec<f32>, width: f32) {
 
 /// Core Logic: Detects if the mouse cursor crossed any string boundaries.
 /// We calculate the string positions dynamically based on window width.
+fn handle_app_event(
+    app_state: &mut AppState,
+    app_event: KeyEvent,
+    midi_connection: &mut Option<MidiOutputConnection>,
+    window: Option<&Window>,
+    play_velocity: u8,
+) -> bool {
+    let effects = app_state.handle_key_event(app_event);
+    let played = !effects.play_notes.is_empty();
+
+    if effects.redraw {
+        if let Some(w) = window {
+            w.request_redraw();
+        }
+    }
+    if let Some(transpose) = effects.change_key {
+        println!("Changed key: {:?}", transpose);
+    }
+
+    for un in effects.play_notes {
+        play_note(
+            midi_connection,
+            MIDI_BASE_TRANSPOSE + un,
+            play_velocity,
+        );
+    }
+    for un in effects.stop_notes {
+        stop_note(midi_connection, MIDI_BASE_TRANSPOSE + un);
+    }
+
+    played
+}
+
 fn check_pluck(
     x1: f32,
     x2: f32,
@@ -473,12 +495,13 @@ fn check_pluck(
         // Strict crossing check
         if string_x > min_x && string_x <= max_x {
             crossed_pos = true;
-            let effects = app_state.handle_key_event(KeyEvent::StrumCrossing { note: uknote });
-            if !effects.play_notes.is_empty() {
-                let vel = VELOCITY as u8;
-                for un in effects.play_notes {
-                    play_note(conn, MIDI_BASE_TRANSPOSE + un, vel);
-                }
+            if handle_app_event(
+                app_state,
+                KeyEvent::StrumCrossing { note: uknote },
+                conn,
+                None,
+                VELOCITY,
+            ) {
                 played_note_at_pos = true;
             }
         }
