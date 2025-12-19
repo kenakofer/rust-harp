@@ -1,5 +1,5 @@
 use crate::app_state::{
-    ActionButton, Actions, AppEffects, AppState, ChordButton, KeyEvent, KeyState, ModButton,
+    ActionButton, Actions, AppEffects, ChordButton, KeyEvent, KeyState, ModButton,
 };
 use crate::chord::{Chord, Modifiers};
 use crate::notes::{UnkeyedNote, UnmidiNote};
@@ -150,13 +150,13 @@ fn key_event_from_winit(event: &winit::event::KeyEvent) -> Option<KeyEvent> {
 }
 
 pub struct AppAdapter {
-    state: AppState,
+    engine: crate::engine::Engine,
 }
 
 impl AppAdapter {
     pub fn new() -> Self {
         Self {
-            state: AppState::new(),
+            engine: crate::engine::Engine::new(),
         }
     }
 
@@ -165,19 +165,18 @@ impl AppAdapter {
         event: &winit::event::KeyEvent,
     ) -> Option<AppEffects> {
         let app_event = key_event_from_winit(event)?;
-        Some(self.state.handle_key_event(app_event))
+        Some(self.engine.handle_event(app_event))
     }
 
     pub fn handle_strum_crossing(&mut self, note: UnkeyedNote) -> AppEffects {
-        self.state
-            .handle_key_event(KeyEvent::StrumCrossing { note })
+        self.engine.handle_strum_crossing(note)
     }
 
     pub fn active_chord(&self) -> &Option<Chord> {
-        &self.state.active_chord
+        self.engine.active_chord()
     }
 
     pub fn active_notes(&self) -> impl Iterator<Item = UnmidiNote> + '_ {
-        self.state.active_notes.iter().cloned()
+        self.engine.active_notes()
     }
 }

@@ -1,5 +1,6 @@
 pub mod app_state;
 pub mod chord;
+pub mod engine;
 pub mod notes;
 pub mod output_midi;
 
