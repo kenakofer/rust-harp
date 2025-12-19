@@ -1,6 +1,6 @@
 use crate::chord::Chord;
-use crate::notes::{MidiNote, NoteVolume, Transpose, UnkeyedNote, UnmidiNote};
-use crate::output_midi::MidiVelocityPair;
+use crate::notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
+use crate::output_midir::MidiBackend;
 use crate::strum;
 use crate::ui_adapter::AppAdapter;
 
@@ -108,8 +108,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         eprintln!("Warning: No MIDI ports found. Application will emit no sound.");
     }
 
-    // If we have a virtual/hardware connection, set the instruments
-    if let Some(conn) = conn_out.as_mut() {
+    let mut midi = MidiBackend::new(conn_out, MAIN_CHANNEL, BASS_CHANNEL);
+
+    // If we have a connection, set the instruments
+    if let Some(conn) = midi.conn_mut() {
         let _ = conn.send(&[0xC0 | MAIN_CHANNEL, MAIN_PROGRAM]);
         let _ = conn.send(&[0xC0 | BASS_CHANNEL, BASS_PROGRAM]);
         let _ = conn.send(&[0xC0 | MICRO_CHANNEL, MICRO_PROGRAM]);
@@ -129,7 +131,6 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let mut surface = Surface::new(&context, window.clone()).expect("Failed to create surface");
     let mut prev_pos: Option<(f32, f32)> = None;
     let mut is_mouse_down = false;
-    let mut midi_connection = conn_out;
     let mut note_positions: Vec<f32> = Vec::new();
 
     // App State
@@ -145,14 +146,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     // Turn off all active notes before closing
                     let notes_to_stop: Vec<UnmidiNote> = app.active_notes().collect();
                     for note in notes_to_stop {
-                        stop_note(&mut midi_connection, MIDI_BASE_TRANSPOSE + note);
+                        midi.stop_note(MIDI_BASE_TRANSPOSE + note);
                     }
                     elwt.exit();
                 }
 
                 WindowEvent::KeyboardInput { event, .. } => {
                     if let Some(effects) = app.handle_winit_key_event(&event) {
-                        let _ = process_app_effects(effects, &mut midi_connection, Some(window.as_ref()));
+                        let _ = process_app_effects(effects, &mut midi, Some(window.as_ref()));
                     }
                 }
 
@@ -188,7 +189,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
                     if is_mouse_down {
                         if let Some((last_x, _)) = prev_pos {
-                            check_pluck(last_x, curr_x, &mut midi_connection, &mut app, &note_positions);
+                            check_pluck(last_x, curr_x, &mut midi, &mut app, &note_positions);
                         }
                     }
 
@@ -234,7 +235,7 @@ fn recompute_note_positions(positions: &mut Vec<f32>, width: f32) {
 
 fn process_app_effects(
     effects: crate::app_state::AppEffects,
-    midi_connection: &mut Option<MidiOutputConnection>,
+    midi: &mut MidiBackend,
     window: Option<&Window>,
 ) -> bool {
     let played = !effects.play_notes.is_empty();
@@ -249,10 +250,10 @@ fn process_app_effects(
     }
 
     for pn in effects.play_notes {
-        play_note(midi_connection, MIDI_BASE_TRANSPOSE + pn.note, pn.volume);
+        midi.play_note(MIDI_BASE_TRANSPOSE + pn.note, pn.volume);
     }
     for un in effects.stop_notes {
-        stop_note(midi_connection, MIDI_BASE_TRANSPOSE + un);
+        midi.stop_note(MIDI_BASE_TRANSPOSE + un);
     }
 
     played
@@ -261,11 +262,11 @@ fn process_app_effects(
 fn check_pluck(
     x1: f32,
     x2: f32,
-    conn: &mut Option<MidiOutputConnection>,
+    midi: &mut MidiBackend,
     app: &mut AppAdapter,
     note_positions: &[f32],
 ) {
-    if conn.is_none() {
+    if !midi.is_available() {
         return;
     }
 
@@ -274,57 +275,19 @@ fn check_pluck(
 
         for note in crossing.notes {
             let effects = app.handle_strum_crossing(note);
-            if process_app_effects(effects, conn, None) {
+            if process_app_effects(effects, midi, None) {
                 played_any = true;
             }
         }
 
         if !played_any {
             // Damped string sound
-            if let Some(c) = conn.as_mut() {
-                send_note_on(c, MICRO_CHANNEL, MICRO_NOTE, MICRO_VELOCITY);
-                send_note_off(c, MICRO_CHANNEL, MICRO_NOTE);
-            }
+            midi.send_note_on(MICRO_CHANNEL, MICRO_NOTE, MICRO_VELOCITY);
+            midi.send_note_off(MICRO_CHANNEL, MICRO_NOTE);
         }
     }
 }
 
-fn send_note_on(c: &mut MidiOutputConnection, channel: u8, note: MidiNote, vel: u8) {
-    if vel == 0 {
-        send_note_off(c, channel, note);
-        return;
-    }
-    let on = 0x90 | (channel & 0x0F);
-    let _ = c.send(&[on, note.0, vel]);
-}
-
-fn send_note_off(c: &mut MidiOutputConnection, channel: u8, note: MidiNote) {
-    let off = 0x80 | (channel & 0x0F);
-    let _ = c.send(&[off, note.0, 0]);
-}
-
-fn play_note(conn: &mut Option<MidiOutputConnection>, midi_note: MidiNote, volume: NoteVolume) {
-    if let Some(c) = conn {
-        let pair = MidiVelocityPair::from_note_and_volume(midi_note, volume);
-
-        if pair.main > 0 {
-            send_note_on(c, MAIN_CHANNEL, midi_note, pair.main);
-        }
-        if pair.bass > 0 {
-            // Send an off to bass first to get a solid rearticulation
-            send_note_off(c, BASS_CHANNEL, midi_note);
-            send_note_on(c, BASS_CHANNEL, midi_note, pair.bass);
-        }
-    }
-}
-
-fn stop_note(conn: &mut Option<MidiOutputConnection>, note: MidiNote) {
-    if let Some(c) = conn {
-        // Send Note Off on both channels to ensure silence
-        send_note_off(c, MAIN_CHANNEL, note);
-        send_note_off(c, BASS_CHANNEL, note);
-    }
-}
 
 fn draw_strings(
     surface: &mut Surface<Rc<Window>, Rc<Window>>,
