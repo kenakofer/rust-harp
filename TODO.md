@@ -2,6 +2,10 @@
   - rearrange mods/4 doesn't remove 3
   - Pedal toggle/mod?
   - Phone app version?
+    - Extract platform-agnostic core (AppState/chords/notes + core events/effects) into lib.rs
+    - Add UI frontends (winit-desktop, android-touch) that emit core input events
+    - Add output backends (midi today; android audio+dsp + haptics later) consuming core effects
+    - Implement plucked-string synth (Karplus–Strong / modal) + rate-limited haptic ticks on crossings
   - Check bass balance on keychange
   - Explore additive chords (I + vi = vi7, I + iii = Imaj7)
   - Currently the top note is Ti when the bottom is Do. Can we fit one more?
