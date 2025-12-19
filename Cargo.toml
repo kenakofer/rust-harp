@@ -4,13 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Winit 0.29 is a stable choice for window creation
-winit = "0.29"
-# Softbuffer allows writing to the window buffer without heavy GPU overhead
-softbuffer = "0.4"
-# Midir for cross-platform MIDI handling. On Linux, this uses ALSA.
-midir = "0.9"
-# Log is used to output errors without crashing
-log = "0.4"
-env_logger = "0.11"
+# Platform/UI deps (optional so `--no-default-features` can build core-only)
+winit = { version = "0.29", optional = true }
+softbuffer = { version = "0.4", optional = true }
+# Output backend deps
+midir = { version = "0.9", optional = true }
+log = { version = "0.4", optional = true }
+env_logger = { version = "0.11", optional = true }
+
 bitflags = "2.10.0"
+
+[features]
+default = ["desktop", "midi"]
+# Desktop UI (winit + softbuffer) and logging
+desktop = ["dep:winit", "dep:softbuffer", "dep:log", "dep:env_logger"]
+# MIDI runtime support
+midi = ["dep:midir"]
+
+[[bin]]
+name = "rust-harp"
+path = "src\\main.rs"
+required-features = ["desktop", "midi"]
