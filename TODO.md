@@ -4,6 +4,8 @@
   - Phone app version?
     - [x] Extract platform-agnostic core (AppState/chords/notes + core events/effects) into lib.rs
     - [ ] Add UI frontends (winit-desktop, android-touch) that emit core input events
+      - [x] winit-desktop frontend module
+      - [ ] android-touch frontend module
     - Add output backends (midi today; android audio+dsp + haptics later) consuming core effects
     - Implement plucked-string synth (Karplus–Strong / modal) + rate-limited haptic ticks on crossings
     - Build Android APKs in GitHub Actions (publish as artifacts) to avoid installing SDK/NDK/Gradle locally
