@@ -88,3 +88,19 @@ impl SquareSynth {
 fn midi_to_hz(midi: f32) -> f32 {
     440.0 * (2.0f32).powf((midi - 69.0) / 12.0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn square_synth_note_on_produces_audio() {
+        let mut s = SquareSynth::new(48_000);
+        s.note_on(MidiNote(69), 100); // A4
+
+        let mut buf = [0i16; 512];
+        s.render_i16_mono(&mut buf);
+
+        assert!(buf.iter().any(|&x| x != 0));
+    }
+}

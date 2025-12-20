@@ -44,3 +44,23 @@ impl AndroidFrontend {
         self.synth = SquareSynth::new(sample_rate_hz);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::notes::UnkeyedNote;
+
+    #[test]
+    fn android_frontend_queues_play_notes_from_engine_effects() {
+        let mut f = AndroidFrontend::new();
+        let effects = f.engine_mut().handle_strum_crossing(UnkeyedNote(0));
+        assert_eq!(effects.play_notes.len(), 1);
+
+        f.push_effects(effects);
+        assert!(f.has_pending_play_notes());
+
+        let drained: Vec<_> = f.drain_play_notes().collect();
+        assert_eq!(drained.len(), 1);
+        assert!(!f.has_pending_play_notes());
+    }
+}

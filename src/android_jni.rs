@@ -211,14 +211,14 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
 
         let color = if let Some(chord) = active_chord {
             if chord.has_root(uknote) {
-                0x00FF0000i32 // red
+                0xFFFF0000u32 as i32 // red
             } else if chord.contains(uknote) {
-                0x00FFFFFFi32 // white
+                0xFFFFFFFFu32 as i32 // white
             } else {
-                0x00333333i32 // dim gray
+                0xFF333333u32 as i32 // dim gray
             }
         } else {
-            0x00333333i32
+            0xFF333333u32 as i32
         };
 
         for y in 0..h {
