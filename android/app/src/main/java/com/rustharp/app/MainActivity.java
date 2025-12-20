@@ -20,6 +20,7 @@ public class MainActivity extends Activity {
     private int h;
     private int[] pixels;
     private Bitmap bmp;
+    private ImageView iv;
 
     private RustAudio audio;
 
@@ -34,11 +35,20 @@ public class MainActivity extends Activity {
     public static native void rustRenderStrings(long handle, int width, int height, int[] outPixels);
 
     private void redraw() {
-        if (pixels == null || bmp == null) {
+        if (pixels == null || bmp == null || iv == null) {
             return;
         }
         rustRenderStrings(rustHandle, w, h, pixels);
-        bmp.setPixels(pixels, 0, w, 0, 0, w, h);
+        try {
+            bmp.setPixels(pixels, 0, w, 0, 0, w, h);
+            iv.invalidate();
+        } catch (IllegalStateException e) {
+            Log.e("RustHarp", "Bitmap.setPixels failed; recreating bitmap", e);
+            bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            bmp.setPixels(pixels, 0, w, 0, 0, w, h);
+            iv.setImageBitmap(bmp);
+            iv.invalidate();
+        }
     }
 
     @Override
@@ -54,8 +64,11 @@ public class MainActivity extends Activity {
         pixels = new int[w * h];
         rustRenderStrings(rustHandle, w, h, pixels);
 
-        bmp = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888);
-        ImageView iv = new ImageView(this);
+        // Use a mutable bitmap: createBitmap(int[]...) can yield an immutable bitmap on some devices.
+        bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        bmp.setPixels(pixels, 0, w, 0, 0, w, h);
+
+        iv = new ImageView(this);
         iv.setImageBitmap(bmp);
         iv.setScaleType(ImageView.ScaleType.FIT_XY);
         iv.setBackgroundColor(0xFF000000);
