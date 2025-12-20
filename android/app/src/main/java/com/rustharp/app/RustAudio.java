@@ -82,8 +82,9 @@ public final class RustAudio {
 
         thread = new Thread(() -> {
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
-            // frames = samples for mono
-            int frames = bufBytes / 2;
+            // Write small blocks to reduce latency; the AudioTrack internal buffer can still be larger.
+            int maxFrames = bufBytes / 2; // mono i16
+            int frames = Math.max(60, Math.min(nativeFramesPerBuffer, maxFrames));
             short[] pcm = new short[frames];
             while (running) {
                 int written = MainActivity.rustFillAudio(rustHandle, frames, pcm);
