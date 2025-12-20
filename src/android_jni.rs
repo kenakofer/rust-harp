@@ -115,11 +115,16 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
     };
 
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
-    let effects = frontend.handle_touch(event, width.max(1) as f32);
+    let (effects, haptic) = frontend.handle_touch(event, width.max(1) as f32);
     let redraw = effects.redraw;
     frontend.push_effects(effects);
 
-    (if redraw { 1 } else { 0 }) | (if frontend.has_pending_play_notes() { 2 } else { 0 })
+    // Bit 0: needs redraw
+    // Bit 1: has play notes
+    // Bit 2: haptic pulse
+    (if redraw { 1 } else { 0 })
+        | (if frontend.has_pending_play_notes() { 2 } else { 0 })
+        | (if haptic { 4 } else { 0 })
 }
 
 #[no_mangle]

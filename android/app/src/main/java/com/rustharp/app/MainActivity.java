@@ -2,7 +2,10 @@ package com.rustharp.app;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -24,6 +27,7 @@ public class MainActivity extends Activity {
     private ImageView iv;
 
     private RustAudio audio;
+    private Vibrator vibrator;
 
     public static native int rustInit();
     public static native long rustCreateFrontend();
@@ -94,6 +98,7 @@ public class MainActivity extends Activity {
                     int flags = rustHandleTouch(rustHandle, e.getPointerId(i), 1, (int) e.getX(i), w);
                     if ((flags & 1) != 0) redraw();
                     if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
+                    if ((flags & 4) != 0) vibrateTick();
                 }
                 return true;
             }
@@ -113,14 +118,27 @@ public class MainActivity extends Activity {
             int flags = rustHandleTouch(rustHandle, pid, phase, (int) e.getX(idx), w);
             if ((flags & 1) != 0) redraw();
             if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
+            if ((flags & 4) != 0) vibrateTick();
             return true;
         });
 
         setContentView(iv);
         iv.requestFocus();
 
+        vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+
         audio = new RustAudio(rustHandle, 48000);
         audio.start();
+    }
+
+    private void vibrateTick() {
+        if (vibrator == null || !vibrator.hasVibrator()) return;
+        // Shortest reliable tick tends to be ~10ms.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(10, VibrationEffect.DEFAULT_AMPLITUDE));
+        } else {
+            vibrator.vibrate(10);
+        }
     }
 
     @Override

@@ -48,7 +48,7 @@ impl AndroidFrontend {
         self.synth = SquareSynth::new(sample_rate_hz);
     }
 
-    pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> AppEffects {
+    pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> (AppEffects, bool) {
         let positions = layout::compute_note_positions(width_px);
         let mut effects = AppEffects {
             play_notes: Vec::new(),
@@ -57,7 +57,10 @@ impl AndroidFrontend {
             change_key: None,
         };
 
-        for crossing in self.touch.handle_event(event, &positions) {
+        let crossings = self.touch.handle_event(event, &positions);
+        let haptic = !crossings.is_empty();
+
+        for crossing in crossings {
             for note in crossing.notes {
                 let e = self.engine.handle_strum_crossing(note);
                 effects.play_notes.extend(e.play_notes);
@@ -69,7 +72,7 @@ impl AndroidFrontend {
             }
         }
 
-        effects
+        (effects, haptic)
     }
 }
 
