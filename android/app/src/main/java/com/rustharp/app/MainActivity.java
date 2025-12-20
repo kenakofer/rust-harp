@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
 import android.widget.ImageView;
@@ -62,7 +63,13 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
         iv.setPadding(0, 0, 0, 0);
+
+        // Ensure we can receive hardware keyboard events.
+        iv.setFocusable(true);
+        iv.setFocusableInTouchMode(true);
+
         setContentView(iv);
+        iv.requestFocus();
 
         audio = new RustAudio(rustHandle, 48000);
         audio.start();
@@ -70,19 +77,35 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (rustHandle != 0) {
-            boolean isDown = event.getAction() == KeyEvent.ACTION_DOWN;
-            // Lowercase helps match the desktop mapping (which uses characters like 'a', 'd', etc.)
-            int uc = event.getUnicodeChar();
-            if (uc != 0) {
-                uc = Character.toLowerCase((char) uc);
-            }
+        boolean isDown = event.getAction() == KeyEvent.ACTION_DOWN;
 
-            int flags = rustHandleAndroidKey(rustHandle, event.getKeyCode(), uc, isDown);
+        // Lowercase helps match the desktop mapping (which uses characters like 'a', 'd', etc.)
+        int uc = event.getUnicodeChar();
+        if (uc != 0) {
+            uc = Character.toLowerCase((char) uc);
+        }
+
+        Log.d("RustHarp", "key action=" + event.getAction()
+                + " keyCode=" + event.getKeyCode()
+                + " scanCode=" + event.getScanCode()
+                + " meta=" + event.getMetaState()
+                + " uc=" + uc);
+
+        int flags = 0;
+        if (rustHandle != 0) {
+            flags = rustHandleAndroidKey(rustHandle, event.getKeyCode(), uc, isDown);
             if ((flags & 1) != 0) {
                 redraw();
             }
         }
+
+        // If Rust recognized the key at all (redraw and/or play_notes), consume it.
+        // Falling through to the default handler can trigger system navigation/search behaviors
+        // (e.g., KEYCODE_BACK / assist / launcher shortcuts) on some keyboards.
+        if (flags != 0) {
+            return true;
+        }
+
         return super.dispatchKeyEvent(event);
     }
 
