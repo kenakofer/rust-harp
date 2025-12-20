@@ -198,7 +198,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     };
 
     let len = w * h;
-    let mut pixels = vec![0xFF000000i32; len];
+    let mut pixels = vec![0xFF000000u32 as i32; len];
 
     let positions = layout::compute_note_positions(w as f32);
     for (i, x) in positions.iter().enumerate() {
