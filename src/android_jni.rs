@@ -1,7 +1,8 @@
+use crate::android_frontend::AndroidFrontend;
 use crate::layout;
 
 use jni::objects::{JClass, JIntArray};
-use jni::sys::jint;
+use jni::sys::{jint, jlong};
 use jni::JNIEnv;
 
 /// Simple JNI hook so an Android Activity can verify the Rust library loads.
@@ -11,6 +12,29 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustInit(
     _class: JClass,
 ) -> jint {
     1
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustCreateFrontend(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jlong {
+    let frontend = Box::new(AndroidFrontend::new());
+    Box::into_raw(frontend) as jlong
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustDestroyFrontend(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if handle == 0 {
+        return;
+    }
+    unsafe {
+        drop(Box::from_raw(handle as *mut AndroidFrontend));
+    }
 }
 
 /// Render a black background + vertical string lines into `out_pixels` (ARGB_8888).

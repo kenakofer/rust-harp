@@ -35,6 +35,7 @@ Goal: ship an APK where a **Bluetooth keyboard** changes chords using the same m
 - Add unit tests that assert the mapping table is stable (e.g. 'a' -> VIIB, 's' -> IV, 'd' -> I, 'f' -> V, etc).
 
 ### 2) Add an Android “frontend” Rust object that owns Engine
+- [x] Added `AndroidFrontend` + JNI create/destroy handle lifecycle.
 - Create `src/android_frontend.rs` (cfg android) that contains something like:
   - `struct AndroidFrontend { engine: Engine }`
 - Expose JNI lifecycle:

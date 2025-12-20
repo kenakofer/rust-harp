@@ -12,13 +12,18 @@ public class MainActivity extends Activity {
         System.loadLibrary("rust_harp");
     }
 
+    private long rustHandle = 0;
+
     public static native int rustInit();
+    public static native long rustCreateFrontend();
+    public static native void rustDestroyFrontend(long handle);
     public static native void rustRenderStrings(int width, int height, int[] outPixels);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         rustInit(); // smoke test: ensures JNI wiring is alive
+        rustHandle = rustCreateFrontend();
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
         int w = dm.widthPixels;
@@ -37,5 +42,14 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT));
         iv.setPadding(0, 0, 0, 0);
         setContentView(iv);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (rustHandle != 0) {
+            rustDestroyFrontend(rustHandle);
+            rustHandle = 0;
+        }
+        super.onDestroy();
     }
 }
