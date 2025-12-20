@@ -2,8 +2,9 @@ use crate::android_frontend::AndroidFrontend;
 use crate::app_state::KeyState;
 use crate::input_map::{self, UiKey};
 use crate::layout;
+use crate::notes::{MidiNote, NoteVolume, Transpose};
 
-use jni::objects::{JBoolean, JClass, JIntArray};
+use jni::objects::{JClass, JIntArray};
 use jni::sys::{jboolean, jint, jlong};
 use jni::JNIEnv;
 
@@ -76,9 +77,48 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
 
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let effects = frontend.engine_mut().handle_event(app_event);
+    let redraw = effects.redraw;
+
+    frontend.push_effects(effects);
 
     // Bit 0: needs redraw
-    if effects.redraw { 1 } else { 0 }
+    // Bit 1: has play notes
+    (if redraw { 1 } else { 0 }) | (if frontend.has_pending_play_notes() { 2 } else { 0 })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustDrainPlayNotes(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    out_midi_notes: JIntArray,
+    out_volumes: JIntArray,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+
+    // Match desktop's MIDI_BASE_TRANSPOSE (C2)
+    const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
+
+    let mut notes: Vec<jint> = Vec::new();
+    let mut vols: Vec<jint> = Vec::new();
+
+    for pn in frontend.drain_play_notes() {
+        let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
+        let NoteVolume(v) = pn.volume;
+        notes.push(m as jint);
+        vols.push(v as jint);
+    }
+
+    let count = notes.len().min(i32::MAX as usize) as jint;
+
+    let _ = env.set_int_array_region(out_midi_notes, 0, &notes);
+    let _ = env.set_int_array_region(out_volumes, 0, &vols);
+
+    count
 }
 
 /// Render strings into `out_pixels` (ARGB_8888) based on the current active chord.
