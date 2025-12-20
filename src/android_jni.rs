@@ -81,11 +81,12 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
     if effects.redraw { 1 } else { 0 }
 }
 
-/// Render a black background + vertical string lines into `out_pixels` (ARGB_8888).
+/// Render strings into `out_pixels` (ARGB_8888) based on the current active chord.
 #[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     mut env: JNIEnv,
     _class: JClass,
+    handle: jlong,
     width: jint,
     height: jint,
     out_pixels: JIntArray,
@@ -96,24 +97,35 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         return;
     }
 
+    let active_chord = if handle != 0 {
+        let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+        *frontend.engine().active_chord()
+    } else {
+        None
+    };
+
     let len = w * h;
-    let mut pixels = vec![0xFF000000u32; len];
+    let mut pixels = vec![0xFF000000i32; len];
 
-    // Default: show I chord root (pitch class 0) as red.
-    let root_pc = 0usize;
-    let root_string_in_octave = layout::NOTE_TO_STRING_IN_OCTAVE[root_pc] as usize;
-
-    for (string_idx, x) in layout::compute_string_positions(w as f32).enumerate() {
+    let positions = layout::compute_note_positions(w as f32);
+    for (i, x) in positions.iter().enumerate() {
+        let uknote = crate::notes::UnkeyedNote(i as i16);
         let xi = x.round() as i32;
         if xi < 0 || xi >= w as i32 {
             continue;
         }
         let xi = xi as usize;
 
-        let color = if (string_idx % 7) == root_string_in_octave {
-            0xFFFF0000
+        let color = if let Some(chord) = active_chord {
+            if chord.has_root(uknote) {
+                0x00FF0000i32 // red
+            } else if chord.contains(uknote) {
+                0x00FFFFFFi32 // white
+            } else {
+                0x00333333i32 // dim gray
+            }
         } else {
-            0xFFFFFFFF
+            0x00333333i32
         };
 
         for y in 0..h {
@@ -121,7 +133,5 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         }
     }
 
-    // Convert u32 ARGB -> i32 as expected by Java int[]
-    let pixels_i32: Vec<i32> = pixels.into_iter().map(|p| p as i32).collect();
-    let _ = env.set_int_array_region(out_pixels, 0, &pixels_i32);
+    let _ = env.set_int_array_region(out_pixels, 0, &pixels);
 }

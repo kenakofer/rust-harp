@@ -34,6 +34,28 @@ pub const UNSCALED_RELATIVE_X_POSITIONS: &[f32] = &[
 
 pub const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
 
+pub const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
+
 pub fn compute_string_positions(width: f32) -> impl Iterator<Item = f32> {
     UNSCALED_RELATIVE_X_POSITIONS.iter().map(move |rel| rel * width)
+}
+
+/// Positions for each chromatic note (UnkeyedNote 0..N) mapped onto the physical strings.
+///
+/// This intentionally contains duplicates: multiple notes can map to the same physical string.
+pub fn compute_note_positions(width: f32) -> Vec<f32> {
+    let mut positions = Vec::new();
+
+    for octave in 0.. {
+        for uknote in 0..12 {
+            let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
+            let string = octave * 7 + string_in_octave;
+            if string >= NUM_STRINGS {
+                return positions;
+            }
+            positions.push(UNSCALED_RELATIVE_X_POSITIONS[string] * width);
+        }
+    }
+
+    positions
 }

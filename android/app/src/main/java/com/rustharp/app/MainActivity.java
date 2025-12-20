@@ -24,13 +24,13 @@ public class MainActivity extends Activity {
     public static native long rustCreateFrontend();
     public static native void rustDestroyFrontend(long handle);
     public static native int rustHandleAndroidKey(long handle, int keyCode, int unicodeChar, boolean isDown);
-    public static native void rustRenderStrings(int width, int height, int[] outPixels);
+    public static native void rustRenderStrings(long handle, int width, int height, int[] outPixels);
 
     private void redraw() {
         if (pixels == null || bmp == null) {
             return;
         }
-        rustRenderStrings(w, h, pixels);
+        rustRenderStrings(rustHandle, w, h, pixels);
         bmp.setPixels(pixels, 0, w, 0, 0, w, h);
     }
 
@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
         h = dm.heightPixels;
 
         pixels = new int[w * h];
-        rustRenderStrings(w, h, pixels);
+        rustRenderStrings(rustHandle, w, h, pixels);
 
         bmp = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888);
         ImageView iv = new ImageView(this);

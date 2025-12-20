@@ -52,6 +52,7 @@ Goal: ship an APK where a **Bluetooth keyboard** changes chords using the same m
   - Rust converts that into `app_state::KeyEvent` using the shared mapping and calls `engine.handle_event(..)`.
 
 ### 4) Make rendering reflect the active chord from AppState
+- [x] Android rendering reads `Engine.active_chord()` and colors root/chord/non-chord.
 - Replace the current “always root_pc=0” highlighting in `rustRenderStrings`.
 - Use `engine.active_chord()` and mirror the desktop logic:
   - draw root notes in red (`Chord::has_root`)
