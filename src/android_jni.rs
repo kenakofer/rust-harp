@@ -120,8 +120,10 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFillAudio(
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
 
     // Feed any queued NoteOn events into the synth.
+    // (Drain first to avoid simultaneous mutable borrows of `frontend` and `frontend.synth`.)
+    let drained: Vec<_> = frontend.drain_play_notes().collect();
     const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
-    for pn in frontend.drain_play_notes() {
+    for pn in drained {
         let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
         let NoteVolume(v) = pn.volume;
         frontend.synth.note_on(MidiNote(m), v);
