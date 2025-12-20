@@ -17,10 +17,15 @@ jobs:
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK/NDK
-        run: |
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264"
+        with:
+          # Keep installs minimal to avoid interactive license prompts
+          packages: >-
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
+            ndk;26.3.11579264
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -36,7 +41,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: 8.7
+          # AGP requires Gradle >= 8.9
+          gradle-version: 8.9
 
       - name: Build debug APK
         run: gradle -p android assembleDebug

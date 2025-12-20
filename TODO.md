@@ -13,7 +13,7 @@
     - Implement plucked-string synth (Karplus–Strong / modal) + rate-limited haptic ticks on crossings
     - [ ] Build Android APKs in GitHub Actions (publish as artifacts) to avoid installing SDK/NDK/Gradle locally
       - [x] Minimal Gradle Android project + JNI smoke test
-      - [x] GitHub Actions workflow to build arm64 debug APK artifact
+      - [ ] GitHub Actions workflow builds arm64 debug APK artifact (passing)
   - Check bass balance on keychange
   - Explore additive chords (I + vi = vi7, I + iii = Imaj7)
   - Currently the top note is Ti when the bottom is Do. Can we fit one more?
