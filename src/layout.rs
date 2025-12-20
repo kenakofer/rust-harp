@@ -32,6 +32,8 @@ pub const UNSCALED_RELATIVE_X_POSITIONS: &[f32] = &[
     9.91796875000000022e-01,
 ];
 
+pub const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
+
 pub fn compute_string_positions(width: f32) -> impl Iterator<Item = f32> {
     UNSCALED_RELATIVE_X_POSITIONS.iter().map(move |rel| rel * width)
 }

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
+import android.view.ViewGroup;
 import android.widget.ImageView;
 
 public class MainActivity extends Activity {
@@ -29,6 +30,12 @@ public class MainActivity extends Activity {
         Bitmap bmp = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888);
         ImageView iv = new ImageView(this);
         iv.setImageBitmap(bmp);
+        iv.setScaleType(ImageView.ScaleType.FIT_XY);
+        iv.setBackgroundColor(0xFF000000);
+        iv.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        iv.setPadding(0, 0, 0, 0);
         setContentView(iv);
     }
 }
