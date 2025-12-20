@@ -27,6 +27,7 @@
 Goal: ship an APK where a **Bluetooth keyboard** changes chords using the same mapping as desktop, and when core emits `AppEffects.play_notes` we play a **1s square-wave** tone at the correct pitch.
 
 ### 1) Share a single key mapping across desktop + Android
+- [x] Extracted into `src/input_map.rs` and desktop now adapts winit -> `UiKey`.
 - Extract the current desktop mapping in `src/ui_adapter.rs` into a core module (e.g. `src/input_map.rs`) that maps:
   - `KeyState` + a *simple key representation* (e.g. `char` or an enum) -> `app_state::KeyEvent`
 - Desktop keeps using winit by adapting winit’s `KeyEvent` -> (char/enum) -> `KeyEvent`.

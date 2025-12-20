@@ -30,5 +30,5 @@ android = ["dep:jni"]
 
 [[bin]]
 name = "rust-harp"
-path = "src\\main.rs"
+path = "src/main.rs"
 required-features = ["desktop", "midi"]
