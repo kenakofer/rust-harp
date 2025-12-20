@@ -127,7 +127,7 @@ public class MainActivity extends Activity {
 
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
 
-        audio = new RustAudio(rustHandle, 48000);
+        audio = new RustAudio(rustHandle, (android.media.AudioManager) getSystemService(AUDIO_SERVICE));
         audio.start();
     }
 

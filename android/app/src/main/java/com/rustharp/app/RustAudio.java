@@ -6,41 +6,63 @@ import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.Build;
 import android.os.Process;
+import android.util.Log;
 
 public final class RustAudio {
     private static final int CHANNEL_MASK = AudioFormat.CHANNEL_OUT_MONO;
     private static final int ENCODING = AudioFormat.ENCODING_PCM_16BIT;
 
     private final long rustHandle;
-    private final int sampleRate;
+    private final AudioManager audioManager;
 
     private AudioTrack track;
     private Thread thread;
     private volatile boolean running = false;
 
-    public RustAudio(long rustHandle, int sampleRate) {
+    public RustAudio(long rustHandle, AudioManager audioManager) {
         this.rustHandle = rustHandle;
-        this.sampleRate = sampleRate;
+        this.audioManager = audioManager;
+    }
+
+    private static int parseIntOr(String s, int fallback) {
+        if (s == null) return fallback;
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     public void start() {
         if (running) return;
         running = true;
 
-        MainActivity.rustSetAudioSampleRate(rustHandle, sampleRate);
+        int nativeRate = parseIntOr(
+                audioManager != null ? audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE) : null,
+                48000);
+        int nativeFramesPerBuffer = parseIntOr(
+                audioManager != null ? audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER) : null,
+                256);
 
-        int minBytes = AudioTrack.getMinBufferSize(sampleRate, CHANNEL_MASK, ENCODING);
-        // Latency is largely buffered; start with the platform minimum.
+        MainActivity.rustSetAudioSampleRate(rustHandle, nativeRate);
+
+        int minBytes = AudioTrack.getMinBufferSize(nativeRate, CHANNEL_MASK, ENCODING);
+        // Use the platform minimum (cannot go below it). Using the native sample rate helps keep this low.
         int bufBytes = minBytes;
 
+        Log.i("RustHarp", "audio nativeRate=" + nativeRate
+                + " framesPerBuf=" + nativeFramesPerBuffer
+                + " minBytes=" + minBytes
+                + " bufBytes=" + bufBytes);
+
         AudioAttributes attrs = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setUsage(AudioAttributes.USAGE_GAME)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build();
 
         AudioFormat format = new AudioFormat.Builder()
                 .setEncoding(ENCODING)
-                .setSampleRate(sampleRate)
+                .setSampleRate(nativeRate)
                 .setChannelMask(CHANNEL_MASK)
                 .build();
 
