@@ -4,8 +4,8 @@ use crate::input_map::{self, UiKey};
 use crate::layout;
 use crate::notes::{MidiNote, NoteVolume, Transpose};
 
-use jni::objects::{JClass, JIntArray};
-use jni::sys::{jboolean, jint, jlong};
+use jni::objects::{JClass, JIntArray, JShortArray};
+use jni::sys::{jboolean, jint, jlong, jshort};
 use jni::JNIEnv;
 
 /// Simple JNI hook so an Android Activity can verify the Rust library loads.
@@ -84,6 +84,57 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
     // Bit 0: needs redraw
     // Bit 1: has play notes
     (if redraw { 1 } else { 0 }) | (if frontend.has_pending_play_notes() { 2 } else { 0 })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetAudioSampleRate(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    sample_rate_hz: jint,
+) {
+    if handle == 0 {
+        return;
+    }
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    frontend.set_sample_rate(sample_rate_hz.max(1) as u32);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFillAudio(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    frames: jint,
+    out_pcm: JShortArray,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    let n = frames.max(0) as usize;
+    if n == 0 {
+        return 0;
+    }
+
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+
+    // Feed any queued NoteOn events into the synth.
+    const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
+    for pn in frontend.drain_play_notes() {
+        let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
+        let NoteVolume(v) = pn.volume;
+        frontend.synth.note_on(MidiNote(m), v);
+    }
+
+    let mut buf: Vec<i16> = vec![0; n];
+    frontend.synth.render_i16_mono(&mut buf);
+
+    // i16 -> jshort
+    let buf_js: Vec<jshort> = buf.into_iter().map(|s| s as jshort).collect();
+    let _ = env.set_short_array_region(out_pcm, 0, &buf_js);
+
+    n as jint
 }
 
 #[no_mangle]

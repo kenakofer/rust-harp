@@ -11,6 +11,9 @@ pub mod strum;
 pub mod touch;
 
 #[cfg(all(target_os = "android", feature = "android"))]
+pub mod android_audio;
+
+#[cfg(all(target_os = "android", feature = "android"))]
 pub mod android_frontend;
 
 #[cfg(all(target_os = "android", feature = "android"))]

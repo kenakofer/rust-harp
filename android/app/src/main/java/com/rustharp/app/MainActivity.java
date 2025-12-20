@@ -20,15 +20,16 @@ public class MainActivity extends Activity {
     private int[] pixels;
     private Bitmap bmp;
 
-    private final TonePlayer tonePlayer = new TonePlayer();
-    private int[] noteBuf = new int[32];
-    private int[] volBuf = new int[32];
+    private RustAudio audio;
 
     public static native int rustInit();
     public static native long rustCreateFrontend();
     public static native void rustDestroyFrontend(long handle);
     public static native int rustHandleAndroidKey(long handle, int keyCode, int unicodeChar, boolean isDown);
-    public static native int rustDrainPlayNotes(long handle, int[] outMidiNotes, int[] outVolumes);
+
+    public static native void rustSetAudioSampleRate(long handle, int sampleRateHz);
+    public static native int rustFillAudio(long handle, int frames, short[] outPcm);
+
     public static native void rustRenderStrings(long handle, int width, int height, int[] outPixels);
 
     private void redraw() {
@@ -62,6 +63,9 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT));
         iv.setPadding(0, 0, 0, 0);
         setContentView(iv);
+
+        audio = new RustAudio(rustHandle, 48000);
+        audio.start();
     }
 
     @Override
@@ -78,25 +82,16 @@ public class MainActivity extends Activity {
             if ((flags & 1) != 0) {
                 redraw();
             }
-            if ((flags & 2) != 0) {
-                int n = rustDrainPlayNotes(rustHandle, noteBuf, volBuf);
-                // MVP: just play the first note for now.
-                if (n > 0) {
-                    float hz = midiToHz(noteBuf[0]);
-                    tonePlayer.playSquare(hz, volBuf[0]);
-                }
-            }
         }
         return super.dispatchKeyEvent(event);
     }
 
-    private static float midiToHz(int midi) {
-        return (float) (440.0 * Math.pow(2.0, (midi - 69) / 12.0));
-    }
-
     @Override
     protected void onDestroy() {
-        tonePlayer.shutdown();
+        if (audio != null) {
+            audio.stop();
+            audio = null;
+        }
         if (rustHandle != 0) {
             rustDestroyFrontend(rustHandle);
             rustHandle = 0;

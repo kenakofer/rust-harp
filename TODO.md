@@ -64,7 +64,7 @@ Goal: ship an APK where a **Bluetooth keyboard** changes chords using the same m
   - Only redraw on input events / state changes.
 
 ### 5) Square-wave audio output for AppEffects.play_notes
-- [x] MVP: JNI drains `play_notes` as MIDI numbers + volumes; Java plays 1s square wave via `AudioTrack`.
+- [x] Upgraded: Rust streaming synth (decaying square waves) + Java `AudioTrack` loop calling `rustFillAudio`.
 - Add a tiny Android audio backend on the Java side (simplest/fastest path):
   - `TonePlayer` using `AudioTrack` (PCM 16-bit, e.g. 48kHz).
   - Generate a 1-second square wave buffer for a given frequency and amplitude.

@@ -1,12 +1,14 @@
+use crate::android_audio::SquareSynth;
 use crate::app_state::NoteOn;
 use crate::engine::Engine;
 
-/// Android-facing wrapper that owns the core Engine.
+/// Android-facing wrapper that owns the core Engine + audio synth.
 ///
 /// Kept separate so JNI functions can be thin and avoid leaking core types into Java.
 pub struct AndroidFrontend {
     engine: Engine,
     pending_play_notes: Vec<NoteOn>,
+    pub synth: SquareSynth,
 }
 
 impl AndroidFrontend {
@@ -14,6 +16,7 @@ impl AndroidFrontend {
         Self {
             engine: Engine::new(),
             pending_play_notes: Vec::new(),
+            synth: SquareSynth::new(48_000),
         }
     }
 
@@ -35,5 +38,9 @@ impl AndroidFrontend {
 
     pub fn has_pending_play_notes(&self) -> bool {
         !self.pending_play_notes.is_empty()
+    }
+
+    pub fn set_sample_rate(&mut self, sample_rate_hz: u32) {
+        self.synth = SquareSynth::new(sample_rate_hz);
     }
 }
