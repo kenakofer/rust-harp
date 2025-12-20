@@ -1,6 +1,8 @@
 use crate::android_audio::SquareSynth;
-use crate::app_state::NoteOn;
+use crate::app_state::{AppEffects, NoteOn};
 use crate::engine::Engine;
+use crate::layout;
+use crate::touch::{TouchEvent, TouchTracker};
 
 /// Android-facing wrapper that owns the core Engine + audio synth.
 ///
@@ -9,6 +11,7 @@ pub struct AndroidFrontend {
     engine: Engine,
     pending_play_notes: Vec<NoteOn>,
     pub synth: SquareSynth,
+    touch: TouchTracker,
 }
 
 impl AndroidFrontend {
@@ -17,6 +20,7 @@ impl AndroidFrontend {
             engine: Engine::new(),
             pending_play_notes: Vec::new(),
             synth: SquareSynth::new(48_000),
+            touch: TouchTracker::new(),
         }
     }
 
@@ -42,6 +46,30 @@ impl AndroidFrontend {
 
     pub fn set_sample_rate(&mut self, sample_rate_hz: u32) {
         self.synth = SquareSynth::new(sample_rate_hz);
+    }
+
+    pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> AppEffects {
+        let positions = layout::compute_note_positions(width_px);
+        let mut effects = AppEffects {
+            play_notes: Vec::new(),
+            stop_notes: Vec::new(),
+            redraw: false,
+            change_key: None,
+        };
+
+        for crossing in self.touch.handle_event(event, &positions) {
+            for note in crossing.notes {
+                let e = self.engine.handle_strum_crossing(note);
+                effects.play_notes.extend(e.play_notes);
+                effects.stop_notes.extend(e.stop_notes);
+                effects.redraw |= e.redraw;
+                if effects.change_key.is_none() {
+                    effects.change_key = e.change_key;
+                }
+            }
+        }
+
+        effects
     }
 }
 

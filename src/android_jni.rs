@@ -3,6 +3,7 @@ use crate::app_state::KeyState;
 use crate::input_map::{self, UiKey};
 use crate::layout;
 use crate::notes::{MidiNote, NoteVolume, Transpose};
+use crate::touch::{PointerId, TouchEvent, TouchPhase};
 
 use jni::objects::{JClass, JIntArray, JShortArray};
 use jni::sys::{jboolean, jint, jlong, jshort};
@@ -83,6 +84,41 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
 
     // Bit 0: needs redraw
     // Bit 1: has play notes
+    (if redraw { 1 } else { 0 }) | (if frontend.has_pending_play_notes() { 2 } else { 0 })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    pointer_id: jlong,
+    phase: jint,
+    x: jint,
+    width: jint,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    let phase = match phase {
+        0 => TouchPhase::Down,
+        1 => TouchPhase::Move,
+        2 => TouchPhase::Up,
+        _ => TouchPhase::Cancel,
+    };
+
+    let event = TouchEvent {
+        id: PointerId(pointer_id as u64),
+        phase,
+        x: x as f32,
+    };
+
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let effects = frontend.handle_touch(event, width.max(1) as f32);
+    let redraw = effects.redraw;
+    frontend.push_effects(effects);
+
     (if redraw { 1 } else { 0 }) | (if frontend.has_pending_play_notes() { 2 } else { 0 })
 }
 

@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 
@@ -28,6 +29,7 @@ public class MainActivity extends Activity {
     public static native long rustCreateFrontend();
     public static native void rustDestroyFrontend(long handle);
     public static native int rustHandleAndroidKey(long handle, int keyCode, int unicodeChar, boolean isDown);
+    public static native int rustHandleTouch(long handle, long pointerId, int phase, int x, int width);
 
     public static native void rustSetAudioSampleRate(long handle, int sampleRateHz);
     public static native int rustFillAudio(long handle, int frames, short[] outPcm);
@@ -81,6 +83,39 @@ public class MainActivity extends Activity {
         iv.setFocusable(true);
         iv.setFocusableInTouchMode(true);
 
+        iv.setOnTouchListener((v, e) -> {
+            if (rustHandle == 0) return true;
+
+            int action = e.getActionMasked();
+            int idx = e.getActionIndex();
+
+            if (action == MotionEvent.ACTION_MOVE) {
+                for (int i = 0; i < e.getPointerCount(); i++) {
+                    int flags = rustHandleTouch(rustHandle, e.getPointerId(i), 1, (int) e.getX(i), w);
+                    if ((flags & 1) != 0) redraw();
+                    if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
+                }
+                return true;
+            }
+
+            long pid = e.getPointerId(idx);
+            int phase;
+            if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+                phase = 0;
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) {
+                phase = 2;
+            } else if (action == MotionEvent.ACTION_CANCEL) {
+                phase = 3;
+            } else {
+                return true;
+            }
+
+            int flags = rustHandleTouch(rustHandle, pid, phase, (int) e.getX(idx), w);
+            if ((flags & 1) != 0) redraw();
+            if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
+            return true;
+        });
+
         setContentView(iv);
         iv.requestFocus();
 
@@ -109,6 +144,9 @@ public class MainActivity extends Activity {
             flags = rustHandleAndroidKey(rustHandle, event.getKeyCode(), uc, isDown);
             if ((flags & 1) != 0) {
                 redraw();
+            }
+            if ((flags & 2) != 0) {
+                Log.d("RustHarp", "key play_notes");
             }
         }
 
