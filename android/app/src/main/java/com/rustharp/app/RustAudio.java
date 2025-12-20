@@ -4,6 +4,8 @@ import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
+import android.os.Build;
+import android.os.Process;
 
 public final class RustAudio {
     private static final int CHANNEL_MASK = AudioFormat.CHANNEL_OUT_MONO;
@@ -28,25 +30,36 @@ public final class RustAudio {
         MainActivity.rustSetAudioSampleRate(rustHandle, sampleRate);
 
         int minBytes = AudioTrack.getMinBufferSize(sampleRate, CHANNEL_MASK, ENCODING);
-        int bufBytes = Math.max(minBytes, sampleRate / 50 * 2); // ~20ms
+        // Latency is largely buffered; start with the platform minimum.
+        int bufBytes = minBytes;
 
-        track = new AudioTrack(
-                new AudioAttributes.Builder()
-                        .setLegacyStreamType(AudioManager.STREAM_MUSIC)
-                        .build(),
-                new AudioFormat.Builder()
-                        .setEncoding(ENCODING)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(CHANNEL_MASK)
-                        .build(),
-                bufBytes,
-                AudioTrack.MODE_STREAM,
-                AudioManager.AUDIO_SESSION_ID_GENERATE
-        );
+        AudioAttributes attrs = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build();
+
+        AudioFormat format = new AudioFormat.Builder()
+                .setEncoding(ENCODING)
+                .setSampleRate(sampleRate)
+                .setChannelMask(CHANNEL_MASK)
+                .build();
+
+        AudioTrack.Builder b = new AudioTrack.Builder()
+                .setAudioAttributes(attrs)
+                .setAudioFormat(format)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .setBufferSizeInBytes(bufBytes);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            b.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY);
+        }
+
+        track = b.build();
 
         track.play();
 
         thread = new Thread(() -> {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
             // frames = samples for mono
             int frames = bufBytes / 2;
             short[] pcm = new short[frames];
