@@ -1,8 +1,10 @@
 use crate::android_frontend::AndroidFrontend;
+use crate::app_state::KeyState;
+use crate::input_map::{self, UiKey};
 use crate::layout;
 
-use jni::objects::{JClass, JIntArray};
-use jni::sys::{jint, jlong};
+use jni::objects::{JBoolean, JClass, JIntArray};
+use jni::sys::{jboolean, jint, jlong};
 use jni::JNIEnv;
 
 /// Simple JNI hook so an Android Activity can verify the Rust library loads.
@@ -35,6 +37,48 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustDestroyFrontend(
     unsafe {
         drop(Box::from_raw(handle as *mut AndroidFrontend));
     }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    key_code: jint,
+    unicode_char: jint,
+    is_down: jboolean,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    let state = if is_down != 0 {
+        KeyState::Pressed
+    } else {
+        KeyState::Released
+    };
+
+    let key = if unicode_char != 0 {
+        // Java already lowercases for us.
+        UiKey::Char(char::from_u32(unicode_char as u32).unwrap_or('\0'))
+    } else {
+        // Key codes from android.view.KeyEvent
+        match key_code {
+            61 => UiKey::Tab,          // KEYCODE_TAB
+            113 | 114 => UiKey::Control, // KEYCODE_CTRL_LEFT / KEYCODE_CTRL_RIGHT
+            _ => return 0,
+        }
+    };
+
+    let Some(app_event) = input_map::key_event_from_ui(state, key) else {
+        return 0;
+    };
+
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let effects = frontend.engine_mut().handle_event(app_event);
+
+    // Bit 0: needs redraw
+    if effects.redraw { 1 } else { 0 }
 }
 
 /// Render a black background + vertical string lines into `out_pixels` (ARGB_8888).

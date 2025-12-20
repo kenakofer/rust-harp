@@ -43,6 +43,7 @@ Goal: ship an APK where a **Bluetooth keyboard** changes chords using the same m
   - `rustDestroyFrontend(handle)`
 
 ### 3) Keyboard input plumbing (Bluetooth keyboard)
+- [x] `MainActivity.dispatchKeyEvent` wired to JNI + shared `input_map`.
 - In `MainActivity`, override `dispatchKeyEvent(android.view.KeyEvent e)`.
 - Convert Android key events to our shared key representation:
   - Prefer `e.getKeyCode()` for non-printable keys (CTRL, TAB), and/or `e.getUnicodeChar()` for letter/number keys.

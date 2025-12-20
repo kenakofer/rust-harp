@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
+import android.view.KeyEvent;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 
@@ -14,10 +15,24 @@ public class MainActivity extends Activity {
 
     private long rustHandle = 0;
 
+    private int w;
+    private int h;
+    private int[] pixels;
+    private Bitmap bmp;
+
     public static native int rustInit();
     public static native long rustCreateFrontend();
     public static native void rustDestroyFrontend(long handle);
+    public static native int rustHandleAndroidKey(long handle, int keyCode, int unicodeChar, boolean isDown);
     public static native void rustRenderStrings(int width, int height, int[] outPixels);
+
+    private void redraw() {
+        if (pixels == null || bmp == null) {
+            return;
+        }
+        rustRenderStrings(w, h, pixels);
+        bmp.setPixels(pixels, 0, w, 0, 0, w, h);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -26,13 +41,13 @@ public class MainActivity extends Activity {
         rustHandle = rustCreateFrontend();
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
-        int w = dm.widthPixels;
-        int h = dm.heightPixels;
+        w = dm.widthPixels;
+        h = dm.heightPixels;
 
-        int[] pixels = new int[w * h];
+        pixels = new int[w * h];
         rustRenderStrings(w, h, pixels);
 
-        Bitmap bmp = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888);
+        bmp = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888);
         ImageView iv = new ImageView(this);
         iv.setImageBitmap(bmp);
         iv.setScaleType(ImageView.ScaleType.FIT_XY);
@@ -42,6 +57,24 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT));
         iv.setPadding(0, 0, 0, 0);
         setContentView(iv);
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (rustHandle != 0) {
+            boolean isDown = event.getAction() == KeyEvent.ACTION_DOWN;
+            // Lowercase helps match the desktop mapping (which uses characters like 'a', 'd', etc.)
+            int uc = event.getUnicodeChar();
+            if (uc != 0) {
+                uc = Character.toLowerCase((char) uc);
+            }
+
+            int flags = rustHandleAndroidKey(rustHandle, event.getKeyCode(), uc, isDown);
+            if ((flags & 1) != 0) {
+                redraw();
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     @Override
