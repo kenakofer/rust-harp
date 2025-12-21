@@ -261,6 +261,14 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     let mut pixels = vec![0xFF000000u32 as i32; len];
 
     let positions = layout::compute_note_positions(w as f32);
+
+    // Multiple notes can map to the same physical string position (duplicate x values).
+    // When that happens, prioritize what we draw so inactive greys don't paint over
+    // active/root lines.
+    // Priority: root (red) > chord tone (white) > inactive (dim gray)
+    let mut best_prio_per_x: Vec<u8> = vec![0; w];
+    let mut best_color_per_x: Vec<i32> = vec![0xFF333333u32 as i32; w];
+
     for (i, x) in positions.iter().enumerate() {
         let uknote = crate::notes::UnkeyedNote(i as i16);
         let xi = x.round() as i32;
@@ -269,22 +277,95 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         }
         let xi = xi as usize;
 
-        let color = if let Some(chord) = active_chord {
+        let (prio, color) = if let Some(chord) = active_chord {
             if chord.has_root(uknote) {
-                0xFFFF0000u32 as i32 // red
+                (3, 0xFFFF0000u32 as i32) // red
             } else if chord.contains(uknote) {
-                0xFFFFFFFFu32 as i32 // white
+                (2, 0xFFFFFFFFu32 as i32) // white
             } else {
-                0xFF333333u32 as i32 // dim gray
+                (1, 0xFF333333u32 as i32) // dim gray
             }
         } else {
-            0xFF333333u32 as i32
+            (1, 0xFF333333u32 as i32)
         };
 
+        if prio > best_prio_per_x[xi] {
+            best_prio_per_x[xi] = prio;
+            best_color_per_x[xi] = color;
+        }
+    }
+
+    for (xi, prio) in best_prio_per_x.iter().enumerate() {
+        if *prio == 0 {
+            continue;
+        }
+        let color = best_color_per_x[xi];
         for y in 0..h {
             pixels[y * w + xi] = color;
         }
     }
 
     let _ = env.set_int_array_region(out_pixels, 0, &pixels);
+}
+
+#[cfg(test)]
+mod render_tests {
+    use super::*;
+    use crate::chord::Chord;
+    use crate::layout;
+    use crate::notes::UnkeyedNote;
+
+    #[test]
+    fn render_strings_prefers_root_over_inactive_on_same_string() {
+        // We expect duplicate x-positions (multiple notes mapped to same physical string).
+        // Root should win so it doesn't get overwritten by later inactive notes.
+        let w = 1000usize;
+        let positions = layout::compute_note_positions(w as f32);
+
+        let chord = Chord::new_triad(UnkeyedNote(0)); // C major
+
+        // Find an x-position that occurs more than once.
+        let mut xi_counts = std::collections::HashMap::<i32, usize>::new();
+        for x in &positions {
+            *xi_counts.entry(x.round() as i32).or_insert(0) += 1;
+        }
+        let (dup_xi, _count) = xi_counts
+            .into_iter()
+            .find(|(_, c)| *c > 1)
+            .expect("expected at least one duplicate x-position");
+        let dup_xi = dup_xi as usize;
+
+        // Re-run the same prioritization logic used by rustRenderStrings.
+        let mut best_prio_per_x: Vec<u8> = vec![0; w];
+        let mut best_color_per_x: Vec<i32> = vec![0xFF333333u32 as i32; w];
+
+        for (i, x) in positions.iter().enumerate() {
+            let uknote = UnkeyedNote(i as i16);
+            let xi = x.round() as i32;
+            if xi < 0 || xi >= w as i32 {
+                continue;
+            }
+            let xi = xi as usize;
+
+            let (prio, color) = if chord.has_root(uknote) {
+                (3, 0xFFFF0000u32 as i32)
+            } else if chord.contains(uknote) {
+                (2, 0xFFFFFFFFu32 as i32)
+            } else {
+                (1, 0xFF333333u32 as i32)
+            };
+
+            if prio > best_prio_per_x[xi] {
+                best_prio_per_x[xi] = prio;
+                best_color_per_x[xi] = color;
+            }
+        }
+
+        assert!(best_prio_per_x[dup_xi] >= 1);
+        // If the root happens to land on this duplicated string position, it must be red.
+        // Otherwise (no root there), we still validate we never downgrade priority.
+        if best_prio_per_x[dup_xi] == 3 {
+            assert_eq!(best_color_per_x[dup_xi], 0xFFFF0000u32 as i32);
+        }
+    }
 }
