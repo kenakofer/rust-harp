@@ -78,7 +78,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     match midi_out.create_virtual("Rust Harp Output") {
         Ok(conn) => {
-            println!("Created virtual MIDI port: 'Rust Harp Output'");
+            log::info!("Created virtual MIDI port: 'Rust Harp Output'");
             conn_out = Some(conn);
         }
         Err(_) => {
@@ -86,7 +86,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             let midi_out = MidiOutput::new("Rust Harp Client")?;
             let ports = midi_out.ports();
             if let Some(port) = ports.first() {
-                println!(
+                log::info!(
                     "Virtual port failed. Connecting to first available hardware port: {}",
                     midi_out.port_name(port)?
                 );
@@ -99,7 +99,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     #[cfg(any(target_os = "windows"))]
     if let Some(port) = midi_out.ports().first() {
-        println!(
+        log::info!(
             "Connecting to hardware MIDI port: {}",
             midi_out.port_name(port)?
         );
@@ -246,7 +246,7 @@ fn process_app_effects(
         }
     }
     if let Some(transpose) = effects.change_key {
-        println!("Changed key: {:?}", transpose);
+        log::info!("Changed key: {:?}", transpose);
     }
 
     for pn in effects.play_notes {

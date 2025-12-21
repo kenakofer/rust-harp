@@ -275,8 +275,6 @@ mod tests {
         let mut c = Chord::new_triad(UnkeyedNote(4)); // iii
         c.add_mods_now(Modifiers::Minor3ToMajor);
 
-        println!("{:#?}", c.get_mask());
-        println!("{:#?}", c);
         assert!(!c.contains(UnkeyedNote(7))); // no minor third
         assert!(c.contains(UnkeyedNote(8))); // major third
 
