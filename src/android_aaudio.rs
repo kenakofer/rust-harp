@@ -22,7 +22,9 @@ pub struct AAudioStreamBuilder {
 // From aaudio/AAudio.h
 const AAUDIO_OK: i32 = 0;
 const AAUDIO_DIRECTION_OUTPUT: i32 = 0;
+const AAUDIO_FORMAT_PCM_FLOAT: i32 = 1;
 const AAUDIO_FORMAT_PCM_I16: i32 = 2;
+const AAUDIO_FORMAT_PCM_I8: i32 = 3;
 
 const AAUDIO_PERFORMANCE_MODE_LOW_LATENCY: i32 = 12;
 
@@ -105,16 +107,37 @@ unsafe extern "C" fn data_cb(
     // Be defensive: some devices may ignore our requested channel count.
     let channels = ctx.channels.max(1) as usize;
 
-    // We currently only support i16 output; if the system gives us something else,
-    // we’ll just emit silence (but keep running).
-    if ctx.format != AAUDIO_FORMAT_PCM_I16 {
-        let out = std::slice::from_raw_parts_mut(audio_data as *mut i16, (num_frames as usize) * channels);
-        out.fill(0);
-        return AAUDIO_CALLBACK_RESULT_CONTINUE;
+    match ctx.format {
+        AAUDIO_FORMAT_PCM_I16 => {
+            let out = std::slice::from_raw_parts_mut(
+                audio_data as *mut i16,
+                (num_frames as usize) * channels,
+            );
+            frontend.render_audio_i16_interleaved(out, channels);
+        }
+        AAUDIO_FORMAT_PCM_FLOAT => {
+            let out = std::slice::from_raw_parts_mut(
+                audio_data as *mut f32,
+                (num_frames as usize) * channels,
+            );
+            frontend.render_audio_f32_interleaved(out, channels);
+        }
+        AAUDIO_FORMAT_PCM_I8 => {
+            let out = std::slice::from_raw_parts_mut(
+                audio_data as *mut i8,
+                (num_frames as usize) * channels,
+            );
+            out.fill(0);
+        }
+        _ => {
+            // Unknown format; best effort: write silence assuming 32-bit samples.
+            let out = std::slice::from_raw_parts_mut(
+                audio_data as *mut u32,
+                (num_frames as usize) * channels,
+            );
+            out.fill(0);
+        }
     }
-
-    let out = std::slice::from_raw_parts_mut(audio_data as *mut i16, (num_frames as usize) * channels);
-    frontend.render_audio_i16_interleaved(out, channels);
 
     AAUDIO_CALLBACK_RESULT_CONTINUE
 }
@@ -167,7 +190,7 @@ pub fn start(frontend: &AndroidFrontend) -> bool {
     let ctx = Box::new(CallbackCtx {
         frontend: frontend as *const AndroidFrontend,
         channels: 1,
-        format: AAUDIO_FORMAT_PCM_I16,
+        format: AAUDIO_FORMAT_PCM_FLOAT,
     });
     let ctx_ptr = Box::into_raw(ctx);
 
@@ -180,38 +203,40 @@ pub fn start(frontend: &AndroidFrontend) -> bool {
 
         AAudioStreamBuilder_setDirection(builder, AAUDIO_DIRECTION_OUTPUT);
         AAudioStreamBuilder_setChannelCount(builder, 1);
-        AAudioStreamBuilder_setFormat(builder, AAUDIO_FORMAT_PCM_I16);
         AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
         AAudioStreamBuilder_setDataCallback(builder, Some(data_cb), ctx_ptr as *mut c_void);
         AAudioStreamBuilder_setErrorCallback(builder, Some(error_cb), ctx_ptr as *mut c_void);
 
-        // First try exclusive; if it fails, retry shared.
+        // Try low-latency combos first.
         for &sharing in &[AAUDIO_SHARING_MODE_EXCLUSIVE, AAUDIO_SHARING_MODE_SHARED] {
             AAudioStreamBuilder_setSharingMode(builder, sharing);
+            for &fmt in &[AAUDIO_FORMAT_PCM_FLOAT, AAUDIO_FORMAT_PCM_I16] {
+                AAudioStreamBuilder_setFormat(builder, fmt);
 
-            let mut stream: *mut AAudioStream = std::ptr::null_mut();
-            let rc = AAudioStreamBuilder_openStream(builder, &mut stream);
-            if rc != AAUDIO_OK || stream.is_null() {
-                continue;
+                let mut stream: *mut AAudioStream = std::ptr::null_mut();
+                let rc = AAudioStreamBuilder_openStream(builder, &mut stream);
+                if rc != AAUDIO_OK || stream.is_null() {
+                    continue;
+                }
+
+                let sr = AAudioStream_getSampleRate(stream).max(1) as u32;
+                frontend.set_sample_rate(sr);
+
+                // Record actual stream config for the callback.
+                (*ctx_ptr).channels = AAudioStream_getChannelCount(stream).max(1);
+                (*ctx_ptr).format = AAudioStream_getFormat(stream);
+
+                let fpb = AAudioStream_getFramesPerBurst(stream).max(1);
+                // Small buffer to keep latency down but avoid underruns.
+                let _ = AAudioStream_setBufferSizeInFrames(stream, fpb.saturating_mul(2));
+
+                let _ = AAudioStream_requestStart(stream);
+
+                AAudioStreamBuilder_delete(builder);
+
+                *guard = Some(AAudioOut { stream, ctx: ctx_ptr });
+                return true;
             }
-
-            let sr = AAudioStream_getSampleRate(stream).max(1) as u32;
-            frontend.set_sample_rate(sr);
-
-            // Record actual stream config for the callback.
-            (*ctx_ptr).channels = AAudioStream_getChannelCount(stream).max(1);
-            (*ctx_ptr).format = AAudioStream_getFormat(stream);
-
-            let fpb = AAudioStream_getFramesPerBurst(stream).max(1);
-            // Small buffer to keep latency down but avoid underruns.
-            let _ = AAudioStream_setBufferSizeInFrames(stream, fpb.saturating_mul(2));
-
-            let _ = AAudioStream_requestStart(stream);
-
-            AAudioStreamBuilder_delete(builder);
-
-            *guard = Some(AAudioOut { stream, ctx: ctx_ptr });
-            return true;
         }
 
         AAudioStreamBuilder_delete(builder);

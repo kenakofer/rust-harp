@@ -57,60 +57,80 @@ impl SquareSynth {
         self.render_i16_interleaved(out, 1);
     }
 
-    pub fn render_i16_interleaved(&mut self, out: &mut [i16], channels: usize) {
-        assert!(channels >= 1);
-        assert!(out.len() % channels == 0);
+    pub fn render_f32_mono(&mut self, out: &mut [f32]) {
+        self.render_f32_interleaved(out, 1);
+    }
 
+    fn render_sample(&mut self) -> f32 {
         // Exponential decay time constant (seconds)
         const TAU_S: f32 = 0.35;
         const ATTACK_S: f32 = 0.004; // short ramp to prevent clicks
         const SILENCE: f32 = 1.0e-4;
 
+        let mut acc = 0.0f32;
+        for v in &mut self.voices {
+            let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
+
+            let attack = (age_s / ATTACK_S).min(1.0);
+            let decay = (-age_s / TAU_S).exp();
+            let env = attack * decay;
+
+            // Band-limited square: sum odd harmonics under Nyquist.
+            // square(t) = (4/pi) * Σ_{n odd} sin(n*phase)/n
+            let mut sq = 0.0f32;
+            let mut n = 1u32;
+            while n <= v.max_harmonic_odd {
+                sq += (n as f32 * v.phase).sin() / (n as f32);
+                n += 2;
+            }
+            sq *= 4.0 / std::f32::consts::PI;
+
+            acc += v.amp0 * env * sq;
+
+            v.phase += v.phase_inc;
+            if v.phase >= 2.0 * std::f32::consts::PI {
+                v.phase -= 2.0 * std::f32::consts::PI;
+            }
+        }
+
+        self.sample += 1;
+
+        // Periodically prune finished voices.
+        if (self.sample & 0xFF) == 0 {
+            self.voices.retain(|v| {
+                let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
+                v.amp0 * (-(age_s) / TAU_S).exp() > SILENCE
+            });
+        }
+
+        // Cheap soft limiter to avoid harsh clipping when multiple voices overlap.
+        acc / (1.0 + acc.abs())
+    }
+
+    pub fn render_i16_interleaved(&mut self, out: &mut [i16], channels: usize) {
+        assert!(channels >= 1);
+        assert!(out.len() % channels == 0);
+
         let frames = out.len() / channels;
         for frame in 0..frames {
-            let mut acc = 0.0f32;
-            for v in &mut self.voices {
-                let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
-
-                let attack = (age_s / ATTACK_S).min(1.0);
-                let decay = (-age_s / TAU_S).exp();
-                let env = attack * decay;
-
-                // Band-limited square: sum odd harmonics under Nyquist.
-                // square(t) = (4/pi) * Σ_{n odd} sin(n*phase)/n
-                let mut sq = 0.0f32;
-                let mut n = 1u32;
-                while n <= v.max_harmonic_odd {
-                    sq += (n as f32 * v.phase).sin() / (n as f32);
-                    n += 2;
-                }
-                sq *= 4.0 / std::f32::consts::PI;
-
-                acc += v.amp0 * env * sq;
-
-                v.phase += v.phase_inc;
-                if v.phase >= 2.0 * std::f32::consts::PI {
-                    v.phase -= 2.0 * std::f32::consts::PI;
-                }
-            }
-
-            // Cheap soft limiter to avoid harsh clipping when multiple voices overlap.
-            acc = acc / (1.0 + acc.abs());
-            let s = (acc * i16::MAX as f32) as i16;
-
+            let s = (self.render_sample() * i16::MAX as f32) as i16;
             let base = frame * channels;
             for ch in 0..channels {
                 out[base + ch] = s;
             }
+        }
+    }
 
-            self.sample += 1;
+    pub fn render_f32_interleaved(&mut self, out: &mut [f32], channels: usize) {
+        assert!(channels >= 1);
+        assert!(out.len() % channels == 0);
 
-            // Periodically prune finished voices.
-            if (self.sample & 0xFF) == 0 {
-                self.voices.retain(|v| {
-                    let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
-                    v.amp0 * (-(age_s) / TAU_S).exp() > SILENCE
-                });
+        let frames = out.len() / channels;
+        for frame in 0..frames {
+            let s = self.render_sample();
+            let base = frame * channels;
+            for ch in 0..channels {
+                out[base + ch] = s;
             }
         }
     }
@@ -125,7 +145,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn square_synth_note_on_produces_audio() {
+    fn square_synth_note_on_produces_audio_i16() {
         let mut s = SquareSynth::new(48_000);
         s.note_on(MidiNote(69), 100); // A4
 
@@ -133,5 +153,17 @@ mod tests {
         s.render_i16_mono(&mut buf);
 
         assert!(buf.iter().any(|&x| x != 0));
+    }
+
+    #[test]
+    fn square_synth_note_on_produces_audio_f32() {
+        let mut s = SquareSynth::new(48_000);
+        s.note_on(MidiNote(69), 100); // A4
+
+        let mut buf = [0.0f32; 512];
+        s.render_f32_mono(&mut buf);
+
+        assert!(buf.iter().any(|&x| x != 0.0));
+        assert!(buf.iter().all(|&x| x.abs() <= 1.0));
     }
 }

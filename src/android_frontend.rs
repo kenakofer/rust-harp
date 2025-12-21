@@ -64,9 +64,7 @@ impl AndroidFrontend {
         a.synth = SquareSynth::new(sample_rate_hz.max(1));
     }
 
-    pub fn render_audio_i16_interleaved(&self, out: &mut [i16], channels: usize) {
-        let mut a = self.audio.lock().unwrap();
-
+    fn drain_into_synth(a: &mut AudioState) {
         // Match desktop's MIDI_BASE_TRANSPOSE (C2)
         const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
 
@@ -76,8 +74,18 @@ impl AndroidFrontend {
             let NoteVolume(v) = pn.volume;
             a.synth.note_on(MidiNote(m), v);
         }
+    }
 
+    pub fn render_audio_i16_interleaved(&self, out: &mut [i16], channels: usize) {
+        let mut a = self.audio.lock().unwrap();
+        Self::drain_into_synth(&mut a);
         a.synth.render_i16_interleaved(out, channels);
+    }
+
+    pub fn render_audio_f32_interleaved(&self, out: &mut [f32], channels: usize) {
+        let mut a = self.audio.lock().unwrap();
+        Self::drain_into_synth(&mut a);
+        a.synth.render_f32_interleaved(out, channels);
     }
 
     pub fn render_audio_i16_mono(&self, out: &mut [i16]) {
