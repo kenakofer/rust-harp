@@ -54,12 +54,20 @@ impl SquareSynth {
     }
 
     pub fn render_i16_mono(&mut self, out: &mut [i16]) {
+        self.render_i16_interleaved(out, 1);
+    }
+
+    pub fn render_i16_interleaved(&mut self, out: &mut [i16], channels: usize) {
+        assert!(channels >= 1);
+        assert!(out.len() % channels == 0);
+
         // Exponential decay time constant (seconds)
         const TAU_S: f32 = 0.35;
         const ATTACK_S: f32 = 0.004; // short ramp to prevent clicks
         const SILENCE: f32 = 1.0e-4;
 
-        for o in out.iter_mut() {
+        let frames = out.len() / channels;
+        for frame in 0..frames {
             let mut acc = 0.0f32;
             for v in &mut self.voices {
                 let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
@@ -88,7 +96,12 @@ impl SquareSynth {
 
             // Cheap soft limiter to avoid harsh clipping when multiple voices overlap.
             acc = acc / (1.0 + acc.abs());
-            *o = (acc * i16::MAX as f32) as i16;
+            let s = (acc * i16::MAX as f32) as i16;
+
+            let base = frame * channels;
+            for ch in 0..channels {
+                out[base + ch] = s;
+            }
 
             self.sample += 1;
 

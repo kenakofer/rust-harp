@@ -24,7 +24,6 @@ const AAUDIO_OK: i32 = 0;
 const AAUDIO_DIRECTION_OUTPUT: i32 = 0;
 const AAUDIO_FORMAT_PCM_I16: i32 = 2;
 
-const AAUDIO_PERFORMANCE_MODE_NONE: i32 = 10;
 const AAUDIO_PERFORMANCE_MODE_LOW_LATENCY: i32 = 12;
 
 const AAUDIO_SHARING_MODE_SHARED: i32 = 1;
@@ -78,12 +77,16 @@ extern "C" {
 
     fn AAudioStream_getSampleRate(stream: *mut AAudioStream) -> i32;
     fn AAudioStream_getFramesPerBurst(stream: *mut AAudioStream) -> i32;
+    fn AAudioStream_getChannelCount(stream: *mut AAudioStream) -> i32;
+    fn AAudioStream_getFormat(stream: *mut AAudioStream) -> i32;
 
     fn AAudioStream_setBufferSizeInFrames(stream: *mut AAudioStream, num_frames: i32) -> i32;
 }
 
 struct CallbackCtx {
     frontend: *const AndroidFrontend,
+    channels: i32,
+    format: i32,
 }
 
 unsafe extern "C" fn data_cb(
@@ -99,8 +102,19 @@ unsafe extern "C" fn data_cb(
     let ctx = &*(user_data as *const CallbackCtx);
     let frontend = &*ctx.frontend;
 
-    let out = std::slice::from_raw_parts_mut(audio_data as *mut i16, num_frames as usize);
-    frontend.render_audio_i16_mono(out);
+    // Be defensive: some devices may ignore our requested channel count.
+    let channels = ctx.channels.max(1) as usize;
+
+    // We currently only support i16 output; if the system gives us something else,
+    // we’ll just emit silence (but keep running).
+    if ctx.format != AAUDIO_FORMAT_PCM_I16 {
+        let out = std::slice::from_raw_parts_mut(audio_data as *mut i16, (num_frames as usize) * channels);
+        out.fill(0);
+        return AAUDIO_CALLBACK_RESULT_CONTINUE;
+    }
+
+    let out = std::slice::from_raw_parts_mut(audio_data as *mut i16, (num_frames as usize) * channels);
+    frontend.render_audio_i16_interleaved(out, channels);
 
     AAUDIO_CALLBACK_RESULT_CONTINUE
 }
@@ -152,6 +166,8 @@ pub fn start(frontend: &AndroidFrontend) -> bool {
 
     let ctx = Box::new(CallbackCtx {
         frontend: frontend as *const AndroidFrontend,
+        channels: 1,
+        format: AAUDIO_FORMAT_PCM_I16,
     });
     let ctx_ptr = Box::into_raw(ctx);
 
@@ -181,6 +197,10 @@ pub fn start(frontend: &AndroidFrontend) -> bool {
 
             let sr = AAudioStream_getSampleRate(stream).max(1) as u32;
             frontend.set_sample_rate(sr);
+
+            // Record actual stream config for the callback.
+            (*ctx_ptr).channels = AAudioStream_getChannelCount(stream).max(1);
+            (*ctx_ptr).format = AAudioStream_getFormat(stream);
 
             let fpb = AAudioStream_getFramesPerBurst(stream).max(1);
             // Small buffer to keep latency down but avoid underruns.

@@ -64,7 +64,7 @@ impl AndroidFrontend {
         a.synth = SquareSynth::new(sample_rate_hz.max(1));
     }
 
-    pub fn render_audio_i16_mono(&self, out: &mut [i16]) {
+    pub fn render_audio_i16_interleaved(&self, out: &mut [i16], channels: usize) {
         let mut a = self.audio.lock().unwrap();
 
         // Match desktop's MIDI_BASE_TRANSPOSE (C2)
@@ -77,7 +77,11 @@ impl AndroidFrontend {
             a.synth.note_on(MidiNote(m), v);
         }
 
-        a.synth.render_i16_mono(out);
+        a.synth.render_i16_interleaved(out, channels);
+    }
+
+    pub fn render_audio_i16_mono(&self, out: &mut [i16]) {
+        self.render_audio_i16_interleaved(out, 1);
     }
 
     pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> (AppEffects, bool) {
