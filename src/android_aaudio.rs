@@ -6,8 +6,9 @@
 
 use crate::android_frontend::AndroidFrontend;
 
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void};
 use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
 #[repr(C)]
 pub struct AAudioStream {
@@ -86,18 +87,39 @@ extern "C" {
     fn AAudioStream_getFramesPerBurst(stream: *mut AAudioStream) -> i32;
     fn AAudioStream_getChannelCount(stream: *mut AAudioStream) -> i32;
     fn AAudioStream_getFormat(stream: *mut AAudioStream) -> i32;
+    fn AAudioStream_getBufferSizeInFrames(stream: *mut AAudioStream) -> i32;
+    fn AAudioStream_getXRunCount(stream: *mut AAudioStream) -> i32;
 
     fn AAudioStream_setBufferSizeInFrames(stream: *mut AAudioStream, num_frames: i32) -> i32;
+}
+
+#[link(name = "log")]
+extern "C" {
+    fn __android_log_write(prio: i32, tag: *const c_char, text: *const c_char) -> i32;
+}
+
+const ANDROID_LOG_INFO: i32 = 4;
+const ANDROID_LOG_WARN: i32 = 5;
+
+fn android_log(prio: i32, msg: &str) {
+    let tag = b"RustHarp\0";
+    let mut buf = msg.as_bytes().to_vec();
+    buf.push(0);
+    unsafe {
+        let _ = __android_log_write(prio, tag.as_ptr() as *const c_char, buf.as_ptr() as *const c_char);
+    }
 }
 
 struct CallbackCtx {
     frontend: *const AndroidFrontend,
     channels: i32,
     format: i32,
+    call_count: AtomicU32,
+    last_xruns: AtomicI32,
 }
 
 unsafe extern "C" fn data_cb(
-    _stream: *mut AAudioStream,
+    stream: *mut AAudioStream,
     user_data: *mut c_void,
     audio_data: *mut c_void,
     num_frames: i32,
@@ -108,6 +130,20 @@ unsafe extern "C" fn data_cb(
 
     let ctx = &*(user_data as *const CallbackCtx);
     let frontend = &*ctx.frontend;
+
+    // Underrun detection: query xRun count periodically and log when it changes.
+    // (Avoid logging on every callback; this should be very rare in steady-state.)
+    if !stream.is_null() {
+        let n = ctx.call_count.fetch_add(1, Ordering::Relaxed);
+        if (n % 128) == 0 {
+            let xruns = AAudioStream_getXRunCount(stream);
+            let prev = ctx.last_xruns.load(Ordering::Relaxed);
+            if xruns >= 0 && xruns != prev {
+                ctx.last_xruns.store(xruns, Ordering::Relaxed);
+                android_log(ANDROID_LOG_WARN, &format!("AAudio xruns={xruns}"));
+            }
+        }
+    }
 
     // Be defensive: some devices may ignore our requested channel count.
     let channels = ctx.channels.max(1) as usize;
@@ -196,6 +232,8 @@ pub fn start(frontend: &AndroidFrontend) -> bool {
         frontend: frontend as *const AndroidFrontend,
         channels: 1,
         format: AAUDIO_FORMAT_PCM_FLOAT,
+        call_count: AtomicU32::new(0),
+        last_xruns: AtomicI32::new(-1),
     });
     let ctx_ptr = Box::into_raw(ctx);
 
@@ -233,7 +271,17 @@ pub fn start(frontend: &AndroidFrontend) -> bool {
 
                 let fpb = AAudioStream_getFramesPerBurst(stream).max(1);
                 // Small buffer to keep latency down but avoid underruns.
-                let _ = AAudioStream_setBufferSizeInFrames(stream, fpb.saturating_mul(2));
+                let target_buf = fpb.saturating_mul(2);
+                let rc_buf = AAudioStream_setBufferSizeInFrames(stream, target_buf);
+                let actual_buf = AAudioStream_getBufferSizeInFrames(stream);
+                android_log(
+                    ANDROID_LOG_INFO,
+                    &format!(
+                        "AAudio cfg sr={sr} ch={} fmt={} fpb={fpb} buf={actual_buf} (set rc={rc_buf})",
+                        (*ctx_ptr).channels,
+                        (*ctx_ptr).format
+                    ),
+                );
 
                 let _ = AAudioStream_requestStart(stream);
 
