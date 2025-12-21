@@ -2,6 +2,7 @@ package com.rustharp.app;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
@@ -12,6 +13,9 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends Activity {
     static {
@@ -128,6 +132,15 @@ public class MainActivity extends Activity {
         setContentView(iv);
         iv.requestFocus();
 
+        // Prevent system back/forward gestures from stealing edge swipes.
+        // Note: Android limits the total excluded area; we only exclude thin edge strips.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            iv.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                updateGestureExclusion();
+            });
+            iv.post(this::updateGestureExclusion);
+        }
+
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
 
         boolean aaudioOk = rustStartAAudio(rustHandle);
@@ -137,6 +150,27 @@ public class MainActivity extends Activity {
         } else {
             Log.i("RustHarp", "AAudio started");
         }
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
+    }
+
+    private void updateGestureExclusion() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || iv == null) return;
+
+        int width = iv.getWidth();
+        int height = iv.getHeight();
+        if (width <= 0 || height <= 0) return;
+
+        int edgePx = dpToPx(48);
+        int leftEdge = Math.min(edgePx, width);
+        int rightEdgeStart = Math.max(0, width - edgePx);
+
+        List<Rect> rects = new ArrayList<>();
+        rects.add(new Rect(0, 0, leftEdge, height));
+        rects.add(new Rect(rightEdgeStart, 0, width, height));
+        iv.setSystemGestureExclusionRects(rects);
     }
 
     private void vibrateTick() {
