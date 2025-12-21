@@ -118,6 +118,10 @@ struct AAudioOut {
     ctx: *mut CallbackCtx,
 }
 
+// AAudio owns the callback thread; we synchronize access via the global Mutex.
+// These raw pointers are only used through the AAudio C API and freed in Drop.
+unsafe impl Send for AAudioOut {}
+
 impl Drop for AAudioOut {
     fn drop(&mut self) {
         unsafe {

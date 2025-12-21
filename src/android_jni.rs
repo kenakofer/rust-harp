@@ -172,7 +172,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetAudioSampleRate
 
 #[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFillAudio(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     handle: jlong,
     frames: jint,
@@ -201,7 +201,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFillAudio(
 
 #[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustDrainPlayNotes(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     handle: jlong,
     out_midi_notes: JIntArray,
@@ -237,7 +237,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustDrainPlayNotes(
 /// Render strings into `out_pixels` (ARGB_8888) based on the current active chord.
 #[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     handle: jlong,
     width: jint,
