@@ -17,6 +17,9 @@ pub mod android_audio;
 pub mod android_frontend;
 
 #[cfg(all(target_os = "android", feature = "android"))]
+pub mod android_aaudio;
+
+#[cfg(all(target_os = "android", feature = "android"))]
 pub mod android_jni;
 
 #[cfg(all(feature = "desktop", feature = "midi"))]

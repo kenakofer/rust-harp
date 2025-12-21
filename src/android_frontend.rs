@@ -2,15 +2,22 @@ use crate::android_audio::SquareSynth;
 use crate::app_state::{AppEffects, NoteOn};
 use crate::engine::Engine;
 use crate::layout;
+use crate::notes::{MidiNote, NoteVolume, Transpose};
 use crate::touch::{TouchEvent, TouchTracker};
+
+use std::sync::Mutex;
+
+struct AudioState {
+    pending_play_notes: Vec<NoteOn>,
+    synth: SquareSynth,
+}
 
 /// Android-facing wrapper that owns the core Engine + audio synth.
 ///
 /// Kept separate so JNI functions can be thin and avoid leaking core types into Java.
 pub struct AndroidFrontend {
     engine: Engine,
-    pending_play_notes: Vec<NoteOn>,
-    pub synth: SquareSynth,
+    audio: Mutex<AudioState>,
     touch: TouchTracker,
 }
 
@@ -18,8 +25,10 @@ impl AndroidFrontend {
     pub fn new() -> Self {
         Self {
             engine: Engine::new(),
-            pending_play_notes: Vec::new(),
-            synth: SquareSynth::new(48_000),
+            audio: Mutex::new(AudioState {
+                pending_play_notes: Vec::new(),
+                synth: SquareSynth::new(48_000),
+            }),
             touch: TouchTracker::new(),
         }
     }
@@ -32,20 +41,43 @@ impl AndroidFrontend {
         &self.engine
     }
 
-    pub fn push_effects(&mut self, effects: crate::app_state::AppEffects) {
-        self.pending_play_notes.extend(effects.play_notes);
+    pub fn push_effects(&self, effects: crate::app_state::AppEffects) {
+        if effects.play_notes.is_empty() {
+            return;
+        }
+        let mut a = self.audio.lock().unwrap();
+        a.pending_play_notes.extend(effects.play_notes);
     }
 
-    pub fn drain_play_notes(&mut self) -> impl Iterator<Item = NoteOn> + '_ {
-        self.pending_play_notes.drain(..)
+    pub fn drain_play_notes(&self) -> Vec<NoteOn> {
+        let mut a = self.audio.lock().unwrap();
+        std::mem::take(&mut a.pending_play_notes)
     }
 
     pub fn has_pending_play_notes(&self) -> bool {
-        !self.pending_play_notes.is_empty()
+        let a = self.audio.lock().unwrap();
+        !a.pending_play_notes.is_empty()
     }
 
-    pub fn set_sample_rate(&mut self, sample_rate_hz: u32) {
-        self.synth = SquareSynth::new(sample_rate_hz);
+    pub fn set_sample_rate(&self, sample_rate_hz: u32) {
+        let mut a = self.audio.lock().unwrap();
+        a.synth = SquareSynth::new(sample_rate_hz.max(1));
+    }
+
+    pub fn render_audio_i16_mono(&self, out: &mut [i16]) {
+        let mut a = self.audio.lock().unwrap();
+
+        // Match desktop's MIDI_BASE_TRANSPOSE (C2)
+        const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
+
+        let drained: Vec<_> = a.pending_play_notes.drain(..).collect();
+        for pn in drained {
+            let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
+            let NoteVolume(v) = pn.volume;
+            a.synth.note_on(MidiNote(m), v);
+        }
+
+        a.synth.render_i16_mono(out);
     }
 
     pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> (AppEffects, bool) {
@@ -90,7 +122,7 @@ mod tests {
         f.push_effects(effects);
         assert!(f.has_pending_play_notes());
 
-        let drained: Vec<_> = f.drain_play_notes().collect();
+        let drained: Vec<_> = f.drain_play_notes();
         assert_eq!(drained.len(), 1);
         assert!(!f.has_pending_play_notes());
     }

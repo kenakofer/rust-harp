@@ -3,6 +3,9 @@ use crate::app_state::KeyState;
 use crate::input_map::{self, UiKey};
 use crate::layout;
 use crate::notes::{MidiNote, NoteVolume, Transpose};
+
+#[cfg(all(target_os = "android", feature = "android"))]
+use crate::android_aaudio;
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
 
 use jni::objects::{JClass, JIntArray, JShortArray};
@@ -16,6 +19,32 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustInit(
     _class: JClass,
 ) -> jint {
     1
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustStartAAudio(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jboolean {
+    if handle == 0 {
+        return 0;
+    }
+    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    if android_aaudio::start(frontend) {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustStopAAudio(
+    _env: JNIEnv,
+    _class: JClass,
+    _handle: jlong,
+) {
+    android_aaudio::stop();
 }
 
 #[no_mangle]
@@ -137,7 +166,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetAudioSampleRate
     if handle == 0 {
         return;
     }
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
     frontend.set_sample_rate(sample_rate_hz.max(1) as u32);
 }
 
@@ -158,20 +187,10 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFillAudio(
         return 0;
     }
 
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
-
-    // Feed any queued NoteOn events into the synth.
-    // (Drain first to avoid simultaneous mutable borrows of `frontend` and `frontend.synth`.)
-    let drained: Vec<_> = frontend.drain_play_notes().collect();
-    const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
-    for pn in drained {
-        let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
-        let NoteVolume(v) = pn.volume;
-        frontend.synth.note_on(MidiNote(m), v);
-    }
+    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
 
     let mut buf: Vec<i16> = vec![0; n];
-    frontend.synth.render_i16_mono(&mut buf);
+    frontend.render_audio_i16_mono(&mut buf);
 
     // i16 -> jshort
     let buf_js: Vec<jshort> = buf.into_iter().map(|s| s as jshort).collect();
@@ -192,7 +211,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustDrainPlayNotes(
         return 0;
     }
 
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
 
     // Match desktop's MIDI_BASE_TRANSPOSE (C2)
     const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);

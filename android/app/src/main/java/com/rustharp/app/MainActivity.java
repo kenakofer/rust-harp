@@ -38,6 +38,9 @@ public class MainActivity extends Activity {
     public static native void rustSetAudioSampleRate(long handle, int sampleRateHz);
     public static native int rustFillAudio(long handle, int frames, short[] outPcm);
 
+    public static native boolean rustStartAAudio(long handle);
+    public static native void rustStopAAudio(long handle);
+
     public static native void rustRenderStrings(long handle, int width, int height, int[] outPixels);
 
     private void redraw() {
@@ -127,8 +130,13 @@ public class MainActivity extends Activity {
 
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
 
-        audio = new RustAudio(rustHandle, (android.media.AudioManager) getSystemService(AUDIO_SERVICE));
-        audio.start();
+        boolean aaudioOk = rustStartAAudio(rustHandle);
+        if (!aaudioOk) {
+            audio = new RustAudio(rustHandle, (android.media.AudioManager) getSystemService(AUDIO_SERVICE));
+            audio.start();
+        } else {
+            Log.i("RustHarp", "AAudio started");
+        }
     }
 
     private void vibrateTick() {
@@ -185,6 +193,7 @@ public class MainActivity extends Activity {
             audio = null;
         }
         if (rustHandle != 0) {
+            rustStopAAudio(rustHandle);
             rustDestroyFrontend(rustHandle);
             rustHandle = 0;
         }
