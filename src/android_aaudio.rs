@@ -22,8 +22,13 @@ pub struct AAudioStreamBuilder {
 // From aaudio/AAudio.h
 const AAUDIO_OK: i32 = 0;
 const AAUDIO_DIRECTION_OUTPUT: i32 = 0;
-const AAUDIO_FORMAT_PCM_FLOAT: i32 = 1;
-const AAUDIO_FORMAT_PCM_I16: i32 = 2;
+
+// NDK constants:
+//   AAUDIO_FORMAT_UNSPECIFIED = 0
+//   AAUDIO_FORMAT_PCM_I16     = 1
+//   AAUDIO_FORMAT_PCM_FLOAT   = 2
+const AAUDIO_FORMAT_PCM_I16: i32 = 1;
+const AAUDIO_FORMAT_PCM_FLOAT: i32 = 2;
 const AAUDIO_FORMAT_PCM_I8: i32 = 3;
 
 const AAUDIO_PERFORMANCE_MODE_LOW_LATENCY: i32 = 12;
