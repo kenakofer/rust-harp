@@ -2,11 +2,11 @@ use crate::notes::MidiNote;
 
 #[derive(Clone, Copy, Debug)]
 struct Voice {
-    freq_hz: f32,
     start_sample: u64,
     phase: f32,
     phase_inc: f32,
     amp0: f32,
+    max_harmonic_odd: u32,
 }
 
 pub struct SquareSynth {
@@ -26,36 +26,57 @@ impl SquareSynth {
 
     pub fn note_on(&mut self, midi: MidiNote, volume_0_to_127: u8) {
         let freq_hz = midi_to_hz(midi.0 as f32);
-        let amp0 = (volume_0_to_127 as f32 / 127.0) * 0.2; // conservative
+
+        // Conservative headroom; we’ll also soft-limit after mixing.
+        let amp0 = (volume_0_to_127 as f32 / 127.0) * 0.12;
+
         let phase_inc = (2.0 * std::f32::consts::PI * freq_hz) / self.sample_rate_hz;
+
+        // Band-limit the square by only summing harmonics under Nyquist.
+        // Limit upper harmonics to keep CPU bounded.
+        let nyquist = self.sample_rate_hz * 0.5;
+        let mut max_harmonic = (nyquist / freq_hz).floor() as u32;
+        if max_harmonic < 1 {
+            max_harmonic = 1;
+        }
+        if (max_harmonic & 1) == 0 {
+            max_harmonic = max_harmonic.saturating_sub(1);
+        }
+        max_harmonic = max_harmonic.min(51); // 1..51 odd => at most 26 sines
+
         self.voices.push(Voice {
-            freq_hz,
             start_sample: self.sample,
             phase: 0.0,
             phase_inc,
             amp0,
+            max_harmonic_odd: max_harmonic,
         });
     }
 
     pub fn render_i16_mono(&mut self, out: &mut [i16]) {
         // Exponential decay time constant (seconds)
         const TAU_S: f32 = 0.35;
+        const ATTACK_S: f32 = 0.004; // short ramp to prevent clicks
         const SILENCE: f32 = 1.0e-4;
 
         for o in out.iter_mut() {
-            let t_s = self.sample as f32 / self.sample_rate_hz;
-
             let mut acc = 0.0f32;
             for v in &mut self.voices {
                 let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
-                let env = (-age_s / TAU_S).exp();
 
-                // square from phase
-                let sq = if v.phase <= std::f32::consts::PI {
-                    1.0
-                } else {
-                    -1.0
-                };
+                let attack = (age_s / ATTACK_S).min(1.0);
+                let decay = (-age_s / TAU_S).exp();
+                let env = attack * decay;
+
+                // Band-limited square: sum odd harmonics under Nyquist.
+                // square(t) = (4/pi) * Σ_{n odd} sin(n*phase)/n
+                let mut sq = 0.0f32;
+                let mut n = 1u32;
+                while n <= v.max_harmonic_odd {
+                    sq += (n as f32 * v.phase).sin() / (n as f32);
+                    n += 2;
+                }
+                sq *= 4.0 / std::f32::consts::PI;
 
                 acc += v.amp0 * env * sq;
 
@@ -65,22 +86,19 @@ impl SquareSynth {
                 }
             }
 
-            // Soft clamp to avoid harsh clipping when multiple voices overlap.
-            acc = acc.clamp(-1.0, 1.0);
+            // Cheap soft limiter to avoid harsh clipping when multiple voices overlap.
+            acc = acc / (1.0 + acc.abs());
             *o = (acc * i16::MAX as f32) as i16;
 
             self.sample += 1;
 
             // Periodically prune finished voices.
-            // (Doing it per-sample would be wasteful.)
             if (self.sample & 0xFF) == 0 {
                 self.voices.retain(|v| {
                     let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
-                    v.amp0 * (-age_s / TAU_S).exp() > SILENCE
+                    v.amp0 * (-(age_s) / TAU_S).exp() > SILENCE
                 });
             }
-
-            let _ = t_s; // keeps structure readable if we tweak later
         }
     }
 }
