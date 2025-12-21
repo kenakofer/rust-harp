@@ -260,7 +260,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     let len = w * h;
     let mut pixels = vec![0xFF000000u32 as i32; len];
 
-    let positions = layout::compute_note_positions(w as f32);
+    let positions = layout::compute_note_positions_android(w as f32);
 
     // Multiple notes can map to the same physical string position (duplicate x values).
     // When that happens, prioritize what we draw so inactive greys don't paint over
@@ -320,7 +320,7 @@ mod render_tests {
         // We expect duplicate x-positions (multiple notes mapped to same physical string).
         // Root should win so it doesn't get overwritten by later inactive notes.
         let w = 1000usize;
-        let positions = layout::compute_note_positions(w as f32);
+        let positions = layout::compute_note_positions_android(w as f32);
 
         let chord = Chord::new_triad(UnkeyedNote(0)); // C major
 

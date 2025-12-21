@@ -93,7 +93,7 @@ impl AndroidFrontend {
     }
 
     pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> (AppEffects, bool) {
-        let positions = layout::compute_note_positions(width_px);
+        let positions = layout::compute_note_positions_android(width_px);
         let mut effects = AppEffects {
             play_notes: Vec::new(),
             stop_notes: Vec::new(),

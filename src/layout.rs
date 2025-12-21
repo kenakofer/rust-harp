@@ -59,3 +59,43 @@ pub fn compute_note_positions(width: f32) -> Vec<f32> {
 
     positions
 }
+
+/// Android-specific note positions.
+///
+/// Compared to `compute_note_positions`, this:
+/// - drops one low octave (7 strings) to give each remaining string more screen space
+/// - evenly spaces the remaining strings across the full width
+pub fn compute_note_positions_android(width: f32) -> Vec<f32> {
+    compute_note_positions_evenly_spaced(width, 1)
+}
+
+fn compute_note_positions_evenly_spaced(width: f32, drop_low_octaves: usize) -> Vec<f32> {
+    let start_string = drop_low_octaves.saturating_mul(7);
+    let remaining_strings = NUM_STRINGS.saturating_sub(start_string);
+    if remaining_strings == 0 {
+        return Vec::new();
+    }
+
+    let width = width.max(1.0);
+    let scale = if remaining_strings > 1 {
+        (width - 1.0) / (remaining_strings as f32 - 1.0)
+    } else {
+        0.0
+    };
+
+    let mut positions = Vec::new();
+
+    for octave in drop_low_octaves.. {
+        for uknote in 0..12 {
+            let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
+            let string = octave * 7 + string_in_octave;
+            if string >= NUM_STRINGS {
+                return positions;
+            }
+            let idx = string - start_string;
+            positions.push(idx as f32 * scale);
+        }
+    }
+
+    positions
+}
