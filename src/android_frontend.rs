@@ -9,6 +9,7 @@ use std::sync::Mutex;
 
 pub enum AudioMsg {
     NoteOn(NoteOn),
+    NoteOff(crate::notes::UnmidiNote),
     SetSampleRate(u32),
 }
 
@@ -48,6 +49,10 @@ impl AndroidFrontend {
     }
 
     pub fn push_effects(&self, effects: AppEffects) {
+        // Stop before play so retriggering works correctly.
+        for un in effects.stop_notes {
+            let _ = self.audio_tx.send(AudioMsg::NoteOff(un));
+        }
         for pn in effects.play_notes {
             let _ = self.audio_tx.send(AudioMsg::NoteOn(pn));
         }
@@ -80,6 +85,10 @@ impl AndroidFrontend {
                         let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
                         let NoteVolume(v) = pn.volume;
                         s.note_on(MidiNote(m), v);
+                    }
+                    Ok(AudioMsg::NoteOff(un)) => {
+                        let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
+                        s.note_off(MidiNote(m));
                     }
                     Ok(AudioMsg::SetSampleRate(sr)) => {
                         *s = SquareSynth::new(sr);
@@ -139,6 +148,26 @@ mod tests {
 
         f.push_effects(effects);
 
+        match rx.try_recv() {
+            Ok(AudioMsg::NoteOn(_)) => {}
+            other => panic!("expected NoteOn msg, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn android_frontend_emits_note_off_before_retrigger_note_on() {
+        let mut f = AndroidFrontend::new();
+        let rx = f.take_audio_rx().expect("expected audio rx");
+
+        f.push_effects(f.engine_mut().handle_strum_crossing(UnkeyedNote(0)));
+        let _ = rx.try_recv();
+
+        f.push_effects(f.engine_mut().handle_strum_crossing(UnkeyedNote(0)));
+
+        match rx.try_recv() {
+            Ok(AudioMsg::NoteOff(_)) => {}
+            other => panic!("expected NoteOff msg, got {other:?}"),
+        }
         match rx.try_recv() {
             Ok(AudioMsg::NoteOn(_)) => {}
             other => panic!("expected NoteOn msg, got {other:?}"),

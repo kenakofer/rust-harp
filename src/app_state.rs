@@ -213,6 +213,13 @@ impl AppState {
             effects.redraw = false;
             if self.active_chord.map_or(true, |c| c.contains(note)) {
                 let un = self.transpose + note;
+
+                // If this note is already active, stop it first so we only ever have one
+                // instance playing at a time.
+                if self.active_notes.remove(&un) {
+                    effects.stop_notes.push(un);
+                }
+
                 self.active_notes.insert(un);
                 effects.play_notes.push(NoteOn {
                     note: un,
@@ -319,6 +326,9 @@ impl AppState {
                     .map(|i| UnmidiNote(i))
                     .filter(|un| chord.contains(*un - self.transpose))
                     .for_each(|un| {
+                        if self.active_notes.remove(&un) {
+                            effects.stop_notes.push(un);
+                        }
                         self.active_notes.insert(un);
                         effects.play_notes.push(NoteOn {
                             note: un,
@@ -545,7 +555,11 @@ mod tests {
         });
 
         assert_eq!(effects1.play_notes.len(), 1);
-        assert_eq!(effects2.play_notes.len(), 1); // current behavior: retrigger
+        assert!(effects1.stop_notes.is_empty());
+
+        // Retrigger: we should stop then play, so there is still only one active instance.
+        assert_eq!(effects2.play_notes.len(), 1);
+        assert_eq!(effects2.stop_notes, vec![UnmidiNote(0)]);
         assert_eq!(state.active_notes.len(), 1); // HashSet: no duplicates
     }
 

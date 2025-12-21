@@ -108,7 +108,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let effects = frontend.engine_mut().handle_event(app_event);
     let redraw = effects.redraw;
-    let has_play = !effects.play_notes.is_empty();
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
 
     frontend.push_effects(effects);
 
@@ -147,7 +147,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let (effects, haptic) = frontend.handle_touch(event, width.max(1) as f32);
     let redraw = effects.redraw;
-    let has_play = !effects.play_notes.is_empty();
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
     frontend.push_effects(effects);
 
     // Bit 0: needs redraw

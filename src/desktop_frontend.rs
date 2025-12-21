@@ -249,11 +249,13 @@ fn process_app_effects(
         log::info!("Changed key: {:?}", transpose);
     }
 
-    for pn in effects.play_notes {
-        midi.play_note(MIDI_BASE_TRANSPOSE + pn.note, pn.volume);
-    }
+    // IMPORTANT: stop before play so retriggering the same note doesn't immediately stop
+    // the newly started note.
     for un in effects.stop_notes {
         midi.stop_note(MIDI_BASE_TRANSPOSE + un);
+    }
+    for pn in effects.play_notes {
+        midi.play_note(MIDI_BASE_TRANSPOSE + pn.note, pn.volume);
     }
 
     played

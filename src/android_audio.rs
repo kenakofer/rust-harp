@@ -2,6 +2,7 @@ use crate::notes::MidiNote;
 
 #[derive(Clone, Copy, Debug)]
 struct Voice {
+    midi: MidiNote,
     start_sample: u64,
     phase: f32,
     phase_inc: f32,
@@ -50,12 +51,17 @@ impl SquareSynth {
         }
 
         self.voices.push(Voice {
+            midi,
             start_sample: self.sample,
             phase: 0.0,
             phase_inc,
             amp0,
             max_harmonic_odd: max_harmonic,
         });
+    }
+
+    pub fn note_off(&mut self, midi: MidiNote) {
+        self.voices.retain(|v| v.midi != midi);
     }
 
     pub fn render_i16_mono(&mut self, out: &mut [i16]) {

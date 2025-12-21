@@ -152,6 +152,10 @@ unsafe extern "C" fn data_cb(
                 let NoteVolume(v) = pn.volume;
                 ctx.synth.note_on(MidiNote(m), v);
             }
+            AudioMsg::NoteOff(un) => {
+                let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
+                ctx.synth.note_off(MidiNote(m));
+            }
             AudioMsg::SetSampleRate(sr) => {
                 ctx.synth = SquareSynth::new(sr.max(1));
             }
