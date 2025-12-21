@@ -4,10 +4,12 @@
 
 #![cfg(all(target_os = "android", feature = "android"))]
 
-use crate::android_frontend::AndroidFrontend;
+use crate::android_audio::SquareSynth;
+use crate::android_frontend::{AndroidFrontend, AudioMsg};
+use crate::notes::{MidiNote, NoteVolume, Transpose};
 
 use std::ffi::{c_char, c_void};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{mpsc::Receiver, Mutex, OnceLock};
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
 #[repr(C)]
@@ -99,7 +101,6 @@ extern "C" {
 }
 
 const ANDROID_LOG_INFO: i32 = 4;
-const ANDROID_LOG_WARN: i32 = 5;
 
 fn android_log(prio: i32, msg: &str) {
     let tag = b"RustHarp\0";
@@ -110,8 +111,18 @@ fn android_log(prio: i32, msg: &str) {
     }
 }
 
+fn android_log_static(prio: i32, msg: &'static [u8]) {
+    let tag = b"RustHarp\0";
+    unsafe {
+        let _ = __android_log_write(prio, tag.as_ptr() as *const c_char, msg.as_ptr() as *const c_char);
+    }
+}
+
+static XRUNS_INCREASED: &[u8] = b"AAudio xruns increased\0";
+
 struct CallbackCtx {
-    frontend: *const AndroidFrontend,
+    rx: Receiver<AudioMsg>,
+    synth: SquareSynth,
     channels: i32,
     format: i32,
     call_count: AtomicU32,
@@ -128,11 +139,27 @@ unsafe extern "C" fn data_cb(
         return AAUDIO_CALLBACK_RESULT_CONTINUE;
     }
 
-    let ctx = &*(user_data as *const CallbackCtx);
-    let frontend = &*ctx.frontend;
+    let ctx = &mut *(user_data as *mut CallbackCtx);
+
+    // Match desktop's MIDI_BASE_TRANSPOSE (C2)
+    const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
+
+    // Drain control messages (no locks/allocations in steady state).
+    while let Ok(msg) = ctx.rx.try_recv() {
+        match msg {
+            AudioMsg::NoteOn(pn) => {
+                let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
+                let NoteVolume(v) = pn.volume;
+                ctx.synth.note_on(MidiNote(m), v);
+            }
+            AudioMsg::SetSampleRate(sr) => {
+                ctx.synth = SquareSynth::new(sr.max(1));
+            }
+        }
+    }
 
     // Underrun detection: query xRun count periodically and log when it changes.
-    // (Avoid logging on every callback; this should be very rare in steady-state.)
+    // IMPORTANT: avoid allocations/log spam inside the realtime callback.
     if !stream.is_null() {
         let n = ctx.call_count.fetch_add(1, Ordering::Relaxed);
         if (n % 128) == 0 {
@@ -140,7 +167,8 @@ unsafe extern "C" fn data_cb(
             let prev = ctx.last_xruns.load(Ordering::Relaxed);
             if xruns >= 0 && xruns != prev {
                 ctx.last_xruns.store(xruns, Ordering::Relaxed);
-                android_log(ANDROID_LOG_WARN, &format!("AAudio xruns={xruns}"));
+                // Log a static message to avoid heap allocation in the callback.
+                android_log_static(4, XRUNS_INCREASED);
             }
         }
     }
@@ -154,14 +182,14 @@ unsafe extern "C" fn data_cb(
                 audio_data as *mut i16,
                 (num_frames as usize) * channels,
             );
-            frontend.render_audio_i16_interleaved(out, channels);
+            ctx.synth.render_i16_interleaved(out, channels);
         }
         AAUDIO_FORMAT_PCM_FLOAT => {
             let out = std::slice::from_raw_parts_mut(
                 audio_data as *mut f32,
                 (num_frames as usize) * channels,
             );
-            frontend.render_audio_f32_interleaved(out, channels);
+            ctx.synth.render_f32_interleaved(out, channels);
         }
         AAUDIO_FORMAT_PCM_I8 => {
             let out = std::slice::from_raw_parts_mut(
@@ -222,14 +250,19 @@ fn aaudio_state() -> &'static Mutex<Option<AAudioOut>> {
     AAUDIO.get_or_init(|| Mutex::new(None))
 }
 
-pub fn start(frontend: &AndroidFrontend) -> bool {
+pub fn start(frontend: &mut AndroidFrontend) -> bool {
     let mut guard = aaudio_state().lock().unwrap();
     if guard.is_some() {
         return true;
     }
 
+    let Some(rx) = frontend.take_audio_rx() else {
+        return false;
+    };
+
     let ctx = Box::new(CallbackCtx {
-        frontend: frontend as *const AndroidFrontend,
+        rx,
+        synth: SquareSynth::new(48_000),
         channels: 1,
         format: AAUDIO_FORMAT_PCM_FLOAT,
         call_count: AtomicU32::new(0),
@@ -263,7 +296,7 @@ pub fn start(frontend: &AndroidFrontend) -> bool {
                 }
 
                 let sr = AAudioStream_getSampleRate(stream).max(1) as u32;
-                frontend.set_sample_rate(sr);
+                (*ctx_ptr).synth = SquareSynth::new(sr.max(1));
 
                 // Record actual stream config for the callback.
                 (*ctx_ptr).channels = AAudioStream_getChannelCount(stream).max(1);

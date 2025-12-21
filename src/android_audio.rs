@@ -42,7 +42,12 @@ impl SquareSynth {
         if (max_harmonic & 1) == 0 {
             max_harmonic = max_harmonic.saturating_sub(1);
         }
-        max_harmonic = max_harmonic.min(51); // 1..51 odd => at most 26 sines
+        max_harmonic = max_harmonic.min(15); // 1..15 odd => at most 8 sines (CPU headroom)
+
+        const MAX_VOICES: usize = 16;
+        if self.voices.len() >= MAX_VOICES {
+            self.voices.swap_remove(0);
+        }
 
         self.voices.push(Voice {
             start_sample: self.sample,

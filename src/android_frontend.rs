@@ -2,34 +2,40 @@ use crate::android_audio::SquareSynth;
 use crate::app_state::{AppEffects, NoteOn};
 use crate::engine::Engine;
 use crate::layout;
-use crate::notes::{MidiNote, NoteVolume, Transpose};
 use crate::touch::{TouchEvent, TouchTracker};
 
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Mutex;
 
-struct AudioState {
-    pending_play_notes: Vec<NoteOn>,
-    synth: SquareSynth,
+pub enum AudioMsg {
+    NoteOn(NoteOn),
+    SetSampleRate(u32),
 }
 
-/// Android-facing wrapper that owns the core Engine + audio synth.
+/// Android-facing wrapper that owns the core Engine + touch tracker.
 ///
-/// Kept separate so JNI functions can be thin and avoid leaking core types into Java.
+/// Audio is fed to the realtime audio thread via a channel so the AAudio callback can
+/// avoid taking locks.
 pub struct AndroidFrontend {
     engine: Engine,
-    audio: Mutex<AudioState>,
     touch: TouchTracker,
+
+    audio_tx: Sender<AudioMsg>,
+    audio_rx: Mutex<Option<Receiver<AudioMsg>>>,
+
+    // Legacy fallback path (RustAudio/AudioTrack) renders from a Java thread, so a Mutex is OK.
+    legacy_synth: Mutex<SquareSynth>,
 }
 
 impl AndroidFrontend {
     pub fn new() -> Self {
+        let (tx, rx) = mpsc::channel();
         Self {
             engine: Engine::new(),
-            audio: Mutex::new(AudioState {
-                pending_play_notes: Vec::new(),
-                synth: SquareSynth::new(48_000),
-            }),
             touch: TouchTracker::new(),
+            audio_tx: tx,
+            audio_rx: Mutex::new(Some(rx)),
+            legacy_synth: Mutex::new(SquareSynth::new(48_000)),
         }
     }
 
@@ -41,55 +47,53 @@ impl AndroidFrontend {
         &self.engine
     }
 
-    pub fn push_effects(&self, effects: crate::app_state::AppEffects) {
-        if effects.play_notes.is_empty() {
-            return;
+    pub fn push_effects(&self, effects: AppEffects) {
+        for pn in effects.play_notes {
+            let _ = self.audio_tx.send(AudioMsg::NoteOn(pn));
         }
-        let mut a = self.audio.lock().unwrap();
-        a.pending_play_notes.extend(effects.play_notes);
-    }
-
-    pub fn drain_play_notes(&self) -> Vec<NoteOn> {
-        let mut a = self.audio.lock().unwrap();
-        std::mem::take(&mut a.pending_play_notes)
-    }
-
-    pub fn has_pending_play_notes(&self) -> bool {
-        let a = self.audio.lock().unwrap();
-        !a.pending_play_notes.is_empty()
     }
 
     pub fn set_sample_rate(&self, sample_rate_hz: u32) {
-        let mut a = self.audio.lock().unwrap();
-        a.synth = SquareSynth::new(sample_rate_hz.max(1));
+        let sr = sample_rate_hz.max(1);
+        let _ = self.audio_tx.send(AudioMsg::SetSampleRate(sr));
+
+        // Keep the legacy path in sync too.
+        let mut s = self.legacy_synth.lock().unwrap();
+        *s = SquareSynth::new(sr);
     }
 
-    fn drain_into_synth(a: &mut AudioState) {
+    pub fn take_audio_rx(&self) -> Option<Receiver<AudioMsg>> {
+        self.audio_rx.lock().unwrap().take()
+    }
+
+    /// Legacy fallback (AudioTrack) fill: drain any queued messages then render mono i16.
+    pub fn render_audio_i16_mono(&self, out: &mut [i16]) {
         // Match desktop's MIDI_BASE_TRANSPOSE (C2)
+        use crate::notes::{MidiNote, NoteVolume, Transpose};
         const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
 
-        let drained: Vec<_> = a.pending_play_notes.drain(..).collect();
-        for pn in drained {
-            let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
-            let NoteVolume(v) = pn.volume;
-            a.synth.note_on(MidiNote(m), v);
+        if let Some(rx) = self.audio_rx.lock().unwrap().as_ref() {
+            let mut s = self.legacy_synth.lock().unwrap();
+            loop {
+                match rx.try_recv() {
+                    Ok(AudioMsg::NoteOn(pn)) => {
+                        let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
+                        let NoteVolume(v) = pn.volume;
+                        s.note_on(MidiNote(m), v);
+                    }
+                    Ok(AudioMsg::SetSampleRate(sr)) => {
+                        *s = SquareSynth::new(sr);
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => break,
+                }
+            }
+
+            s.render_i16_mono(out);
+            return;
         }
-    }
 
-    pub fn render_audio_i16_interleaved(&self, out: &mut [i16], channels: usize) {
-        let mut a = self.audio.lock().unwrap();
-        Self::drain_into_synth(&mut a);
-        a.synth.render_i16_interleaved(out, channels);
-    }
-
-    pub fn render_audio_f32_interleaved(&self, out: &mut [f32], channels: usize) {
-        let mut a = self.audio.lock().unwrap();
-        Self::drain_into_synth(&mut a);
-        a.synth.render_f32_interleaved(out, channels);
-    }
-
-    pub fn render_audio_i16_mono(&self, out: &mut [i16]) {
-        self.render_audio_i16_interleaved(out, 1);
+        out.fill(0);
     }
 
     pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> (AppEffects, bool) {
@@ -126,16 +130,18 @@ mod tests {
     use crate::notes::UnkeyedNote;
 
     #[test]
-    fn android_frontend_queues_play_notes_from_engine_effects() {
+    fn android_frontend_emits_note_on_messages() {
         let mut f = AndroidFrontend::new();
+        let rx = f.take_audio_rx().expect("expected audio rx");
+
         let effects = f.engine_mut().handle_strum_crossing(UnkeyedNote(0));
         assert_eq!(effects.play_notes.len(), 1);
 
         f.push_effects(effects);
-        assert!(f.has_pending_play_notes());
 
-        let drained: Vec<_> = f.drain_play_notes();
-        assert_eq!(drained.len(), 1);
-        assert!(!f.has_pending_play_notes());
+        match rx.try_recv() {
+            Ok(AudioMsg::NoteOn(_)) => {}
+            other => panic!("expected NoteOn msg, got {other:?}"),
+        }
     }
 }

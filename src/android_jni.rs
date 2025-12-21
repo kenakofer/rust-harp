@@ -30,7 +30,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustStartAAudio(
     if handle == 0 {
         return 0;
     }
-    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     if android_aaudio::start(frontend) {
         1
     } else {
@@ -108,12 +108,13 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let effects = frontend.engine_mut().handle_event(app_event);
     let redraw = effects.redraw;
+    let has_play = !effects.play_notes.is_empty();
 
     frontend.push_effects(effects);
 
     // Bit 0: needs redraw
     // Bit 1: has play notes
-    (if redraw { 1 } else { 0 }) | (if frontend.has_pending_play_notes() { 2 } else { 0 })
+    (if redraw { 1 } else { 0 }) | (if has_play { 2 } else { 0 })
 }
 
 #[no_mangle]
@@ -146,13 +147,14 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let (effects, haptic) = frontend.handle_touch(event, width.max(1) as f32);
     let redraw = effects.redraw;
+    let has_play = !effects.play_notes.is_empty();
     frontend.push_effects(effects);
 
     // Bit 0: needs redraw
     // Bit 1: has play notes
     // Bit 2: haptic pulse
     (if redraw { 1 } else { 0 })
-        | (if frontend.has_pending_play_notes() { 2 } else { 0 })
+        | (if has_play { 2 } else { 0 })
         | (if haptic { 4 } else { 0 })
 }
 
@@ -211,27 +213,11 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustDrainPlayNotes(
         return 0;
     }
 
-    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
-
-    // Match desktop's MIDI_BASE_TRANSPOSE (C2)
-    const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
-
-    let mut notes: Vec<jint> = Vec::new();
-    let mut vols: Vec<jint> = Vec::new();
-
-    for pn in frontend.drain_play_notes() {
-        let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
-        let NoteVolume(v) = pn.volume;
-        notes.push(m as jint);
-        vols.push(v as jint);
-    }
-
-    let count = notes.len().min(i32::MAX as usize) as jint;
-
-    let _ = env.set_int_array_region(out_midi_notes, 0, &notes);
-    let _ = env.set_int_array_region(out_volumes, 0, &vols);
-
-    count
+    // Deprecated: AAudio renders directly from the Rust synth.
+    // Keep this JNI method as a no-op so older Java callers still link.
+    let _ = env.set_int_array_region(out_midi_notes, 0, &[]);
+    let _ = env.set_int_array_region(out_volumes, 0, &[]);
+    0
 }
 
 /// Render strings into `out_pixels` (ARGB_8888) based on the current active chord.
