@@ -36,7 +36,8 @@ jobs:
 
       - name: Build Rust shared library (arm64)
         run: |
-          cargo ndk -t arm64-v8a -o android/app/src/main/jniLibs \
+          # AAudio (libaaudio) is only available starting at API 26.
+          cargo ndk -t arm64-v8a -p 26 -o android/app/src/main/jniLibs \
             build --release --no-default-features --features android
 
       - uses: gradle/actions/setup-gradle@v3
