@@ -432,20 +432,24 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         pixels: &mut [i32],
         w: usize,
         h: usize,
-        x_center: i32,
+        x_left: i32,
         y_top: i32,
         text: &str,
         color: i32,
     ) {
-        let scale: i32 = 2;
-        let char_w: i32 = 5 * scale;
-        let char_h: i32 = 7 * scale;
-        let spacing: i32 = 1 * scale;
+        // +30% over the old 2x scale => 2.6x.
+        // We implement this as a rational scale so we can stay purely in integer pixel math.
+        const SCALE_NUM: i32 = 13;
+        const SCALE_DEN: i32 = 5;
+
+        let map = |u: i32| (u * SCALE_NUM) / SCALE_DEN;
+
+        let char_w: i32 = map(5);
+        let char_h: i32 = map(7);
+        let spacing: i32 = map(1).max(1);
 
         let chars: Vec<char> = text.chars().collect();
-        let text_w = (chars.len() as i32) * char_w + ((chars.len() as i32).saturating_sub(1)) * spacing;
-        let mut x = x_center - text_w / 2;
-        let y = y_top;
+        let mut x = x_left;
 
         for ch in chars {
             let g = glyph_5x7(ch);
@@ -454,10 +458,14 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                     if (bits & (1 << (4 - col))) == 0 {
                         continue;
                     }
-                    for sy in 0..scale {
-                        for sx in 0..scale {
-                            let px = x + col as i32 * scale + sx;
-                            let py = y + row as i32 * scale + sy;
+
+                    let x0 = x + map(col as i32);
+                    let x1 = x + map(col as i32 + 1);
+                    let y0 = y_top + map(row as i32);
+                    let y1 = y_top + map(row as i32 + 1);
+
+                    for py in y0..y1 {
+                        for px in x0..x1 {
                             if px < 0 || py < 0 {
                                 continue;
                             }
@@ -473,7 +481,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             x += char_w + spacing;
         }
 
-        // Keep clippy happy about unused locals in case we tweak later.
         let _ = char_h;
     }
 
@@ -537,8 +544,17 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                 continue;
             }
             let label = pitch_class_label(pc as i16);
-            // Leave a little padding from the very top.
-            draw_text(&mut pixels, w, h, xi as i32, 2, label, best_color_per_x[xi]);
+            // Leave a little padding from the very top, and keep the label just to the right
+            // of the string so it doesn't overlap the line.
+            draw_text(
+                &mut pixels,
+                w,
+                h,
+                xi as i32 + 4,
+                2,
+                label,
+                best_color_per_x[xi],
+            );
         }
     }
 
@@ -631,7 +647,7 @@ mod render_tests {
                 if xi >= 0 && xi < w as i32 {
                     let xi = xi as usize;
                     // Ensure there is empty space next to the line so we can detect text.
-                    if !line_xs.contains(&(xi + 1)) && !line_xs.contains(&(xi + 2)) {
+                    if !line_xs.contains(&(xi + 6)) && !line_xs.contains(&(xi + 8)) {
                         active_xi = Some(xi);
                         break;
                     }
@@ -673,21 +689,26 @@ mod render_tests {
                 _ => [0; 7],
             }
         }
-        let scale: i32 = 2;
-        let x_center = xi as i32;
+        // Match draw_text() parameters (2.6x scale, and starting just right of the line).
+        const SCALE_NUM: i32 = 13;
+        const SCALE_DEN: i32 = 5;
+        let map = |u: i32| (u * SCALE_NUM) / SCALE_DEN;
+
+        let x_left = xi as i32 + 4;
         let y_top = 2i32;
         let g = glyph_5x7('C');
-        let char_w: i32 = 5 * scale;
-        let start_x = x_center - char_w / 2;
+
         for (row, bits) in g.iter().enumerate() {
             for col in 0..5 {
                 if (bits & (1 << (4 - col))) == 0 {
                     continue;
                 }
-                for sy in 0..scale {
-                    for sx in 0..scale {
-                        let px = start_x + col as i32 * scale + sx;
-                        let py = y_top + row as i32 * scale + sy;
+                let x0 = x_left + map(col as i32);
+                let x1 = x_left + map(col as i32 + 1);
+                let y0 = y_top + map(row as i32);
+                let y1 = y_top + map(row as i32 + 1);
+                for py in y0..y1 {
+                    for px in x0..x1 {
                         if px < 0 || py < 0 {
                             continue;
                         }
@@ -702,7 +723,7 @@ mod render_tests {
         }
 
         let y_probe = 4usize;
-        assert_eq!(pixels_no[y_probe * w + (xi + 1)], 0xFF000000u32 as i32);
-        assert_ne!(pixels_yes[y_probe * w + (xi + 1)], 0xFF000000u32 as i32);
+        assert_eq!(pixels_no[y_probe * w + (xi + 6)], 0xFF000000u32 as i32);
+        assert_ne!(pixels_yes[y_probe * w + (xi + 6)], 0xFF000000u32 as i32);
     }
 }
