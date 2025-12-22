@@ -26,7 +26,7 @@ public class MainActivity extends Activity {
     private static final int BTN_I = 2;
     private static final int BTN_V = 3;
     private static final int BTN_II = 4;
-    private static final int BTN_IV_MINOR = 5;
+    private static final int BTN_VI = 5;
     private static final int BTN_III = 6;
     private static final int BTN_VII_DIM = 7;
 
@@ -210,8 +210,8 @@ public class MainActivity extends Activity {
 
         // Touch chord/modifier grid (lower-left).
         GridLayout grid = new GridLayout(this);
-        grid.setColumnCount(4);
-        grid.setRowCount(4);
+        grid.setColumnCount(7);
+        grid.setRowCount(3);
         grid.setUseDefaultMargins(false);
         grid.setPadding(0, 0, 0, 0);
         grid.setMotionEventSplittingEnabled(true);
@@ -224,8 +224,14 @@ public class MainActivity extends Activity {
         glp.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
         grid.setLayoutParams(glp);
 
-        int bw = dpToPx(64);
-        int bh = dpToPx(42);
+        // ~30% bigger than before.
+        int bw = dpToPx(83);
+        int bh = dpToPx(55);
+
+        Button blank = makeUiButton("", -1, bw, bh);
+        blank.setEnabled(false);
+        blank.setText("");
+        blank.setBackgroundColor(0xFF000000);
 
         // Row 1: VIIb IV I V
         uiButtons[BTN_VIIB] = makeUiButton("VIIb", BTN_VIIB, bw, bh);
@@ -233,47 +239,45 @@ public class MainActivity extends Activity {
         uiButtons[BTN_I] = makeUiButton("I", BTN_I, bw, bh);
         uiButtons[BTN_V] = makeUiButton("V", BTN_V, bw, bh);
 
-        // Row 2: ii iv iii vii°
+        // Row 2: ii vi iii vii°
         uiButtons[BTN_II] = makeUiButton("ii", BTN_II, bw, bh);
-        uiButtons[BTN_IV_MINOR] = makeUiButton("iv", BTN_IV_MINOR, bw, bh);
+        uiButtons[BTN_VI] = makeUiButton("vi", BTN_VI, bw, bh);
         uiButtons[BTN_III] = makeUiButton("iii", BTN_III, bw, bh);
         uiButtons[BTN_VII_DIM] = makeUiButton("vii\u00B0", BTN_VII_DIM, bw, bh);
 
-        // Row 3: Maj7 No3 Sus4 M/m
+        // Row 3: Maj7 No3 Sus4 M/m Add2 Add7 Hept
         uiButtons[BTN_MAJ7] = makeUiButton("Maj7", BTN_MAJ7, bw, bh);
         uiButtons[BTN_NO3] = makeUiButton("No3", BTN_NO3, bw, bh);
         uiButtons[BTN_SUS4] = makeUiButton("Sus4", BTN_SUS4, bw, bh);
         uiButtons[BTN_MM] = makeUiButton("M/m", BTN_MM, bw, bh);
-
-        // Row 4: Add2 Add7 Hept [blank]
         uiButtons[BTN_ADD2] = makeUiButton("Add2", BTN_ADD2, bw, bh);
         uiButtons[BTN_ADD7] = makeUiButton("Add7", BTN_ADD7, bw, bh);
         uiButtons[BTN_HEPT] = makeUiButton("Hept", BTN_HEPT, bw, bh);
-        Button blank = makeUiButton("", -1, bw, bh);
-        blank.setEnabled(false);
-        blank.setText("");
-        blank.setBackgroundColor(0xFF000000);
 
         // Add in row-major order.
         grid.addView(uiButtons[BTN_VIIB]);
         grid.addView(uiButtons[BTN_IV]);
         grid.addView(uiButtons[BTN_I]);
         grid.addView(uiButtons[BTN_V]);
+        grid.addView(blank);
+        grid.addView(blank);
+        grid.addView(blank);
 
         grid.addView(uiButtons[BTN_II]);
-        grid.addView(uiButtons[BTN_IV_MINOR]);
+        grid.addView(uiButtons[BTN_VI]);
         grid.addView(uiButtons[BTN_III]);
         grid.addView(uiButtons[BTN_VII_DIM]);
+        grid.addView(blank);
+        grid.addView(blank);
+        grid.addView(blank);
 
         grid.addView(uiButtons[BTN_MAJ7]);
         grid.addView(uiButtons[BTN_NO3]);
         grid.addView(uiButtons[BTN_SUS4]);
         grid.addView(uiButtons[BTN_MM]);
-
         grid.addView(uiButtons[BTN_ADD2]);
         grid.addView(uiButtons[BTN_ADD7]);
         grid.addView(uiButtons[BTN_HEPT]);
-        grid.addView(blank);
 
         root.addView(grid);
 

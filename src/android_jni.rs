@@ -150,7 +150,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
         2 => UiButton::I,
         3 => UiButton::V,
         4 => UiButton::II,
-        5 => UiButton::IVMinor,
+        5 => UiButton::VI,
         6 => UiButton::III,
         7 => UiButton::VIIDim,
         8 => UiButton::Maj7,
@@ -218,6 +218,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonsMask(
     if eng.chord_button_down(ChordButton::II) {
         mask |= 1 << 4;
     }
+    if eng.chord_button_down(ChordButton::VI) {
+        mask |= 1 << 5;
+    }
     if eng.chord_button_down(ChordButton::III) {
         mask |= 1 << 6;
     }
@@ -248,10 +251,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonsMask(
         mask |= 1 << 13;
     }
 
-    // Derived button: IVMinor lights when (IV + MinorMajor) are both held.
-    if eng.chord_button_down(ChordButton::IV) && eng.mod_button_down(ModButton::MinorMajor) {
-        mask |= 1 << 5;
-    }
 
     mask as jint
 }

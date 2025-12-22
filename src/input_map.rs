@@ -21,7 +21,7 @@ pub enum UiButton {
     I,
     V,
     II,
-    IVMinor,
+    VI,
     III,
     VIIDim,
 
@@ -129,8 +129,6 @@ pub fn key_event_from_ui(state: KeyState, key: UiKey) -> Option<KeyEvent> {
 
 /// Convert a touchscreen UI button press/release into one or more `KeyEvent`s.
 ///
-/// Some UI buttons are simple 1:1 mappings; others (like `IVMinor`) are implemented as
-/// a macro that holds a modifier while the chord button is held.
 pub fn key_events_from_button(state: KeyState, button: UiButton) -> Vec<KeyEvent> {
     match button {
         // Chords
@@ -153,6 +151,10 @@ pub fn key_events_from_button(state: KeyState, button: UiButton) -> Vec<KeyEvent
         UiButton::II => vec![KeyEvent::Chord {
             state,
             button: ChordButton::II,
+        }],
+        UiButton::VI => vec![KeyEvent::Chord {
+            state,
+            button: ChordButton::VI,
         }],
         UiButton::III => vec![KeyEvent::Chord {
             state,
@@ -198,36 +200,6 @@ pub fn key_events_from_button(state: KeyState, button: UiButton) -> Vec<KeyEvent
             button: ModButton::No3,
             modifiers: Modifiers::No3,
         }],
-
-        // Macros
-        UiButton::IVMinor => {
-            // Avoid temporarily mutating other held chords: apply modifier only once IV is held.
-            // On release, drop the modifier first so other held chords aren't affected.
-            match state {
-                KeyState::Pressed => vec![
-                    KeyEvent::Chord {
-                        state,
-                        button: ChordButton::IV,
-                    },
-                    KeyEvent::Modifier {
-                        state,
-                        button: ModButton::MinorMajor,
-                        modifiers: Modifiers::SwitchMinorMajor,
-                    },
-                ],
-                KeyState::Released => vec![
-                    KeyEvent::Modifier {
-                        state,
-                        button: ModButton::MinorMajor,
-                        modifiers: Modifiers::SwitchMinorMajor,
-                    },
-                    KeyEvent::Chord {
-                        state,
-                        button: ChordButton::IV,
-                    },
-                ],
-            }
-        }
     }
 }
 
@@ -270,21 +242,14 @@ mod tests {
     }
 
     #[test]
-    fn ui_button_iv_minor_is_macro_combo() {
-        let pressed = key_events_from_button(KeyState::Pressed, UiButton::IVMinor);
-        assert_eq!(pressed.len(), 2);
+    fn ui_button_vi_maps_to_vi_chord() {
+        let pressed = key_events_from_button(KeyState::Pressed, UiButton::VI);
         assert_eq!(
-            pressed[0],
-            KeyEvent::Chord {
+            pressed,
+            vec![KeyEvent::Chord {
                 state: KeyState::Pressed,
-                button: ChordButton::IV,
-            }
+                button: ChordButton::VI,
+            }]
         );
-        assert!(matches!(pressed[1], KeyEvent::Modifier { .. }));
-
-        let released = key_events_from_button(KeyState::Released, UiButton::IVMinor);
-        assert_eq!(released.len(), 2);
-        assert!(matches!(released[0], KeyEvent::Modifier { .. }));
-        assert!(matches!(released[1], KeyEvent::Chord { .. }));
     }
 }
