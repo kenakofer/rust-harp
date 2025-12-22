@@ -40,6 +40,9 @@ pub struct TouchTracker {
 
     /// Which note (if any) each pointer has claimed via a strike.
     struck_by_pointer: HashMap<PointerId, crate::notes::UnkeyedNote>,
+
+    /// Where the pointer was when it struck, used to unlock after moving away.
+    struck_x_by_pointer: HashMap<PointerId, f32>,
 }
 
 impl TouchTracker {
@@ -48,6 +51,7 @@ impl TouchTracker {
             last_x: HashMap::new(),
             play_on_tap: true,
             struck_by_pointer: HashMap::new(),
+            struck_x_by_pointer: HashMap::new(),
         }
     }
 
@@ -89,6 +93,28 @@ impl TouchTracker {
         note_positions: &[f32],
         allowed: impl Fn(crate::notes::UnkeyedNote) -> bool,
     ) -> TouchOutput {
+        // Unlock distance: once the pointer moves this far from its strike point,
+        // the struck note becomes eligible for strumming again.
+        fn unlock_distance_for(note: crate::notes::UnkeyedNote, note_positions: &[f32]) -> f32 {
+            let i = note.0.max(0) as usize;
+            if i >= note_positions.len() {
+                return 30.0;
+            }
+            let x0 = note_positions[i];
+            let mut best = f32::INFINITY;
+            for (j, &x) in note_positions.iter().enumerate() {
+                if j == i {
+                    continue;
+                }
+                best = best.min((x - x0).abs());
+            }
+            if best.is_finite() && best > 0.0 {
+                best * 0.75
+            } else {
+                30.0
+            }
+        }
+
         match event.phase {
             TouchPhase::Down => {
                 self.last_x.insert(event.id, event.x);
@@ -97,6 +123,7 @@ impl TouchTracker {
                     let s = self.nearest_unstruck_note(event.x, note_positions, &allowed);
                     if let Some(n) = s {
                         self.struck_by_pointer.insert(event.id, n);
+                        self.struck_x_by_pointer.insert(event.id, event.x);
                     }
                     s
                 } else {
@@ -116,6 +143,18 @@ impl TouchTracker {
                         crossings: Vec::new(),
                     };
                 };
+
+                // If this pointer previously struck a note, unlock it after moving far enough.
+                if let (Some(&note), Some(&strike_x)) = (
+                    self.struck_by_pointer.get(&event.id),
+                    self.struck_x_by_pointer.get(&event.id),
+                ) {
+                    let unlock_d = unlock_distance_for(note, note_positions);
+                    if (event.x - strike_x).abs() >= unlock_d {
+                        self.struck_by_pointer.remove(&event.id);
+                        self.struck_x_by_pointer.remove(&event.id);
+                    }
+                }
 
                 // If a note is currently struck (by any pointer), suppress re-strumming that note,
                 // but still allow strumming other notes.
@@ -138,6 +177,7 @@ impl TouchTracker {
             TouchPhase::Up | TouchPhase::Cancel => {
                 self.last_x.remove(&event.id);
                 self.struck_by_pointer.remove(&event.id);
+                self.struck_x_by_pointer.remove(&event.id);
                 TouchOutput {
                     strike: None,
                     crossings: Vec::new(),
@@ -379,5 +419,58 @@ mod tests {
             |n| n == UnkeyedNote(2),
         );
         assert_eq!(out.strike, Some(UnkeyedNote(2)));
+    }
+
+    #[test]
+    fn struck_note_unlocks_after_moving_away() {
+        let positions = [10.0, 20.0];
+        let mut t = TouchTracker::new();
+
+        let out1 = t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Down,
+                x: 11.0,
+            },
+            &positions,
+            |_| true,
+        );
+        assert_eq!(out1.strike, Some(UnkeyedNote(0)));
+
+        // Move far enough away to unlock the struck note.
+        t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: 40.0,
+            },
+            &positions,
+            |_| true,
+        );
+
+        // Now crossing back over should include the previously-struck note.
+        let out2 = t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: 0.0,
+            },
+            &positions,
+            |_| true,
+        );
+
+        assert_eq!(
+            out2.crossings,
+            vec![
+                StrumCrossing {
+                    x: 10.0,
+                    notes: vec![UnkeyedNote(0)],
+                },
+                StrumCrossing {
+                    x: 20.0,
+                    notes: vec![UnkeyedNote(1)],
+                },
+            ]
+        );
     }
 }

@@ -2,6 +2,7 @@ use crate::chord::Chord;
 use crate::notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
 use crate::output_midir::MidiBackend;
 use crate::strum;
+use crate::touch::{PointerId, TouchEvent, TouchPhase, TouchTracker};
 use crate::ui_adapter::AppAdapter;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -132,6 +133,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let mut prev_pos: Option<(f32, f32)> = None;
     let mut is_mouse_down = false;
     let mut note_positions: Vec<f32> = Vec::new();
+    let mut touch = TouchTracker::new();
 
     // App State
     let mut app = AppAdapter::new();
@@ -182,24 +184,28 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         let pressed = state == winit::event::ElementState::Pressed;
                         is_mouse_down = pressed;
 
-                        // "Strike" on press: play the nearest chord tone immediately.
-                        if pressed {
-                            if let Some((x, _)) = prev_pos {
-                                let chord = *app.active_chord();
-                                if let Some((i, _)) = note_positions
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(i, _)| match chord {
-                                        Some(c) => c.contains(UnkeyedNote(*i as i16)),
-                                        None => true,
-                                    })
-                                    .map(|(i, &nx)| (i, (nx - x).abs()))
-                                    .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-                                {
-                                    let effects = app.handle_strum_crossing(UnkeyedNote(i as i16));
-                                    let _ = process_app_effects(effects, &mut midi, Some(window.as_ref()));
-                                }
-                            }
+                        let Some((x, _)) = prev_pos else {
+                            return;
+                        };
+
+                        let phase = if pressed { TouchPhase::Down } else { TouchPhase::Up };
+                        let chord = *app.active_chord();
+                        let out = touch.handle_event(
+                            TouchEvent {
+                                id: PointerId(0),
+                                phase,
+                                x,
+                            },
+                            &note_positions,
+                            |n| match chord {
+                                Some(c) => c.contains(n),
+                                None => true,
+                            },
+                        );
+
+                        if let Some(note) = out.strike {
+                            let effects = app.handle_strum_crossing(note);
+                            let _ = process_app_effects(effects, &mut midi, Some(window.as_ref()));
                         }
                     }
                 }
@@ -209,8 +215,25 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     let curr_y = position.y as f32;
 
                     if is_mouse_down {
-                        if let Some((last_x, _)) = prev_pos {
-                            check_pluck(last_x, curr_x, &mut midi, &mut app, &note_positions);
+                        let chord = *app.active_chord();
+                        let out = touch.handle_event(
+                            TouchEvent {
+                                id: PointerId(0),
+                                phase: TouchPhase::Move,
+                                x: curr_x,
+                            },
+                            &note_positions,
+                            |n| match chord {
+                                Some(c) => c.contains(n),
+                                None => true,
+                            },
+                        );
+
+                        for crossing in out.crossings {
+                            for note in crossing.notes {
+                                let effects = app.handle_strum_crossing(note);
+                                let _ = process_app_effects(effects, &mut midi, Some(window.as_ref()));
+                            }
                         }
                     }
 
@@ -282,6 +305,7 @@ fn process_app_effects(
     played
 }
 
+#[allow(dead_code)]
 fn check_pluck(
     x1: f32,
     x2: f32,
