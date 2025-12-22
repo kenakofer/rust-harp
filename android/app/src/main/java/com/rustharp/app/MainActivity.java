@@ -135,6 +135,15 @@ public class MainActivity extends Activity {
         return b;
     }
 
+    private Button makeBlank(int wPx, int hPx) {
+        Button b = makeUiButton("", -1, wPx, hPx);
+        b.setEnabled(false);
+        b.setText("");
+        b.setBackgroundColor(0xFF000000);
+        b.setTextColor(0xFF000000);
+        return b;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -228,10 +237,6 @@ public class MainActivity extends Activity {
         int bw = dpToPx(83);
         int bh = dpToPx(55);
 
-        Button blank = makeUiButton("", -1, bw, bh);
-        blank.setEnabled(false);
-        blank.setText("");
-        blank.setBackgroundColor(0xFF000000);
 
         // Row 1: VIIb IV I V
         uiButtons[BTN_VIIB] = makeUiButton("VIIb", BTN_VIIB, bw, bh);
@@ -259,17 +264,17 @@ public class MainActivity extends Activity {
         grid.addView(uiButtons[BTN_IV]);
         grid.addView(uiButtons[BTN_I]);
         grid.addView(uiButtons[BTN_V]);
-        grid.addView(blank);
-        grid.addView(blank);
-        grid.addView(blank);
+        grid.addView(makeBlank(bw, bh));
+        grid.addView(makeBlank(bw, bh));
+        grid.addView(makeBlank(bw, bh));
 
         grid.addView(uiButtons[BTN_II]);
         grid.addView(uiButtons[BTN_VI]);
         grid.addView(uiButtons[BTN_III]);
         grid.addView(uiButtons[BTN_VII_DIM]);
-        grid.addView(blank);
-        grid.addView(blank);
-        grid.addView(blank);
+        grid.addView(makeBlank(bw, bh));
+        grid.addView(makeBlank(bw, bh));
+        grid.addView(makeBlank(bw, bh));
 
         grid.addView(uiButtons[BTN_MAJ7]);
         grid.addView(uiButtons[BTN_NO3]);
