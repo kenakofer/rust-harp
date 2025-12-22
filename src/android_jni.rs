@@ -1,6 +1,6 @@
 use crate::android_frontend::AndroidFrontend;
 use crate::app_state::KeyState;
-use crate::input_map::{self, UiKey};
+use crate::input_map::{self, UiButton, UiKey};
 use crate::layout;
 use crate::notes::{MidiNote, NoteVolume, Transpose};
 
@@ -115,6 +115,145 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
     // Bit 0: needs redraw
     // Bit 1: has play notes
     (if redraw { 1 } else { 0 }) | (if has_play { 2 } else { 0 })
+}
+
+fn merge_effects(a: &mut crate::app_state::AppEffects, b: crate::app_state::AppEffects) {
+    a.redraw |= b.redraw;
+    if a.change_key.is_none() {
+        a.change_key = b.change_key;
+    }
+    a.stop_notes.extend(b.stop_notes);
+    a.play_notes.extend(b.play_notes);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    button_id: jint,
+    is_down: jboolean,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    let state = if is_down != 0 {
+        KeyState::Pressed
+    } else {
+        KeyState::Released
+    };
+
+    let button = match button_id {
+        0 => UiButton::VIIB,
+        1 => UiButton::IV,
+        2 => UiButton::I,
+        3 => UiButton::V,
+        4 => UiButton::II,
+        5 => UiButton::IVMinor,
+        6 => UiButton::III,
+        7 => UiButton::VIIDim,
+        8 => UiButton::Maj7,
+        9 => UiButton::No3,
+        10 => UiButton::Sus4,
+        11 => UiButton::MinorMajor,
+        12 => UiButton::Add2,
+        13 => UiButton::Add7,
+        14 => UiButton::Hept,
+        _ => return 0,
+    };
+
+    let events = input_map::key_events_from_button(state, button);
+
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let mut effects = crate::app_state::AppEffects {
+        redraw: false,
+        change_key: None,
+        stop_notes: Vec::new(),
+        play_notes: Vec::new(),
+    };
+
+    for ev in events {
+        let e = frontend.engine_mut().handle_event(ev);
+        merge_effects(&mut effects, e);
+    }
+
+    let redraw = effects.redraw;
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+    frontend.push_effects(effects);
+
+    (if redraw { 1 } else { 0 }) | (if has_play { 2 } else { 0 })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonsMask(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    use crate::app_state::{ChordButton, ModButton};
+
+    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    let eng = frontend.engine();
+
+    let mut mask: u32 = 0;
+
+    // Chords
+    if eng.chord_button_down(ChordButton::VIIB) {
+        mask |= 1 << 0;
+    }
+    if eng.chord_button_down(ChordButton::IV) {
+        mask |= 1 << 1;
+    }
+    if eng.chord_button_down(ChordButton::I) {
+        mask |= 1 << 2;
+    }
+    if eng.chord_button_down(ChordButton::V) {
+        mask |= 1 << 3;
+    }
+    if eng.chord_button_down(ChordButton::II) {
+        mask |= 1 << 4;
+    }
+    if eng.chord_button_down(ChordButton::III) {
+        mask |= 1 << 6;
+    }
+    if eng.chord_button_down(ChordButton::VII) {
+        mask |= 1 << 7;
+    }
+    if eng.chord_button_down(ChordButton::HeptatonicMajor) {
+        mask |= 1 << 14;
+    }
+
+    // Modifiers
+    if eng.mod_button_down(ModButton::Major7) {
+        mask |= 1 << 8;
+    }
+    if eng.mod_button_down(ModButton::No3) {
+        mask |= 1 << 9;
+    }
+    if eng.mod_button_down(ModButton::Sus4) {
+        mask |= 1 << 10;
+    }
+    if eng.mod_button_down(ModButton::MinorMajor) {
+        mask |= 1 << 11;
+    }
+    if eng.mod_button_down(ModButton::Major2) {
+        mask |= 1 << 12;
+    }
+    if eng.mod_button_down(ModButton::Minor7) {
+        mask |= 1 << 13;
+    }
+
+    // Derived button: IVMinor lights when (IV + MinorMajor) are both held.
+    if eng.chord_button_down(ChordButton::IV) && eng.mod_button_down(ModButton::MinorMajor) {
+        mask |= 1 << 5;
+    }
+
+    mask as jint
 }
 
 #[no_mangle]

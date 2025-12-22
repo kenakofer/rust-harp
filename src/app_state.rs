@@ -201,6 +201,14 @@ impl AppState {
         }
     }
 
+    pub fn chord_button_down(&self, button: ChordButton) -> bool {
+        self.chord_keys_down.contains(&button)
+    }
+
+    pub fn mod_button_down(&self, button: ModButton) -> bool {
+        self.mod_keys_down.contains(&button)
+    }
+
     pub fn handle_key_event(&mut self, event: KeyEvent) -> AppEffects {
         let mut effects = AppEffects {
             redraw: true,

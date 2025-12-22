@@ -12,12 +12,31 @@ import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.GridLayout;
 import android.widget.ImageView;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends Activity {
+    private static final int BTN_VIIB = 0;
+    private static final int BTN_IV = 1;
+    private static final int BTN_I = 2;
+    private static final int BTN_V = 3;
+    private static final int BTN_II = 4;
+    private static final int BTN_IV_MINOR = 5;
+    private static final int BTN_III = 6;
+    private static final int BTN_VII_DIM = 7;
+
+    private static final int BTN_MAJ7 = 8;
+    private static final int BTN_NO3 = 9;
+    private static final int BTN_SUS4 = 10;
+    private static final int BTN_MM = 11;
+    private static final int BTN_ADD2 = 12;
+    private static final int BTN_ADD7 = 13;
+    private static final int BTN_HEPT = 14;
     static {
         System.loadLibrary("rust_harp");
     }
@@ -33,10 +52,14 @@ public class MainActivity extends Activity {
     private RustAudio audio;
     private Vibrator vibrator;
 
+    private Button[] uiButtons = new Button[15];
+
     public static native int rustInit();
     public static native long rustCreateFrontend();
     public static native void rustDestroyFrontend(long handle);
     public static native int rustHandleAndroidKey(long handle, int keyCode, int unicodeChar, boolean isDown);
+    public static native int rustHandleUiButton(long handle, int buttonId, boolean isDown);
+    public static native int rustGetUiButtonsMask(long handle);
     public static native int rustHandleTouch(long handle, long pointerId, int phase, int x, int width);
 
     public static native void rustSetAudioSampleRate(long handle, int sampleRateHz);
@@ -62,6 +85,54 @@ public class MainActivity extends Activity {
             iv.setImageBitmap(bmp);
             iv.invalidate();
         }
+    }
+
+    private void updateUiButtons() {
+        if (rustHandle == 0) return;
+        int mask = rustGetUiButtonsMask(rustHandle);
+        for (int i = 0; i < uiButtons.length; i++) {
+            Button b = uiButtons[i];
+            if (b == null) continue;
+            boolean on = (mask & (1 << i)) != 0;
+            // Simple, high-contrast toggle.
+            b.setBackgroundColor(on ? 0xFF444444 : 0xFF111111);
+            b.setTextColor(on ? 0xFFFFFFFF : 0xFFCCCCCC);
+        }
+    }
+
+    private Button makeUiButton(String label, int id, int wPx, int hPx) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setPadding(0, 0, 0, 0);
+        b.setMinWidth(0);
+        b.setMinHeight(0);
+
+        GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
+        lp.width = wPx;
+        lp.height = hPx;
+        lp.setMargins(0, 0, 0, 0);
+        b.setLayoutParams(lp);
+
+        b.setOnTouchListener((v, e) -> {
+            if (rustHandle == 0 || id < 0) return true;
+            int action = e.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+                rustHandleUiButton(rustHandle, id, true);
+                redraw();
+                updateUiButtons();
+                return true;
+            }
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) {
+                rustHandleUiButton(rustHandle, id, false);
+                redraw();
+                updateUiButtons();
+                return true;
+            }
+            return true;
+        });
+
+        return b;
     }
 
     @Override
@@ -129,8 +200,86 @@ public class MainActivity extends Activity {
             return true;
         });
 
-        setContentView(iv);
+        FrameLayout root = new FrameLayout(this);
+        root.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        root.setMotionEventSplittingEnabled(true);
+
+        root.addView(iv);
+
+        // Touch chord/modifier grid (lower-left).
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(4);
+        grid.setRowCount(4);
+        grid.setUseDefaultMargins(false);
+        grid.setPadding(0, 0, 0, 0);
+        grid.setMotionEventSplittingEnabled(true);
+
+        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        glp.leftMargin = 0;
+        glp.bottomMargin = 0;
+        glp.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
+        grid.setLayoutParams(glp);
+
+        int bw = dpToPx(64);
+        int bh = dpToPx(42);
+
+        // Row 1: VIIb IV I V
+        uiButtons[BTN_VIIB] = makeUiButton("VIIb", BTN_VIIB, bw, bh);
+        uiButtons[BTN_IV] = makeUiButton("IV", BTN_IV, bw, bh);
+        uiButtons[BTN_I] = makeUiButton("I", BTN_I, bw, bh);
+        uiButtons[BTN_V] = makeUiButton("V", BTN_V, bw, bh);
+
+        // Row 2: ii iv iii vii°
+        uiButtons[BTN_II] = makeUiButton("ii", BTN_II, bw, bh);
+        uiButtons[BTN_IV_MINOR] = makeUiButton("iv", BTN_IV_MINOR, bw, bh);
+        uiButtons[BTN_III] = makeUiButton("iii", BTN_III, bw, bh);
+        uiButtons[BTN_VII_DIM] = makeUiButton("vii\u00B0", BTN_VII_DIM, bw, bh);
+
+        // Row 3: Maj7 No3 Sus4 M/m
+        uiButtons[BTN_MAJ7] = makeUiButton("Maj7", BTN_MAJ7, bw, bh);
+        uiButtons[BTN_NO3] = makeUiButton("No3", BTN_NO3, bw, bh);
+        uiButtons[BTN_SUS4] = makeUiButton("Sus4", BTN_SUS4, bw, bh);
+        uiButtons[BTN_MM] = makeUiButton("M/m", BTN_MM, bw, bh);
+
+        // Row 4: Add2 Add7 Hept [blank]
+        uiButtons[BTN_ADD2] = makeUiButton("Add2", BTN_ADD2, bw, bh);
+        uiButtons[BTN_ADD7] = makeUiButton("Add7", BTN_ADD7, bw, bh);
+        uiButtons[BTN_HEPT] = makeUiButton("Hept", BTN_HEPT, bw, bh);
+        Button blank = makeUiButton("", -1, bw, bh);
+        blank.setEnabled(false);
+        blank.setText("");
+        blank.setBackgroundColor(0xFF000000);
+
+        // Add in row-major order.
+        grid.addView(uiButtons[BTN_VIIB]);
+        grid.addView(uiButtons[BTN_IV]);
+        grid.addView(uiButtons[BTN_I]);
+        grid.addView(uiButtons[BTN_V]);
+
+        grid.addView(uiButtons[BTN_II]);
+        grid.addView(uiButtons[BTN_IV_MINOR]);
+        grid.addView(uiButtons[BTN_III]);
+        grid.addView(uiButtons[BTN_VII_DIM]);
+
+        grid.addView(uiButtons[BTN_MAJ7]);
+        grid.addView(uiButtons[BTN_NO3]);
+        grid.addView(uiButtons[BTN_SUS4]);
+        grid.addView(uiButtons[BTN_MM]);
+
+        grid.addView(uiButtons[BTN_ADD2]);
+        grid.addView(uiButtons[BTN_ADD7]);
+        grid.addView(uiButtons[BTN_HEPT]);
+        grid.addView(blank);
+
+        root.addView(grid);
+
+        setContentView(root);
         iv.requestFocus();
+        updateUiButtons();
 
         // Prevent system back/forward gestures from stealing edge swipes.
         // Note: Android limits the total excluded area; we only exclude thin edge strips.
@@ -214,6 +363,7 @@ public class MainActivity extends Activity {
         // Falling through to the default handler can trigger system navigation/search behaviors
         // (e.g., KEYCODE_BACK / assist / launcher shortcuts) on some keyboards.
         if (flags != 0) {
+            updateUiButtons();
             return true;
         }
 

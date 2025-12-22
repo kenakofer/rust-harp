@@ -28,6 +28,14 @@ impl Engine {
         &self.state.active_chord
     }
 
+    pub fn chord_button_down(&self, button: crate::app_state::ChordButton) -> bool {
+        self.state.chord_button_down(button)
+    }
+
+    pub fn mod_button_down(&self, button: crate::app_state::ModButton) -> bool {
+        self.state.mod_button_down(button)
+    }
+
     pub fn active_notes(&self) -> impl Iterator<Item = UnmidiNote> + '_ {
         self.state.active_notes.iter().cloned()
     }
