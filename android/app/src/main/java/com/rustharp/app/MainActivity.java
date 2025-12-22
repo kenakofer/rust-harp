@@ -137,10 +137,9 @@ public class MainActivity extends Activity {
 
     private Button makeBlank(int wPx, int hPx) {
         Button b = makeUiButton("", -1, wPx, hPx);
+        // Keep layout spacing, but don't draw or intercept touches.
         b.setEnabled(false);
-        b.setText("");
-        b.setBackgroundColor(0xFF000000);
-        b.setTextColor(0xFF000000);
+        b.setVisibility(View.INVISIBLE);
         return b;
     }
 
