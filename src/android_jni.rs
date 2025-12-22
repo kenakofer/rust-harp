@@ -438,11 +438,15 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         return;
     }
 
-    let (active_chord, show_note_names) = if handle != 0 {
+    let (active_chord, show_note_names, transpose_pc) = if handle != 0 {
         let frontend = unsafe { &*(handle as *const AndroidFrontend) };
-        (*frontend.engine().active_chord(), frontend.show_note_names())
+        (
+            *frontend.engine().active_chord(),
+            frontend.show_note_names(),
+            frontend.engine().transpose().wrap_to_octave(),
+        )
     } else {
-        (None, false)
+        (None, false, 0)
     };
 
     fn pitch_class_label(pc: i16) -> &'static str {
@@ -461,6 +465,10 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             11 => "B",
             _ => "?",
         }
+    }
+
+    fn label_pitch_class(uknote: crate::notes::UnkeyedNote, transpose_pc: i16) -> i16 {
+        (uknote.wrap_to_octave() + transpose_pc).rem_euclid(12)
     }
 
     fn glyph_5x7(ch: char) -> [u8; 7] {
@@ -570,7 +578,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         if prio > best_prio_per_x[xi] {
             best_prio_per_x[xi] = prio;
             best_color_per_x[xi] = color;
-            best_pc_per_x[xi] = (uknote.wrap_to_octave().rem_euclid(12) as u8);
+            best_pc_per_x[xi] = (label_pitch_class(uknote, transpose_pc) as u8);
         }
     }
 
@@ -617,6 +625,13 @@ mod render_tests {
     use crate::chord::Chord;
     use crate::layout;
     use crate::notes::UnkeyedNote;
+
+    #[test]
+    fn label_pitch_class_applies_transpose() {
+        use crate::notes::{Transpose, UnkeyedNote};
+        assert_eq!(super::label_pitch_class(UnkeyedNote(0), Transpose(2).wrap_to_octave()), 2); // C -> D
+        assert_eq!(super::label_pitch_class(UnkeyedNote(11), Transpose(2).wrap_to_octave()), 1); // B -> C#
+    }
 
     #[test]
     fn render_strings_prefers_root_over_inactive_on_same_string() {

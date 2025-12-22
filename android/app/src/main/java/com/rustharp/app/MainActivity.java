@@ -66,6 +66,7 @@ public class MainActivity extends Activity {
 
     private boolean showNoteNames = false;
     private boolean playOnTap = true;
+    private boolean showRomanChords = true;
     private int keyIndex = 0;
     private Spinner keySpinner;
     private boolean updatingKeySpinner = false;
@@ -128,6 +129,7 @@ public class MainActivity extends Activity {
                 updatingKeySpinner = true;
                 keySpinner.setSelection(keyIndex);
                 updatingKeySpinner = false;
+                updateChordButtonLabels();
             }
         }
     }
@@ -175,6 +177,44 @@ public class MainActivity extends Activity {
         return b;
     }
 
+    private void updateChordButtonLabels() {
+        // These must match the spinner’s key labels and (for now) our chosen enharmonics.
+        String[] keys = new String[]{"C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"};
+        int k = ((keyIndex % 12) + 12) % 12;
+
+        if (showRomanChords) {
+            if (uiButtons[BTN_VIIB] != null) uiButtons[BTN_VIIB].setText("VIIb");
+            if (uiButtons[BTN_IV] != null) uiButtons[BTN_IV].setText("IV");
+            if (uiButtons[BTN_I] != null) uiButtons[BTN_I].setText("I");
+            if (uiButtons[BTN_V] != null) uiButtons[BTN_V].setText("V");
+            if (uiButtons[BTN_II] != null) uiButtons[BTN_II].setText("ii");
+            if (uiButtons[BTN_VI] != null) uiButtons[BTN_VI].setText("vi");
+            if (uiButtons[BTN_III] != null) uiButtons[BTN_III].setText("iii");
+            if (uiButtons[BTN_VII_DIM] != null) uiButtons[BTN_VII_DIM].setText("vii\u00B0");
+            return;
+        }
+
+        // Scale degrees (in semitones) relative to key root.
+        int viib = (k + 10) % 12; // bVII
+        int iv = (k + 5) % 12;
+        int i = k;
+        int v = (k + 7) % 12;
+        int ii = (k + 2) % 12;
+        int vi = (k + 9) % 12;
+        int iii = (k + 4) % 12;
+        int viiDim = (k + 11) % 12;
+
+        if (uiButtons[BTN_VIIB] != null) uiButtons[BTN_VIIB].setText(keys[viib]);
+        if (uiButtons[BTN_IV] != null) uiButtons[BTN_IV].setText(keys[iv]);
+        if (uiButtons[BTN_I] != null) uiButtons[BTN_I].setText(keys[i]);
+        if (uiButtons[BTN_V] != null) uiButtons[BTN_V].setText(keys[v]);
+
+        if (uiButtons[BTN_II] != null) uiButtons[BTN_II].setText(keys[ii] + "m");
+        if (uiButtons[BTN_VI] != null) uiButtons[BTN_VI].setText(keys[vi] + "m");
+        if (uiButtons[BTN_III] != null) uiButtons[BTN_III].setText(keys[iii] + "m");
+        if (uiButtons[BTN_VII_DIM] != null) uiButtons[BTN_VII_DIM].setText(keys[viiDim] + "dim");
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -184,6 +224,7 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("rustharp", MODE_PRIVATE);
         showNoteNames = prefs.getBoolean("showNoteNames", false);
         playOnTap = prefs.getBoolean("playOnTap", true);
+        showRomanChords = prefs.getBoolean("showRomanChords", true);
         keyIndex = prefs.getInt("keyIndex", 0);
         rustSetShowNoteNames(rustHandle, showNoteNames);
         rustSetPlayOnTap(rustHandle, playOnTap);
@@ -368,6 +409,7 @@ public class MainActivity extends Activity {
                 if (prefs != null) {
                     prefs.edit().putInt("keyIndex", keyIndex).apply();
                 }
+                updateChordButtonLabels();
                 int flags = rustSetKeyIndex(rustHandle, keyIndex);
                 if ((flags & 1) != 0) redraw();
                 if (flags != 0) updateUiButtons();
@@ -436,6 +478,19 @@ public class MainActivity extends Activity {
         });
         options.addView(cbTap);
 
+        CheckBox cbRoman = new CheckBox(this);
+        cbRoman.setText("Roman chords");
+        cbRoman.setTextColor(0xFFFFFFFF);
+        cbRoman.setChecked(showRomanChords);
+        cbRoman.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            showRomanChords = isChecked;
+            if (prefs != null) {
+                prefs.edit().putBoolean("showRomanChords", showRomanChords).apply();
+            }
+            updateChordButtonLabels();
+        });
+        options.addView(cbRoman);
+
         gear.setOnClickListener(v -> {
             options.setVisibility(options.getVisibility() == android.view.View.VISIBLE
                     ? android.view.View.GONE
@@ -447,6 +502,7 @@ public class MainActivity extends Activity {
 
         setContentView(root);
         iv.requestFocus();
+        updateChordButtonLabels();
         updateUiButtons();
 
         // Prevent system back/forward gestures from stealing edge swipes.
