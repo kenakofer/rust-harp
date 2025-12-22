@@ -55,10 +55,11 @@ impl TouchTracker {
         self.play_on_tap = enabled;
     }
 
-    fn nearest_unstruck_note(
+    fn nearest_unstruck_note<F: Fn(crate::notes::UnkeyedNote) -> bool>(
         &self,
         x: f32,
         note_positions: &[f32],
+        allowed: &F,
     ) -> Option<crate::notes::UnkeyedNote> {
         let mut best_i: Option<usize> = None;
         let mut best_d = f32::INFINITY;
@@ -66,6 +67,9 @@ impl TouchTracker {
         for (i, &nx) in note_positions.iter().enumerate() {
             let note = crate::notes::UnkeyedNote(i as i16);
             if self.struck_by_pointer.values().any(|&n| n == note) {
+                continue;
+            }
+            if !allowed(note) {
                 continue;
             }
 
@@ -79,13 +83,18 @@ impl TouchTracker {
         best_i.map(|i| crate::notes::UnkeyedNote(i as i16))
     }
 
-    pub fn handle_event(&mut self, event: TouchEvent, note_positions: &[f32]) -> TouchOutput {
+    pub fn handle_event(
+        &mut self,
+        event: TouchEvent,
+        note_positions: &[f32],
+        allowed: impl Fn(crate::notes::UnkeyedNote) -> bool,
+    ) -> TouchOutput {
         match event.phase {
             TouchPhase::Down => {
                 self.last_x.insert(event.id, event.x);
 
                 let strike = if self.play_on_tap {
-                    let s = self.nearest_unstruck_note(event.x, note_positions);
+                    let s = self.nearest_unstruck_note(event.x, note_positions, &allowed);
                     if let Some(n) = s {
                         self.struck_by_pointer.insert(event.id, n);
                     }
@@ -108,18 +117,22 @@ impl TouchTracker {
                     };
                 };
 
-                // Simpler semantics for now: if this pointer has struck a note, it does not
-                // participate in strumming until it lifts.
-                if self.struck_by_pointer.contains_key(&event.id) {
-                    return TouchOutput {
-                        strike: None,
-                        crossings: Vec::new(),
-                    };
+                // If a note is currently struck (by any pointer), suppress re-strumming that note,
+                // but still allow strumming other notes.
+                let struck: Vec<crate::notes::UnkeyedNote> =
+                    self.struck_by_pointer.values().cloned().collect();
+
+                let mut crossings = strum::detect_crossings(prev, event.x, note_positions);
+                if !struck.is_empty() {
+                    crossings.retain_mut(|c| {
+                        c.notes.retain(|n| !struck.contains(n));
+                        !c.notes.is_empty()
+                    });
                 }
 
                 TouchOutput {
                     strike: None,
-                    crossings: strum::detect_crossings(prev, event.x, note_positions),
+                    crossings,
                 }
             }
             TouchPhase::Up | TouchPhase::Cancel => {
@@ -152,7 +165,8 @@ mod tests {
                     phase: TouchPhase::Down,
                     x: 5.0,
                 },
-                &positions
+                &positions,
+                |_| true,
             ),
             TouchOutput {
                 strike: None,
@@ -167,6 +181,7 @@ mod tests {
                 x: 25.0,
             },
             &positions,
+            |_| true,
         );
         assert_eq!(
             out.crossings,
@@ -189,6 +204,7 @@ mod tests {
                 x: 25.0,
             },
             &positions,
+            |_| true,
         );
 
         // No prior state after Up
@@ -199,7 +215,8 @@ mod tests {
                     phase: TouchPhase::Move,
                     x: 30.0,
                 },
-                &positions
+                &positions,
+                |_| true,
             ),
             TouchOutput {
                 strike: None,
@@ -221,6 +238,7 @@ mod tests {
                 x: 0.0,
             },
             &positions,
+            |_| true,
         );
         t.handle_event(
             TouchEvent {
@@ -229,6 +247,7 @@ mod tests {
                 x: 100.0,
             },
             &positions,
+            |_| true,
         );
 
         let out1 = t.handle_event(
@@ -238,6 +257,7 @@ mod tests {
                 x: 15.0,
             },
             &positions,
+            |_| true,
         );
         assert_eq!(
             out1.crossings,
@@ -254,6 +274,7 @@ mod tests {
                 x: 5.0,
             },
             &positions,
+            |_| true,
         );
         assert_eq!(
             out2.crossings,
@@ -275,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn down_strikes_nearest_unstruck_and_suppresses_strum_for_that_pointer() {
+    fn down_strikes_nearest_unstruck_and_suppresses_strum_for_struck_notes() {
         // Two notes share the same x position, to mirror "stacked" strings.
         let positions = [10.0, 10.0, 20.0];
         let mut t = TouchTracker::new();
@@ -287,6 +308,7 @@ mod tests {
                 x: 11.0,
             },
             &positions,
+            |_| true,
         );
         assert_eq!(out1.strike, Some(UnkeyedNote(0)));
 
@@ -297,6 +319,7 @@ mod tests {
                 x: 9.0,
             },
             &positions,
+            |_| true,
         );
         assert_eq!(out2.strike, Some(UnkeyedNote(1)));
 
@@ -308,8 +331,15 @@ mod tests {
                 x: 25.0,
             },
             &positions,
+            |_| true,
         );
-        assert!(out3.crossings.is_empty());
+        assert_eq!(
+            out3.crossings,
+            vec![StrumCrossing {
+                x: 20.0,
+                notes: vec![UnkeyedNote(2)],
+            }]
+        );
 
         // After pointer 1 lifts, another pointer can strike its note again.
         t.handle_event(
@@ -319,6 +349,7 @@ mod tests {
                 x: 25.0,
             },
             &positions,
+            |_| true,
         );
         let out4 = t.handle_event(
             TouchEvent {
@@ -327,7 +358,26 @@ mod tests {
                 x: 10.0,
             },
             &positions,
+            |_| true,
         );
         assert_eq!(out4.strike, Some(UnkeyedNote(0)));
+    }
+
+    #[test]
+    fn down_strikes_nearest_allowed_note() {
+        let positions = [0.0, 10.0, 20.0];
+        let mut t = TouchTracker::new();
+
+        // Only note 2 is allowed.
+        let out = t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Down,
+                x: 1.0,
+            },
+            &positions,
+            |n| n == UnkeyedNote(2),
+        );
+        assert_eq!(out.strike, Some(UnkeyedNote(2)));
     }
 }

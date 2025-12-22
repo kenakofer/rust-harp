@@ -182,12 +182,17 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         let pressed = state == winit::event::ElementState::Pressed;
                         is_mouse_down = pressed;
 
-                        // "Strike" on press: play the nearest string immediately.
+                        // "Strike" on press: play the nearest chord tone immediately.
                         if pressed {
                             if let Some((x, _)) = prev_pos {
+                                let chord = *app.active_chord();
                                 if let Some((i, _)) = note_positions
                                     .iter()
                                     .enumerate()
+                                    .filter(|(i, _)| match chord {
+                                        Some(c) => c.contains(UnkeyedNote(*i as i16)),
+                                        None => true,
+                                    })
                                     .map(|(i, &nx)| (i, (nx - x).abs()))
                                     .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
                                 {

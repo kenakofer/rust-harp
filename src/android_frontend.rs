@@ -129,7 +129,11 @@ impl AndroidFrontend {
             change_key: None,
         };
 
-        let out = self.touch.handle_event(event, &positions);
+        let chord = *self.engine.active_chord();
+        let out = self.touch.handle_event(event, &positions, |n| match chord {
+            Some(c) => c.contains(n),
+            None => true,
+        });
         let haptic = !out.crossings.is_empty() || out.strike.is_some();
 
         if let Some(note) = out.strike {
