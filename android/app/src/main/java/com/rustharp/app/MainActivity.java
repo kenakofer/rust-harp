@@ -22,6 +22,9 @@ import java.util.List;
 
 public class MainActivity extends Activity {
     private static final int BTN_VIIB = 0;
+
+    // Used to keep gesture-exclusion rects centered near the active touch.
+    private int lastTouchY = -1;
     private static final int BTN_IV = 1;
     private static final int BTN_I = 2;
     private static final int BTN_V = 3;
@@ -180,6 +183,10 @@ public class MainActivity extends Activity {
             int idx = e.getActionIndex();
 
             if (action == MotionEvent.ACTION_MOVE) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e.getPointerCount() > 0) {
+                    lastTouchY = (int) e.getY(0);
+                    updateGestureExclusion();
+                }
                 for (int i = 0; i < e.getPointerCount(); i++) {
                     int flags = rustHandleTouch(rustHandle, e.getPointerId(i), 1, (int) e.getX(i), w);
                     if ((flags & 1) != 0) redraw();
@@ -193,10 +200,22 @@ public class MainActivity extends Activity {
             int phase;
             if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
                 phase = 0;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    lastTouchY = (int) e.getY(idx);
+                    updateGestureExclusion();
+                }
             } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) {
                 phase = 2;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e.getPointerCount() <= 1) {
+                    lastTouchY = -1;
+                    updateGestureExclusion();
+                }
             } else if (action == MotionEvent.ACTION_CANCEL) {
                 phase = 3;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    lastTouchY = -1;
+                    updateGestureExclusion();
+                }
             } else {
                 return true;
             }
@@ -324,9 +343,16 @@ public class MainActivity extends Activity {
         int leftEdge = Math.min(edgePx, width);
         int rightEdgeStart = Math.max(0, width - edgePx);
 
+        // Android limits the gesture-exclusion size (notably in height along the edge).
+        // Keep it as a band near the active touch (or centered if idle).
+        int bandHeight = dpToPx(200);
+        int cy = (lastTouchY >= 0) ? lastTouchY : (height / 2);
+        int top = Math.max(0, cy - (bandHeight / 2));
+        int bottom = Math.min(height, top + bandHeight);
+
         List<Rect> rects = new ArrayList<>();
-        rects.add(new Rect(0, 0, leftEdge, height));
-        rects.add(new Rect(rightEdgeStart, 0, width, height));
+        rects.add(new Rect(0, top, leftEdge, bottom));
+        rects.add(new Rect(rightEdgeStart, top, width, bottom));
         iv.setSystemGestureExclusionRects(rects);
     }
 
@@ -376,6 +402,12 @@ public class MainActivity extends Activity {
         }
 
         return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public void onBackPressed() {
+        // Don't allow system back gesture/button to exit the app while playing.
+        // (We still allow the user to leave via the launcher/task switcher.)
     }
 
     @Override
