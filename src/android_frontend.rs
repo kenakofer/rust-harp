@@ -26,6 +26,8 @@ pub struct AndroidFrontend {
 
     // Legacy fallback path (RustAudio/AudioTrack) renders from a Java thread, so a Mutex is OK.
     legacy_synth: Mutex<SquareSynth>,
+
+    show_note_names: bool,
 }
 
 impl AndroidFrontend {
@@ -37,11 +39,20 @@ impl AndroidFrontend {
             audio_tx: tx,
             audio_rx: Mutex::new(Some(rx)),
             legacy_synth: Mutex::new(SquareSynth::new(48_000)),
+            show_note_names: false,
         }
     }
 
     pub fn engine_mut(&mut self) -> &mut Engine {
         &mut self.engine
+    }
+
+    pub fn set_show_note_names(&mut self, show: bool) {
+        self.show_note_names = show;
+    }
+
+    pub fn show_note_names(&self) -> bool {
+        self.show_note_names
     }
 
     pub fn engine(&self) -> &Engine {

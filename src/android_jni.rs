@@ -71,6 +71,20 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustDestroyFrontend(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetShowNoteNames(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    show: jboolean,
+) {
+    if handle == 0 {
+        return;
+    }
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    frontend.set_show_note_names(show != 0);
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
     _env: JNIEnv,
     _class: JClass,

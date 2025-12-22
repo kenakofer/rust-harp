@@ -11,11 +11,16 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
+import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.content.SharedPreferences;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +62,9 @@ public class MainActivity extends Activity {
 
     private Button[] uiButtons = new Button[15];
 
+    private boolean showNoteNames = false;
+    private SharedPreferences prefs;
+
     public static native int rustInit();
     public static native long rustCreateFrontend();
     public static native void rustDestroyFrontend(long handle);
@@ -70,6 +78,8 @@ public class MainActivity extends Activity {
 
     public static native boolean rustStartAAudio(long handle);
     public static native void rustStopAAudio(long handle);
+
+    public static native void rustSetShowNoteNames(long handle, boolean show);
 
     public static native void rustRenderStrings(long handle, int width, int height, int[] outPixels);
 
@@ -151,6 +161,10 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         rustInit(); // smoke test: ensures JNI wiring is alive
         rustHandle = rustCreateFrontend();
+
+        prefs = getSharedPreferences("rustharp", MODE_PRIVATE);
+        showNoteNames = prefs.getBoolean("showNoteNames", false);
+        rustSetShowNoteNames(rustHandle, showNoteNames);
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
         w = dm.widthPixels;
@@ -303,6 +317,55 @@ public class MainActivity extends Activity {
         grid.addView(uiButtons[BTN_HEPT]);
 
         root.addView(grid);
+
+        // Options (upper-right): gear icon + simple popup.
+        ImageButton gear = new ImageButton(this);
+        gear.setImageResource(android.R.drawable.ic_menu_manage);
+        gear.setBackgroundColor(0x00000000);
+        int gearSize = dpToPx(40);
+        FrameLayout.LayoutParams gearLp = new FrameLayout.LayoutParams(gearSize, gearSize);
+        gearLp.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+        gearLp.topMargin = dpToPx(4);
+        gearLp.rightMargin = dpToPx(4);
+        gear.setLayoutParams(gearLp);
+
+        LinearLayout options = new LinearLayout(this);
+        options.setOrientation(LinearLayout.VERTICAL);
+        options.setBackgroundColor(0xCC000000);
+        options.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8));
+        FrameLayout.LayoutParams optLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        optLp.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+        optLp.topMargin = dpToPx(48);
+        optLp.rightMargin = dpToPx(4);
+        options.setLayoutParams(optLp);
+        options.setVisibility(android.view.View.GONE);
+
+        CheckBox cb = new CheckBox(this);
+        cb.setText("Note names");
+        cb.setTextColor(0xFFFFFFFF);
+        cb.setChecked(showNoteNames);
+        cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            showNoteNames = isChecked;
+            if (prefs != null) {
+                prefs.edit().putBoolean("showNoteNames", showNoteNames).apply();
+            }
+            if (rustHandle != 0) {
+                rustSetShowNoteNames(rustHandle, showNoteNames);
+            }
+            redraw();
+        });
+        options.addView(cb);
+
+        gear.setOnClickListener(v -> {
+            options.setVisibility(options.getVisibility() == android.view.View.VISIBLE
+                    ? android.view.View.GONE
+                    : android.view.View.VISIBLE);
+        });
+
+        root.addView(options);
+        root.addView(gear);
 
         setContentView(root);
         iv.requestFocus();
