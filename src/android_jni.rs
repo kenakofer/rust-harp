@@ -99,6 +99,42 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetPlayOnTap(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetKeyIndex(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    key_index: jint,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    let idx = (key_index as i16).rem_euclid(12);
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let effects = frontend.engine_mut().set_transpose(crate::notes::Transpose(idx));
+    let redraw = effects.redraw;
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+
+    frontend.push_effects(effects);
+
+    (if redraw { 1 } else { 0 }) | (if has_play { 2 } else { 0 })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetKeyIndex(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    frontend.engine().transpose().wrap_to_octave() as jint
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
     _env: JNIEnv,
     _class: JClass,

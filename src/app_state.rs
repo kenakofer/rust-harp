@@ -201,6 +201,21 @@ impl AppState {
         }
     }
 
+    pub fn set_transpose(&mut self, transpose: Transpose) -> AppEffects {
+        let t = transpose.center_octave();
+        let effects = AppEffects {
+            redraw: true,
+            change_key: Some(t),
+            stop_notes: self.active_notes.iter().cloned().collect(),
+            play_notes: Vec::new(),
+        };
+
+        self.active_notes.clear();
+        self.transpose = t;
+
+        effects
+    }
+
     pub fn chord_button_down(&self, button: ChordButton) -> bool {
         self.chord_keys_down.contains(&button)
     }

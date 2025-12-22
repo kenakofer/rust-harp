@@ -15,6 +15,14 @@ impl Engine {
         }
     }
 
+    pub fn transpose(&self) -> crate::notes::Transpose {
+        self.state.transpose
+    }
+
+    pub fn set_transpose(&mut self, transpose: crate::notes::Transpose) -> AppEffects {
+        self.state.set_transpose(transpose)
+    }
+
     pub fn handle_event(&mut self, event: KeyEvent) -> AppEffects {
         self.state.handle_key_event(event)
     }

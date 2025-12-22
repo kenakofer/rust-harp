@@ -20,6 +20,8 @@ import android.widget.GridLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
 import android.content.SharedPreferences;
 
 import java.util.ArrayList;
@@ -64,6 +66,9 @@ public class MainActivity extends Activity {
 
     private boolean showNoteNames = false;
     private boolean playOnTap = true;
+    private int keyIndex = 0;
+    private Spinner keySpinner;
+    private boolean updatingKeySpinner = false;
     private SharedPreferences prefs;
 
     public static native int rustInit();
@@ -82,6 +87,8 @@ public class MainActivity extends Activity {
 
     public static native void rustSetShowNoteNames(long handle, boolean show);
     public static native void rustSetPlayOnTap(long handle, boolean enabled);
+    public static native int rustSetKeyIndex(long handle, int keyIndex);
+    public static native int rustGetKeyIndex(long handle);
 
     public static native void rustRenderStrings(long handle, int width, int height, int[] outPixels);
 
@@ -112,6 +119,16 @@ public class MainActivity extends Activity {
             // Simple, high-contrast toggle.
             b.setBackgroundColor(on ? 0xFF444444 : 0xFF111111);
             b.setTextColor(on ? 0xFFFFFFFF : 0xFFCCCCCC);
+        }
+
+        if (keySpinner != null) {
+            int idx = rustGetKeyIndex(rustHandle);
+            if (idx != keyIndex) {
+                keyIndex = idx;
+                updatingKeySpinner = true;
+                keySpinner.setSelection(keyIndex);
+                updatingKeySpinner = false;
+            }
         }
     }
 
@@ -167,8 +184,10 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("rustharp", MODE_PRIVATE);
         showNoteNames = prefs.getBoolean("showNoteNames", false);
         playOnTap = prefs.getBoolean("playOnTap", true);
+        keyIndex = prefs.getInt("keyIndex", 0);
         rustSetShowNoteNames(rustHandle, showNoteNames);
         rustSetPlayOnTap(rustHandle, playOnTap);
+        rustSetKeyIndex(rustHandle, keyIndex);
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
         w = dm.widthPixels;
@@ -321,6 +340,46 @@ public class MainActivity extends Activity {
         grid.addView(uiButtons[BTN_HEPT]);
 
         root.addView(grid);
+
+        // Status panel (lower-right): key selector.
+        LinearLayout status = new LinearLayout(this);
+        status.setOrientation(LinearLayout.VERTICAL);
+        status.setBackgroundColor(0x88000000);
+        status.setPadding(dpToPx(4), dpToPx(4), dpToPx(4), dpToPx(4));
+        FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        slp.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.END;
+        slp.rightMargin = 0;
+        slp.bottomMargin = 0;
+        status.setLayoutParams(slp);
+
+        keySpinner = new Spinner(this);
+        String[] keys = new String[]{"C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"};
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, keys);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        keySpinner.setAdapter(adapter);
+        keySpinner.setSelection(keyIndex);
+        keySpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                if (rustHandle == 0 || updatingKeySpinner) return;
+                keyIndex = position;
+                if (prefs != null) {
+                    prefs.edit().putInt("keyIndex", keyIndex).apply();
+                }
+                int flags = rustSetKeyIndex(rustHandle, keyIndex);
+                if ((flags & 1) != 0) redraw();
+                if (flags != 0) updateUiButtons();
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {
+            }
+        });
+
+        status.addView(keySpinner);
+        root.addView(status);
 
         // Options (upper-right): gear icon + simple popup.
         ImageButton gear = new ImageButton(this);
