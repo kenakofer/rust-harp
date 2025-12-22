@@ -51,6 +51,10 @@ impl AndroidFrontend {
         self.show_note_names = show;
     }
 
+    pub fn set_play_on_tap(&mut self, enabled: bool) {
+        self.touch.set_play_on_tap(enabled);
+    }
+
     pub fn show_note_names(&self) -> bool {
         self.show_note_names
     }
@@ -125,10 +129,20 @@ impl AndroidFrontend {
             change_key: None,
         };
 
-        let crossings = self.touch.handle_event(event, &positions);
-        let haptic = !crossings.is_empty();
+        let out = self.touch.handle_event(event, &positions);
+        let haptic = !out.crossings.is_empty() || out.strike.is_some();
 
-        for crossing in crossings {
+        if let Some(note) = out.strike {
+            let e = self.engine.handle_strum_crossing(note);
+            effects.play_notes.extend(e.play_notes);
+            effects.stop_notes.extend(e.stop_notes);
+            effects.redraw |= e.redraw;
+            if effects.change_key.is_none() {
+                effects.change_key = e.change_key;
+            }
+        }
+
+        for crossing in out.crossings {
             for note in crossing.notes {
                 let e = self.engine.handle_strum_crossing(note);
                 effects.play_notes.extend(e.play_notes);

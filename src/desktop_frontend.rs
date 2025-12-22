@@ -179,7 +179,23 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
                 WindowEvent::MouseInput { state, button, .. } => {
                     if button == winit::event::MouseButton::Left {
-                        is_mouse_down = state == winit::event::ElementState::Pressed;
+                        let pressed = state == winit::event::ElementState::Pressed;
+                        is_mouse_down = pressed;
+
+                        // "Strike" on press: play the nearest string immediately.
+                        if pressed {
+                            if let Some((x, _)) = prev_pos {
+                                if let Some((i, _)) = note_positions
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, &nx)| (i, (nx - x).abs()))
+                                    .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                                {
+                                    let effects = app.handle_strum_crossing(UnkeyedNote(i as i16));
+                                    let _ = process_app_effects(effects, &mut midi, Some(window.as_ref()));
+                                }
+                            }
+                        }
                     }
                 }
 

@@ -63,6 +63,7 @@ public class MainActivity extends Activity {
     private Button[] uiButtons = new Button[15];
 
     private boolean showNoteNames = false;
+    private boolean playOnTap = true;
     private SharedPreferences prefs;
 
     public static native int rustInit();
@@ -80,6 +81,7 @@ public class MainActivity extends Activity {
     public static native void rustStopAAudio(long handle);
 
     public static native void rustSetShowNoteNames(long handle, boolean show);
+    public static native void rustSetPlayOnTap(long handle, boolean enabled);
 
     public static native void rustRenderStrings(long handle, int width, int height, int[] outPixels);
 
@@ -164,7 +166,9 @@ public class MainActivity extends Activity {
 
         prefs = getSharedPreferences("rustharp", MODE_PRIVATE);
         showNoteNames = prefs.getBoolean("showNoteNames", false);
+        playOnTap = prefs.getBoolean("playOnTap", true);
         rustSetShowNoteNames(rustHandle, showNoteNames);
+        rustSetPlayOnTap(rustHandle, playOnTap);
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
         w = dm.widthPixels;
@@ -357,6 +361,21 @@ public class MainActivity extends Activity {
             redraw();
         });
         options.addView(cb);
+
+        CheckBox cbTap = new CheckBox(this);
+        cbTap.setText("Play on tap");
+        cbTap.setTextColor(0xFFFFFFFF);
+        cbTap.setChecked(playOnTap);
+        cbTap.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            playOnTap = isChecked;
+            if (prefs != null) {
+                prefs.edit().putBoolean("playOnTap", playOnTap).apply();
+            }
+            if (rustHandle != 0) {
+                rustSetPlayOnTap(rustHandle, playOnTap);
+            }
+        });
+        options.addView(cbTap);
 
         gear.setOnClickListener(v -> {
             options.setVisibility(options.getVisibility() == android.view.View.VISIBLE
