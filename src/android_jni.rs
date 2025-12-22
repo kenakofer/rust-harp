@@ -449,20 +449,36 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         (None, false, 0)
     };
 
-    fn pitch_class_label(pc: i16) -> &'static str {
-        match pc.rem_euclid(12) {
-            0 => "C",
-            1 => "C#",
-            2 => "D",
-            3 => "D#",
-            4 => "E",
-            5 => "F",
-            6 => "F#",
-            7 => "G",
-            8 => "G#",
-            9 => "A",
-            10 => "Bb",
-            11 => "B",
+    fn pitch_class_label(pc: i16, key_pc: i16) -> &'static str {
+        let pc = pc.rem_euclid(12);
+        let key = key_pc.rem_euclid(12);
+        let prefer_flats = matches!(key, 1 | 3 | 8 | 10); // Db, Eb, Ab, Bb
+        match (prefer_flats, pc) {
+            (false, 0) => "C",
+            (false, 1) => "C#",
+            (false, 2) => "D",
+            (false, 3) => "D#",
+            (false, 4) => "E",
+            (false, 5) => "F",
+            (false, 6) => "F#",
+            (false, 7) => "G",
+            (false, 8) => "G#",
+            (false, 9) => "A",
+            (false, 10) => "A#",
+            (false, 11) => "B",
+
+            (true, 0) => "C",
+            (true, 1) => "Db",
+            (true, 2) => "D",
+            (true, 3) => "Eb",
+            (true, 4) => "E",
+            (true, 5) => "F",
+            (true, 6) => "Gb",
+            (true, 7) => "G",
+            (true, 8) => "Ab",
+            (true, 9) => "A",
+            (true, 10) => "Bb",
+            (true, 11) => "B",
             _ => "?",
         }
     }
@@ -601,7 +617,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             if pc == 255 {
                 continue;
             }
-            let label = pitch_class_label(pc as i16);
+            let label = pitch_class_label(pc as i16, transpose_pc);
             // Leave a little padding from the very top, and keep the label just to the right
             // of the string so it doesn't overlap the line.
             draw_text(
@@ -625,6 +641,18 @@ mod render_tests {
     use crate::chord::Chord;
     use crate::layout;
     use crate::notes::UnkeyedNote;
+
+    #[test]
+    fn pitch_class_label_prefers_flats_in_flat_keys() {
+        // Key E (4): prefer sharps.
+        assert_eq!(super::pitch_class_label(8, 4), "G#");
+        assert_eq!(super::pitch_class_label(1, 4), "C#");
+
+        // Key Db (1): prefer flats.
+        assert_eq!(super::pitch_class_label(8, 1), "Ab");
+        assert_eq!(super::pitch_class_label(1, 1), "Db");
+        assert_eq!(super::pitch_class_label(6, 1), "Gb");
+    }
 
     #[test]
     fn label_pitch_class_applies_transpose() {

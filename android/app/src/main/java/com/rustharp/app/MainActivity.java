@@ -28,6 +28,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends Activity {
+
+    // Spinner uses the 12 chromatic options, but names flat keys with flats.
+    private static final String[] KEY_SPINNER_LABELS = new String[]{"C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
+
+    // Note naming depends on key signature preference.
+    private static final String[] NOTE_NAMES_SHARP = new String[]{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    private static final String[] NOTE_NAMES_FLAT  = new String[]{"C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"};
+
+    // Prefer flats in flat keys: Db, Eb, Ab, Bb.
+    private static boolean preferFlatsForKey(int keyPc) {
+        int k = ((keyPc % 12) + 12) % 12;
+        return k == 1 || k == 3 || k == 8 || k == 10;
+    }
     private static final int BTN_VIIB = 0;
 
     // Used to keep gesture-exclusion rects centered near the active touch.
@@ -178,9 +191,9 @@ public class MainActivity extends Activity {
     }
 
     private void updateChordButtonLabels() {
-        // These must match the spinner’s key labels and (for now) our chosen enharmonics.
-        String[] keys = new String[]{"C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"};
+        // These must match the spinner’s key labels.
         int k = ((keyIndex % 12) + 12) % 12;
+        String[] keys = preferFlatsForKey(k) ? NOTE_NAMES_FLAT : NOTE_NAMES_SHARP;
 
         if (showRomanChords) {
             if (uiButtons[BTN_VIIB] != null) uiButtons[BTN_VIIB].setText("VIIb");
@@ -396,8 +409,7 @@ public class MainActivity extends Activity {
         status.setLayoutParams(slp);
 
         keySpinner = new Spinner(this);
-        String[] keys = new String[]{"C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"};
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, keys);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, KEY_SPINNER_LABELS);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         keySpinner.setAdapter(adapter);
         keySpinner.setSelection(keyIndex);
