@@ -1,4 +1,4 @@
-use crate::android_audio::SquareSynth;
+use crate::synth::SquareSynth;
 use crate::notes::{MidiNote, NoteVolume};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};

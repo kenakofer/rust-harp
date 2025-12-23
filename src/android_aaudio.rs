@@ -4,7 +4,7 @@
 
 #![cfg(all(target_os = "android", feature = "android"))]
 
-use crate::android_audio::SquareSynth;
+use crate::synth::SquareSynth;
 use crate::android_frontend::{AndroidFrontend, AudioMsg};
 use crate::notes::{MidiNote, NoteVolume, Transpose};
 

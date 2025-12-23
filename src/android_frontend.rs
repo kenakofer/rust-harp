@@ -1,4 +1,4 @@
-use crate::android_audio::SquareSynth;
+use crate::synth::SquareSynth;
 use crate::app_state::{AppEffects, NoteOn};
 use crate::layout;
 use crate::touch::TouchEvent;

@@ -18,7 +18,7 @@ pub mod strum;
 pub mod touch;
 pub mod ui_events;
 
-pub mod android_audio;
+pub mod synth;
 
 #[cfg(feature = "android")]
 pub mod android_frontend;
