@@ -4,6 +4,7 @@ use crate::notes::MidiNote;
 struct Voice {
     midi: MidiNote,
     start_sample: u64,
+    stop_sample: Option<u64>,
     phase: f32,
     phase_inc: f32,
     amp0: f32,
@@ -45,6 +46,20 @@ impl SquareSynth {
         }
         max_harmonic = max_harmonic.min(15); // 1..15 odd => at most 8 sines (CPU headroom)
 
+        // Ensure the same note never has two instances playing at once.
+        if let Some(v) = self.voices.iter_mut().find(|v| v.midi == midi) {
+            *v = Voice {
+                midi,
+                start_sample: self.sample,
+                stop_sample: None,
+                phase: 0.0,
+                phase_inc,
+                amp0,
+                max_harmonic_odd: max_harmonic,
+            };
+            return;
+        }
+
         const MAX_VOICES: usize = 16;
         if self.voices.len() >= MAX_VOICES {
             self.voices.swap_remove(0);
@@ -53,6 +68,7 @@ impl SquareSynth {
         self.voices.push(Voice {
             midi,
             start_sample: self.sample,
+            stop_sample: None,
             phase: 0.0,
             phase_inc,
             amp0,
@@ -61,7 +77,11 @@ impl SquareSynth {
     }
 
     pub fn note_off(&mut self, midi: MidiNote) {
-        self.voices.retain(|v| v.midi != midi);
+        for v in &mut self.voices {
+            if v.midi == midi {
+                v.stop_sample = Some(self.sample);
+            }
+        }
     }
 
     pub fn render_i16_mono(&mut self, out: &mut [i16]) {
@@ -76,6 +96,7 @@ impl SquareSynth {
         // Exponential decay time constant (seconds)
         const TAU_S: f32 = 0.35;
         const ATTACK_S: f32 = 0.004; // short ramp to prevent clicks
+        const RELEASE_S: f32 = 0.10; // fade-to-silence on note_off
         const SILENCE: f32 = 1.0e-4;
 
         let mut acc = 0.0f32;
@@ -84,7 +105,14 @@ impl SquareSynth {
 
             let attack = (age_s / ATTACK_S).min(1.0);
             let decay = (-age_s / TAU_S).exp();
-            let env = attack * decay;
+            let release = match v.stop_sample {
+                Some(ss) => {
+                    let t = (self.sample.saturating_sub(ss)) as f32 / self.sample_rate_hz;
+                    (1.0 - (t / RELEASE_S)).clamp(0.0, 1.0)
+                }
+                None => 1.0,
+            };
+            let env = attack * decay * release;
 
             // Band-limited square: sum odd harmonics under Nyquist.
             // square(t) = (4/pi) * Σ_{n odd} sin(n*phase)/n
@@ -110,7 +138,17 @@ impl SquareSynth {
         if (self.sample & 0xFF) == 0 {
             self.voices.retain(|v| {
                 let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
-                v.amp0 * (-(age_s) / TAU_S).exp() > SILENCE
+                let decay = (-(age_s) / TAU_S).exp();
+
+                let release = match v.stop_sample {
+                    Some(ss) => {
+                        let t = (self.sample.saturating_sub(ss)) as f32 / self.sample_rate_hz;
+                        (1.0 - (t / RELEASE_S)).clamp(0.0, 1.0)
+                    }
+                    None => 1.0,
+                };
+
+                v.amp0 * decay * release > SILENCE
             });
         }
 
@@ -176,5 +214,23 @@ mod tests {
 
         assert!(buf.iter().any(|&x| x != 0.0));
         assert!(buf.iter().all(|&x| x.abs() <= 1.0));
+    }
+
+    #[test]
+    fn note_off_fades_to_silence() {
+        let mut s = SquareSynth::new(48_000);
+        s.note_on(MidiNote(69), 100);
+
+        let mut warmup = [0.0f32; 256];
+        s.render_f32_mono(&mut warmup);
+
+        s.note_off(MidiNote(69));
+
+        // 100ms release @ 48kHz is 4800 samples; render a bit more to ensure we hit silence.
+        let mut buf = [0.0f32; 6000];
+        s.render_f32_mono(&mut buf);
+
+        let tail_max = buf[5500..].iter().fold(0.0f32, |m, &x| m.max(x.abs()));
+        assert!(tail_max < 1.0e-3, "expected near-silence, got tail_max={tail_max}");
     }
 }
