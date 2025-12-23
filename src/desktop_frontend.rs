@@ -31,44 +31,6 @@ const MAIN_CHANNEL: u8 = 0;
 const BASS_PROGRAM: u8 = 26;
 const BASS_CHANNEL: u8 = 2;
 
-// Pre-calculated unscaled relative x-positions for each string, ranging from 0.0 to 1.0.
-// ensuring string positions scale correctly with window resizing while
-// maintaining the musical interval spacing.
-const UNSCALED_RELATIVE_X_POSITIONS: &[f32] = &[
-    2.03124999999999972e-02,
-    5.19531250000000028e-02,
-    9.02343750000000056e-02,
-    1.31445312499999994e-01,
-    1.63281249999999989e-01,
-    1.96289062500000000e-01,
-    2.33203125000000011e-01,
-    2.66015624999999978e-01,
-    3.05859374999999989e-01,
-    3.38867187500000000e-01,
-    3.75000000000000000e-01,
-    4.05468749999999989e-01,
-    4.49414062499999989e-01,
-    4.85546874999999989e-01,
-    5.20312499999999956e-01,
-    5.55273437499999911e-01,
-    5.92578124999999956e-01,
-    6.29687499999999956e-01,
-    6.65429687500000089e-01,
-    6.99999999999999956e-01,
-    7.34960937500000022e-01,
-    7.71289062499999956e-01,
-    8.07617187500000000e-01,
-    8.42773437500000000e-01,
-    8.80664062499999956e-01,
-    9.18359374999999978e-01,
-    9.49999999999999956e-01,
-    9.91796875000000022e-01,
-];
-
-// Use length of array
-const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
-
-const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -253,20 +215,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 }
 
 fn recompute_note_positions(positions: &mut Vec<f32>, width: f32) {
-    positions.clear();
-
-    // Add as many notes til we go off the right side of the screen.
-    for octave in 0.. {
-        for uknote in 0..12 {
-            let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
-            let string = octave * 7 + string_in_octave;
-            if string >= NUM_STRINGS.into() {
-                return;
-            }
-            let x = UNSCALED_RELATIVE_X_POSITIONS[string] * width;
-            positions.push(x);
-        }
-    }
+    *positions = crate::layout::compute_note_positions(width);
 }
 
 fn process_app_effects(

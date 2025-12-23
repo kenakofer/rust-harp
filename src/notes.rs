@@ -149,6 +149,14 @@ pub fn prefer_flats_for_key(key_pc: i16) -> bool {
     matches!(k, 1 | 3 | 5 | 8 | 10) // Db, Eb, F, Ab, Bb
 }
 
+pub fn is_black_pitch_class(pc: i16) -> bool {
+    matches!(pc.rem_euclid(12), 1 | 3 | 6 | 8 | 10)
+}
+
+pub fn is_black_key(note: UnkeyedNote) -> bool {
+    is_black_pitch_class(note.wrap_to_octave())
+}
+
 pub fn pitch_class_label(pc: i16, key_pc: i16) -> &'static str {
     let pc = pc.rem_euclid(12);
     match (prefer_flats_for_key(key_pc), pc) {

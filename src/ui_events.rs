@@ -126,12 +126,25 @@ impl UiSession {
                 let mut effects = empty_effects();
                 let mut touch_notes = Vec::new();
 
+                let active_chord = self.engine.active_chord_for_row(row);
+
                 if let Some(note) = out.strike {
                     touch_notes.push(TouchNote { row, note });
                     merge_effects(&mut effects, self.engine.handle_strum_crossing(row, note));
                 }
                 for crossing in out.crossings {
                     for note in crossing.notes {
+                        // Chromatic "in-between" strings should only exist when active.
+                        if crate::notes::is_black_key(note) {
+                            if let Some(ch) = active_chord {
+                                if !ch.contains(note) {
+                                    continue;
+                                }
+                            } else {
+                                continue;
+                            }
+                        }
+
                         touch_notes.push(TouchNote { row, note });
                         merge_effects(&mut effects, self.engine.handle_strum_crossing(row, note));
                     }
@@ -250,10 +263,7 @@ mod tests {
                     row: RowId::Top,
                     note: UnkeyedNote(0)
                 },
-                TouchNote {
-                    row: RowId::Top,
-                    note: UnkeyedNote(1)
-                },
+                // Note 1 is a black key; with no active chord, we suppress chromatic strings.
                 TouchNote {
                     row: RowId::Top,
                     note: UnkeyedNote(2)

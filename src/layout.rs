@@ -32,28 +32,83 @@ pub const UNSCALED_RELATIVE_X_POSITIONS: &[f32] = &[
     9.91796875000000022e-01,
 ];
 
-pub const NOTE_TO_STRING_IN_OCTAVE: [u16; 12] = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 6, 6];
-
 pub const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
+
+fn note_x_from_strings(pc: i32, string_x: &[f32; 7]) -> Option<f32> {
+    Some(match pc {
+        0 => string_x[0],
+        1 => (string_x[0] + string_x[1]) * 0.5,
+        2 => string_x[1],
+        3 => (string_x[1] + string_x[2]) * 0.5,
+        4 => string_x[2],
+        5 => string_x[3],
+        6 => (string_x[3] + string_x[4]) * 0.5,
+        7 => string_x[4],
+        8 => (string_x[4] + string_x[5]) * 0.5,
+        9 => string_x[5],
+        10 => (string_x[5] + string_x[6]) * 0.5,
+        11 => string_x[6],
+        _ => return None,
+    })
+}
+
+fn required_string_indices(pc: i32) -> Option<&'static [usize]> {
+    Some(match pc {
+        0 => &[0],
+        1 => &[0, 1],
+        2 => &[1],
+        3 => &[1, 2],
+        4 => &[2],
+        5 => &[3],
+        6 => &[3, 4],
+        7 => &[4],
+        8 => &[4, 5],
+        9 => &[5],
+        10 => &[5, 6],
+        11 => &[6],
+        _ => return None,
+    })
+}
 
 pub fn compute_string_positions(width: f32) -> impl Iterator<Item = f32> {
     UNSCALED_RELATIVE_X_POSITIONS.iter().map(move |rel| rel * width)
 }
 
-/// Positions for each chromatic note (UnkeyedNote 0..N) mapped onto the physical strings.
+/// Positions for each chromatic note (UnkeyedNote 0..N).
 ///
-/// This intentionally contains duplicates: multiple notes can map to the same physical string.
+/// We keep the 7 "white key" strings per octave exactly where they are, and place the 5
+/// chromatic notes halfway between their neighbors.
 pub fn compute_note_positions(width: f32) -> Vec<f32> {
     let mut positions = Vec::new();
 
     for octave in 0.. {
-        for uknote in 0..12 {
-            let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
-            let string = octave * 7 + string_in_octave;
-            if string >= NUM_STRINGS {
+        for pc in 0..12 {
+            let Some(req) = required_string_indices(pc) else {
+                continue;
+            };
+
+            let base = octave * 7;
+            if req
+                .iter()
+                .any(|&s| base + s >= NUM_STRINGS)
+            {
                 return positions;
             }
-            positions.push(UNSCALED_RELATIVE_X_POSITIONS[string] * width);
+
+            let mut string_x = [0.0f32; 7];
+            for &s in req {
+                string_x[s] = UNSCALED_RELATIVE_X_POSITIONS[base + s] * width;
+            }
+            // Fill any other needed indices for midpoint math.
+            for s in 0..7 {
+                if base + s < NUM_STRINGS {
+                    string_x[s] = UNSCALED_RELATIVE_X_POSITIONS[base + s] * width;
+                }
+            }
+
+            if let Some(x) = note_x_from_strings(pc, &string_x) {
+                positions.push(x);
+            }
         }
     }
 
@@ -106,19 +161,86 @@ pub fn compute_note_positions_android_with_lowest(width: f32, lowest_note: i16) 
     let dummy_len = lowest_note.max(0) as usize;
     let mut positions: Vec<f32> = vec![f32::NEG_INFINITY; dummy_len];
 
-    // Build chromatic notes in order, mapping them onto a 7-strings-per-octave physical layout,
-    // but capped by `ANDROID_NUM_STRINGS`.
+    // Build chromatic notes in order, keeping the 7-per-octave "white key" strings fixed,
+    // and placing the 5 chromatic notes halfway between their neighbors.
     for rel_note in 0.. {
         let octave = rel_note / 12;
         let pc = rel_note % 12;
-        let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[pc as usize] as usize;
-        let string = octave * 7 + string_in_octave;
-        if string >= strings {
+
+        let Some(req) = required_string_indices(pc as i32) else {
+            continue;
+        };
+
+        let base = octave * 7;
+        if req.iter().any(|&s| base + s >= strings) {
             break;
         }
 
-        positions.push(pad + string as f32 * step);
+        let mut string_x = [0.0f32; 7];
+        for s in 0..7 {
+            if base + s < strings {
+                string_x[s] = pad + (base + s) as f32 * step;
+            }
+        }
+
+        if let Some(x) = note_x_from_strings(pc as i32, &string_x) {
+            positions.push(x);
+        }
     }
 
     positions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_black_keys_are_midpoints() {
+        let w = 1000.0f32;
+        let pos = compute_note_positions(w);
+
+        // C# is between C and D.
+        assert!((pos[1] - (pos[0] + pos[2]) * 0.5).abs() < 0.0001);
+        // D# is between D and E.
+        assert!((pos[3] - (pos[2] + pos[4]) * 0.5).abs() < 0.0001);
+        // F# is between F and G.
+        assert!((pos[6] - (pos[5] + pos[7]) * 0.5).abs() < 0.0001);
+        // G# is between G and A.
+        assert!((pos[8] - (pos[7] + pos[9]) * 0.5).abs() < 0.0001);
+        // A# is between A and B.
+        assert!((pos[10] - (pos[9] + pos[11]) * 0.5).abs() < 0.0001);
+    }
+
+    #[test]
+    fn android_black_keys_are_midpoints() {
+        let w = 1000.0f32;
+        let pos = compute_note_positions_android_with_lowest(w, 0);
+
+        // Recompute expected physical string positions for octave 0.
+        let pad = 2.0f32;
+        let usable = (w - 2.0 * pad).max(1.0);
+        let step = usable / (ANDROID_NUM_STRINGS as f32 - 1.0);
+        let x0 = pad + 0.0 * step;
+        let x1 = pad + 1.0 * step;
+        let x2 = pad + 2.0 * step;
+        let x3 = pad + 3.0 * step;
+        let x4 = pad + 4.0 * step;
+        let x5 = pad + 5.0 * step;
+        let x6 = pad + 6.0 * step;
+
+        assert!((pos[0] - x0).abs() < 0.0001);
+        assert!((pos[2] - x1).abs() < 0.0001);
+        assert!((pos[4] - x2).abs() < 0.0001);
+        assert!((pos[5] - x3).abs() < 0.0001);
+        assert!((pos[7] - x4).abs() < 0.0001);
+        assert!((pos[9] - x5).abs() < 0.0001);
+        assert!((pos[11] - x6).abs() < 0.0001);
+
+        assert!((pos[1] - (x0 + x1) * 0.5).abs() < 0.0001);
+        assert!((pos[3] - (x1 + x2) * 0.5).abs() < 0.0001);
+        assert!((pos[6] - (x3 + x4) * 0.5).abs() < 0.0001);
+        assert!((pos[8] - (x4 + x5) * 0.5).abs() < 0.0001);
+        assert!((pos[10] - (x5 + x6) * 0.5).abs() < 0.0001);
+    }
 }

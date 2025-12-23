@@ -547,6 +547,18 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             }
             let xi = xi as usize;
 
+            // Chromatic "in-between" strings should only be visible when active.
+            if crate::notes::is_black_key(uknote) {
+                match chord {
+                    Some(ch) => {
+                        if !ch.contains(uknote) {
+                            continue;
+                        }
+                    }
+                    None => continue,
+                }
+            }
+
             let (prio, color) = if let Some(ch) = chord {
                 if ch.has_root(uknote) {
                     (3, 0xFFFF0000u32 as i32) // red
@@ -669,60 +681,59 @@ mod render_tests {
     }
 
     #[test]
-    fn render_strings_prefers_root_over_inactive_on_same_string() {
-        // We expect duplicate x-positions (multiple notes mapped to same physical string).
-        // Root should win so it doesn't get overwritten by later inactive notes.
+    fn android_layout_midpoints_do_not_duplicate_pixel_columns() {
         let w = 1000usize;
         let positions = layout::compute_note_positions_android(w as f32);
 
-        let chord = Chord::new_triad(UnkeyedNote(0)); // C major
-
-        // Find an x-position that occurs more than once.
-        let mut xi_counts = std::collections::HashMap::<i32, usize>::new();
+        let mut seen = std::collections::HashSet::<i32>::new();
         for x in &positions {
             if !x.is_finite() {
                 continue;
             }
-            *xi_counts.entry(x.round() as i32).or_insert(0) += 1;
+            let xi = x.round() as i32;
+            assert!(seen.insert(xi), "duplicate rounded x={xi}");
         }
-        let (dup_xi, _count) = xi_counts
-            .into_iter()
-            .find(|(_, c)| *c > 1)
-            .expect("expected at least one duplicate x-position");
-        let dup_xi = dup_xi as usize;
+    }
 
-        // Re-run the same prioritization logic used by rustRenderStrings.
+    #[test]
+    fn android_render_hides_inactive_black_keys() {
+        let w = 1000usize;
+        let positions = layout::compute_note_positions_android(w as f32);
+
+        let chord = Chord::new_triad(UnkeyedNote(0)); // C major (no black keys)
+
         let mut best_prio_per_x: Vec<u8> = vec![0; w];
-        let mut best_color_per_x: Vec<i32> = vec![0xFF333333u32 as i32; w];
-
         for (i, x) in positions.iter().enumerate() {
             let uknote = UnkeyedNote(i as i16);
+            if crate::notes::is_black_key(uknote) && !chord.contains(uknote) {
+                continue;
+            }
+
             let xi = x.round() as i32;
             if xi < 0 || xi >= w as i32 {
                 continue;
             }
             let xi = xi as usize;
 
-            let (prio, color) = if chord.has_root(uknote) {
-                (3, 0xFFFF0000u32 as i32)
+            let prio = if chord.has_root(uknote) {
+                3
             } else if chord.contains(uknote) {
-                (2, 0xFFFFFFFFu32 as i32)
+                2
             } else {
-                (1, 0xFF333333u32 as i32)
+                1
             };
-
             if prio > best_prio_per_x[xi] {
                 best_prio_per_x[xi] = prio;
-                best_color_per_x[xi] = color;
             }
         }
 
-        assert!(best_prio_per_x[dup_xi] >= 1);
-        // If the root happens to land on this duplicated string position, it must be red.
-        // Otherwise (no root there), we still validate we never downgrade priority.
-        if best_prio_per_x[dup_xi] == 3 {
-            assert_eq!(best_color_per_x[dup_xi], 0xFFFF0000u32 as i32);
-        }
+        // C# is a black key and should be absent.
+        let xi_black = positions[1].round() as usize;
+        assert_eq!(best_prio_per_x[xi_black], 0);
+
+        // D is a white key and should still render (inactive dim gray is allowed).
+        let xi_d = positions[2].round() as usize;
+        assert!(best_prio_per_x[xi_d] > 0);
     }
 
     #[test]
@@ -735,8 +746,12 @@ mod render_tests {
 
         // Find a string x-position where the chord is active.
         let mut line_xs = std::collections::HashSet::<usize>::new();
-        for x in &positions {
+        for (i, x) in positions.iter().enumerate() {
             if !x.is_finite() {
+                continue;
+            }
+            let uknote = UnkeyedNote(i as i16);
+            if crate::notes::is_black_key(uknote) && !chord.contains(uknote) {
                 continue;
             }
             let xi = x.round() as i32;
