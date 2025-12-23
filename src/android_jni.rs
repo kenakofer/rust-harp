@@ -1,8 +1,7 @@
 use crate::android_frontend::AndroidFrontend;
 use crate::app_state::KeyState;
-use crate::input_map::{self, UiButton, UiKey};
+use crate::input_map::{UiButton, UiKey};
 use crate::layout;
-use crate::notes::{MidiNote, NoteVolume, Transpose};
 
 #[cfg(all(target_os = "android", feature = "android"))]
 use crate::android_aaudio;
@@ -563,7 +562,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             if prio > best_prio_per_x[xi] {
                 best_prio_per_x[xi] = prio;
                 best_color_per_x[xi] = color;
-                best_pc_per_x[xi] = (label_pitch_class(uknote, transpose_pc) as u8);
+                best_pc_per_x[xi] = label_pitch_class(uknote, transpose_pc) as u8;
             }
         }
 
