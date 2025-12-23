@@ -2,8 +2,9 @@ use crate::chord::Chord;
 use crate::notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
 use crate::output_midir::MidiBackend;
 use crate::strum;
-use crate::touch::{PointerId, TouchEvent, TouchPhase, TouchTracker};
-use crate::ui_adapter::AppAdapter;
+use crate::touch::{PointerId, TouchEvent, TouchPhase};
+use crate::ui_adapter::{self, AppAdapter};
+use crate::ui_events::{UiEvent, UiSession};
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use midir::os::unix::VirtualOutput;
@@ -133,10 +134,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let mut prev_pos: Option<(f32, f32)> = None;
     let mut is_mouse_down = false;
     let mut note_positions: Vec<f32> = Vec::new();
-    let mut touch = TouchTracker::new();
 
     // App State
-    let mut app = AppAdapter::new();
+    let mut ui = UiSession::new();
 
     // 4. Run Event Loop
     event_loop.run(move |event, elwt| {
@@ -146,7 +146,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             Event::WindowEvent { window_id, event } if window_id == window.id() => match event {
                 WindowEvent::CloseRequested => {
                     // Turn off all active notes before closing
-                    let notes_to_stop: Vec<UnmidiNote> = app.active_notes().collect();
+                    let notes_to_stop: Vec<UnmidiNote> = ui.engine().active_notes().collect();
                     for note in notes_to_stop {
                         midi.stop_note(MIDI_BASE_TRANSPOSE + note);
                     }
@@ -154,8 +154,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 }
 
                 WindowEvent::KeyboardInput { event, .. } => {
-                    if let Some(effects) = app.handle_winit_key_event(&event) {
-                        let _ = process_app_effects(effects, &mut midi, Some(window.as_ref()));
+                    if let Some(ue) = ui_adapter::ui_event_from_winit(&event) {
+                        let out = ui.handle(ue, &note_positions);
+                        let _ = process_app_effects(out.effects, &mut midi, Some(window.as_ref()));
                     }
                 }
 
@@ -174,7 +175,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         &mut surface,
                         physical_size.width,
                         physical_size.height,
-                        app.active_chord(),
+                        ui.engine().active_chord(),
                         &note_positions,
                     );
                 }
@@ -189,24 +190,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         };
 
                         let phase = if pressed { TouchPhase::Down } else { TouchPhase::Up };
-                        let chord = *app.active_chord();
-                        let out = touch.handle_event(
-                            TouchEvent {
+                        let out = ui.handle(
+                            UiEvent::Touch(TouchEvent {
                                 id: PointerId(0),
                                 phase,
                                 x,
-                            },
+                            }),
                             &note_positions,
-                            |n| match chord {
-                                Some(c) => c.contains(n),
-                                None => true,
-                            },
                         );
-
-                        if let Some(note) = out.strike {
-                            let effects = app.handle_strum_crossing(note);
-                            let _ = process_app_effects(effects, &mut midi, Some(window.as_ref()));
-                        }
+                        let _ = process_app_effects(out.effects, &mut midi, Some(window.as_ref()));
                     }
                 }
 
@@ -215,26 +207,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     let curr_y = position.y as f32;
 
                     if is_mouse_down {
-                        let chord = *app.active_chord();
-                        let out = touch.handle_event(
-                            TouchEvent {
+                        let out = ui.handle(
+                            UiEvent::Touch(TouchEvent {
                                 id: PointerId(0),
                                 phase: TouchPhase::Move,
                                 x: curr_x,
-                            },
+                            }),
                             &note_positions,
-                            |n| match chord {
-                                Some(c) => c.contains(n),
-                                None => true,
-                            },
                         );
-
-                        for crossing in out.crossings {
-                            for note in crossing.notes {
-                                let effects = app.handle_strum_crossing(note);
-                                let _ = process_app_effects(effects, &mut midi, Some(window.as_ref()));
-                            }
-                        }
+                        let _ = process_app_effects(out.effects, &mut midi, Some(window.as_ref()));
                     }
 
                     prev_pos = Some((curr_x, curr_y));
@@ -246,7 +227,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         &mut surface,
                         size.width,
                         size.height,
-                        app.active_chord(),
+                        ui.engine().active_chord(),
                         &note_positions,
                     );
                 }

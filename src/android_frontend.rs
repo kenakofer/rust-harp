@@ -1,8 +1,8 @@
 use crate::android_audio::SquareSynth;
 use crate::app_state::{AppEffects, NoteOn};
-use crate::engine::Engine;
 use crate::layout;
-use crate::touch::{TouchEvent, TouchTracker};
+use crate::touch::TouchEvent;
+use crate::ui_events::{UiEvent, UiSession};
 
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Mutex;
@@ -18,8 +18,7 @@ pub enum AudioMsg {
 /// Audio is fed to the realtime audio thread via a channel so the AAudio callback can
 /// avoid taking locks.
 pub struct AndroidFrontend {
-    engine: Engine,
-    touch: TouchTracker,
+    ui: UiSession,
 
     audio_tx: Sender<AudioMsg>,
     audio_rx: Mutex<Option<Receiver<AudioMsg>>>,
@@ -34,8 +33,7 @@ impl AndroidFrontend {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel();
         Self {
-            engine: Engine::new(),
-            touch: TouchTracker::new(),
+            ui: UiSession::new(),
             audio_tx: tx,
             audio_rx: Mutex::new(Some(rx)),
             legacy_synth: Mutex::new(SquareSynth::new(48_000)),
@@ -43,8 +41,8 @@ impl AndroidFrontend {
         }
     }
 
-    pub fn engine_mut(&mut self) -> &mut Engine {
-        &mut self.engine
+    pub fn engine_mut(&mut self) -> &mut crate::engine::Engine {
+        self.ui.engine_mut()
     }
 
     pub fn set_show_note_names(&mut self, show: bool) {
@@ -52,15 +50,19 @@ impl AndroidFrontend {
     }
 
     pub fn set_play_on_tap(&mut self, enabled: bool) {
-        self.touch.set_play_on_tap(enabled);
+        self.ui.set_play_on_tap(enabled);
+    }
+
+    pub fn handle_ui_event(&mut self, event: UiEvent) -> AppEffects {
+        self.ui.handle(event, &[]).effects
     }
 
     pub fn show_note_names(&self) -> bool {
         self.show_note_names
     }
 
-    pub fn engine(&self) -> &Engine {
-        &self.engine
+    pub fn engine(&self) -> &crate::engine::Engine {
+        self.ui.engine()
     }
 
     pub fn push_effects(&self, effects: AppEffects) {
@@ -122,43 +124,8 @@ impl AndroidFrontend {
 
     pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> (AppEffects, bool) {
         let positions = layout::compute_note_positions_android(width_px);
-        let mut effects = AppEffects {
-            play_notes: Vec::new(),
-            stop_notes: Vec::new(),
-            redraw: false,
-            change_key: None,
-        };
-
-        let chord = *self.engine.active_chord();
-        let out = self.touch.handle_event(event, &positions, |n| match chord {
-            Some(c) => c.contains(n),
-            None => true,
-        });
-        let haptic = !out.crossings.is_empty() || out.strike.is_some();
-
-        if let Some(note) = out.strike {
-            let e = self.engine.handle_strum_crossing(note);
-            effects.play_notes.extend(e.play_notes);
-            effects.stop_notes.extend(e.stop_notes);
-            effects.redraw |= e.redraw;
-            if effects.change_key.is_none() {
-                effects.change_key = e.change_key;
-            }
-        }
-
-        for crossing in out.crossings {
-            for note in crossing.notes {
-                let e = self.engine.handle_strum_crossing(note);
-                effects.play_notes.extend(e.play_notes);
-                effects.stop_notes.extend(e.stop_notes);
-                effects.redraw |= e.redraw;
-                if effects.change_key.is_none() {
-                    effects.change_key = e.change_key;
-                }
-            }
-        }
-
-        (effects, haptic)
+        let out = self.ui.handle(UiEvent::Touch(event), &positions);
+        (out.effects, out.haptic)
     }
 }
 

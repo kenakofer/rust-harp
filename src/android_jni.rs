@@ -111,7 +111,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetKeyIndex(
 
     let idx = (key_index as i16).rem_euclid(12);
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
-    let effects = frontend.engine_mut().set_transpose(crate::notes::Transpose(idx));
+    let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::SetTranspose(
+        crate::notes::Transpose(idx),
+    ));
     let redraw = effects.redraw;
     let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
 
@@ -165,12 +167,8 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
         }
     };
 
-    let Some(app_event) = input_map::key_event_from_ui(state, key) else {
-        return 0;
-    };
-
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
-    let effects = frontend.engine_mut().handle_event(app_event);
+    let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Key { state, key });
     let redraw = effects.redraw;
     let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
 
@@ -227,20 +225,8 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
         _ => return 0,
     };
 
-    let events = input_map::key_events_from_button(state, button);
-
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
-    let mut effects = crate::app_state::AppEffects {
-        redraw: false,
-        change_key: None,
-        stop_notes: Vec::new(),
-        play_notes: Vec::new(),
-    };
-
-    for ev in events {
-        let e = frontend.engine_mut().handle_event(ev);
-        merge_effects(&mut effects, e);
-    }
+    let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button { state, button });
 
     let redraw = effects.redraw;
     let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();

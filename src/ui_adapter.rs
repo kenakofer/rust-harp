@@ -1,7 +1,8 @@
 use crate::app_state::{AppEffects, KeyState};
 use crate::chord::Chord;
-use crate::input_map::{self, UiKey};
+use crate::input_map::UiKey;
 use crate::notes::{UnkeyedNote, UnmidiNote};
+use crate::ui_events::{UiEvent, UiSession};
 
 fn ui_key_from_winit(key: &winit::keyboard::Key) -> Option<UiKey> {
     use winit::keyboard::Key::Character;
@@ -15,44 +16,42 @@ fn ui_key_from_winit(key: &winit::keyboard::Key) -> Option<UiKey> {
     }
 }
 
-fn key_event_from_winit(event: &winit::event::KeyEvent) -> Option<crate::app_state::KeyEvent> {
+pub fn ui_event_from_winit(event: &winit::event::KeyEvent) -> Option<UiEvent> {
     let state = match event.state {
         winit::event::ElementState::Pressed => KeyState::Pressed,
         winit::event::ElementState::Released => KeyState::Released,
     };
 
     let key = ui_key_from_winit(&event.logical_key)?;
-    input_map::key_event_from_ui(state, key)
+    Some(UiEvent::Key { state, key })
 }
 
 pub struct AppAdapter {
-    engine: crate::engine::Engine,
+    ui: UiSession,
 }
 
 impl AppAdapter {
     pub fn new() -> Self {
-        Self {
-            engine: crate::engine::Engine::new(),
-        }
+        Self { ui: UiSession::new() }
     }
 
     pub fn handle_winit_key_event(
         &mut self,
         event: &winit::event::KeyEvent,
     ) -> Option<AppEffects> {
-        let app_event = key_event_from_winit(event)?;
-        Some(self.engine.handle_event(app_event))
+        let ui_event = ui_event_from_winit(event)?;
+        Some(self.ui.handle(ui_event, &[]).effects)
     }
 
     pub fn handle_strum_crossing(&mut self, note: UnkeyedNote) -> AppEffects {
-        self.engine.handle_strum_crossing(note)
+        self.ui.engine_mut().handle_strum_crossing(note)
     }
 
     pub fn active_chord(&self) -> &Option<Chord> {
-        self.engine.active_chord()
+        self.ui.engine().active_chord()
     }
 
     pub fn active_notes(&self) -> impl Iterator<Item = UnmidiNote> + '_ {
-        self.engine.active_notes()
+        self.ui.engine().active_notes()
     }
 }

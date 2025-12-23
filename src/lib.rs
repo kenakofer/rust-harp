@@ -9,6 +9,7 @@ pub mod output_midi;
 pub mod output_midir;
 pub mod strum;
 pub mod touch;
+pub mod ui_events;
 
 #[cfg(feature = "android")]
 pub mod android_audio;
