@@ -25,7 +25,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36); // Add with UnmidiNote to get MidiNote. MIDI Note 36 is C2
+const MIDI_BASE_TRANSPOSE: Transpose = Transpose(48); // Add with UnmidiNote to get MidiNote. MIDI Note 48 is C3
 const MICRO_CHANNEL: u8 = 3; // MIDI channel 2 (0-based)
 const MICRO_PROGRAM: u8 = 115; // instrument program for micro-steps, 115 = Wood block
 const MICRO_NOTE: MidiNote = MidiNote(20); // middle C for micro-step trigger
