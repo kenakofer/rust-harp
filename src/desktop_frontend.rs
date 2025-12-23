@@ -104,7 +104,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     // App State
     let mut ui = UiSession::new();
-    let mut settings = crate::ui_settings::UiSettings::default();
+    let mut settings = crate::ui_settings::load_desktop_settings();
     ui.set_play_on_tap(settings.play_on_tap);
     let mut show_settings = false;
 
@@ -181,12 +181,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                             SettingsAction::TogglePlayOnTap => {
                                                 settings.play_on_tap = !settings.play_on_tap;
                                                 ui.set_play_on_tap(settings.play_on_tap);
+                                                crate::ui_settings::save_desktop_settings(&settings);
                                             }
                                             SettingsAction::ToggleShowNoteNames => {
                                                 settings.show_note_names = !settings.show_note_names;
+                                                crate::ui_settings::save_desktop_settings(&settings);
                                             }
                                             SettingsAction::ToggleShowRomanChords => {
                                                 settings.show_roman_chords = !settings.show_roman_chords;
+                                                crate::ui_settings::save_desktop_settings(&settings);
                                             }
                                             SettingsAction::CycleAudioBackend => {
                                                 // Stop currently playing notes on the *current* backend so we don't leave
@@ -196,15 +199,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                                     audio.stop_note(settings.audio_backend, MIDI_BASE_TRANSPOSE + n);
                                                 }
 
-                                                settings.audio_backend = match settings.audio_backend {
-                                                    UiAudioBackend::Synth => UiAudioBackend::Midi,
-                                                    _ => UiAudioBackend::Synth,
-                                                };
+                                                settings.audio_backend = settings.audio_backend.cycle_desktop();
 
                                                 #[cfg(feature = "synth")]
                                                 if settings.audio_backend == UiAudioBackend::Synth && audio.synth.is_none() {
                                                     settings.audio_backend = UiAudioBackend::Midi;
                                                 }
+
+                                                crate::ui_settings::save_desktop_settings(&settings);
                                             }
                                         }
                                     }
