@@ -100,6 +100,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     // App State
     let mut ui = UiSession::new();
+    let mut settings = crate::ui_settings::UiSettings::default();
+    ui.set_play_on_tap(settings.play_on_tap);
+    let mut show_settings = false;
 
     // 4. Run Event Loop
     event_loop.run(move |event, elwt| {
@@ -143,17 +146,55 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                             .active_chord_for_row(RowId::Bottom)
                             .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
                         &note_positions,
+                        settings.show_note_names,
+                        ui.engine().transpose().wrap_to_octave(),
+                        show_settings,
+                        &settings,
                     );
                 }
 
                 WindowEvent::MouseInput { state, button, .. } => {
                     if button == winit::event::MouseButton::Left {
                         let pressed = state == winit::event::ElementState::Pressed;
-                        is_mouse_down = pressed;
 
                         let Some((x, y)) = prev_pos else {
                             return;
                         };
+
+                        // Gear icon + settings panel (desktop only).
+                        if pressed {
+                            let (gear, panel, rows) = settings_layout(window.inner_size().width, window.inner_size().height);
+                            if hit_rect(x, y, gear) {
+                                show_settings = !show_settings;
+                                window.request_redraw();
+                                return;
+                            }
+                            if show_settings {
+                                if hit_rect(x, y, panel) {
+                                    if let Some(action) = hit_settings_rows(x, y, rows) {
+                                        match action {
+                                            SettingsAction::TogglePlayOnTap => {
+                                                settings.play_on_tap = !settings.play_on_tap;
+                                                ui.set_play_on_tap(settings.play_on_tap);
+                                            }
+                                            SettingsAction::ToggleShowNoteNames => {
+                                                settings.show_note_names = !settings.show_note_names;
+                                            }
+                                            SettingsAction::ToggleShowRomanChords => {
+                                                settings.show_roman_chords = !settings.show_roman_chords;
+                                            }
+                                        }
+                                    }
+                                    window.request_redraw();
+                                    return;
+                                }
+                                // Click outside closes.
+                                show_settings = false;
+                                window.request_redraw();
+                            }
+                        }
+
+                        is_mouse_down = pressed;
 
                         let phase = if pressed { TouchPhase::Down } else { TouchPhase::Up };
                         let h = window.inner_size().height.max(1) as f32;
@@ -202,6 +243,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                             .active_chord_for_row(RowId::Bottom)
                             .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
                         &note_positions,
+                        settings.show_note_names,
+                        ui.engine().transpose().wrap_to_octave(),
+                        show_settings,
+                        &settings,
                     );
                 }
 
@@ -277,6 +322,80 @@ fn check_pluck(
 }
 
 
+#[derive(Clone, Copy)]
+struct RectI32 {
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
+
+fn hit_rect(x: f32, y: f32, r: RectI32) -> bool {
+    let (x, y) = (x.round() as i32, y.round() as i32);
+    x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+}
+
+#[derive(Clone, Copy, Debug)]
+enum SettingsAction {
+    TogglePlayOnTap,
+    ToggleShowNoteNames,
+    ToggleShowRomanChords,
+}
+
+fn settings_layout(width: u32, _height: u32) -> (RectI32, RectI32, [RectI32; 3]) {
+    // Fixed-size pixel UI; good enough for now.
+    let gear = RectI32 {
+        x: width as i32 - 44,
+        y: 8,
+        w: 36,
+        h: 18,
+    };
+
+    let panel = RectI32 {
+        x: width as i32 - 170,
+        y: 30,
+        w: 162,
+        h: 64,
+    };
+
+    let row_h = 20;
+    let rows = [
+        RectI32 {
+            x: panel.x,
+            y: panel.y,
+            w: panel.w,
+            h: row_h,
+        },
+        RectI32 {
+            x: panel.x,
+            y: panel.y + row_h,
+            w: panel.w,
+            h: row_h,
+        },
+        RectI32 {
+            x: panel.x,
+            y: panel.y + 2 * row_h,
+            w: panel.w,
+            h: row_h,
+        },
+    ];
+
+    (gear, panel, rows)
+}
+
+fn hit_settings_rows(x: f32, y: f32, rows: [RectI32; 3]) -> Option<SettingsAction> {
+    if hit_rect(x, y, rows[0]) {
+        return Some(SettingsAction::TogglePlayOnTap);
+    }
+    if hit_rect(x, y, rows[1]) {
+        return Some(SettingsAction::ToggleShowNoteNames);
+    }
+    if hit_rect(x, y, rows[2]) {
+        return Some(SettingsAction::ToggleShowRomanChords);
+    }
+    None
+}
+
 fn draw_strings(
     surface: &mut Surface<Rc<Window>, Rc<Window>>,
     width: u32,
@@ -284,6 +403,10 @@ fn draw_strings(
     top_chord: Option<Chord>,
     bottom_chord: Chord,
     positions: &[f32],
+    show_note_names: bool,
+    transpose_pc: i16,
+    show_settings: bool,
+    settings: &crate::ui_settings::UiSettings,
 ) {
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0);
@@ -294,12 +417,14 @@ fn draw_strings(
         chord: Option<Chord>,
         width: u32,
         positions: &[f32],
-    ) -> (Vec<u8>, Vec<u32>) {
+        transpose_pc: i16,
+    ) -> (Vec<u8>, Vec<u32>, Vec<u8>) {
         let mut best_prio = vec![0u8; width as usize];
         let mut best_color = vec![0u32; width as usize];
+        let mut best_pc = vec![255u8; width as usize];
 
         let Some(chord) = chord else {
-            return (best_prio, best_color);
+            return (best_prio, best_color, best_pc);
         };
 
         for (i, x) in positions.iter().enumerate() {
@@ -314,22 +439,23 @@ fn draw_strings(
             let xi = xi as usize;
 
             let (prio, color) = if chord.has_root(uknote) {
-                (2, 0xFF0000)
+                (2, 0x00FF0000)
             } else {
-                (1, 0xFFFFFF)
+                (1, 0x00FFFFFF)
             };
 
             if prio > best_prio[xi] {
                 best_prio[xi] = prio;
                 best_color[xi] = color;
+                best_pc[xi] = (uknote.wrap_to_octave() + transpose_pc).rem_euclid(12) as u8;
             }
         }
 
-        (best_prio, best_color)
+        (best_prio, best_color, best_pc)
     }
 
-    let (top_prio, top_color) = fold_best(top_chord, width, positions);
-    let (bot_prio, bot_color) = fold_best(Some(bottom_chord), width, positions);
+    let (top_prio, top_color, top_pc) = fold_best(top_chord, width, positions, transpose_pc);
+    let (bot_prio, bot_color, bot_pc) = fold_best(Some(bottom_chord), width, positions, transpose_pc);
 
     for xi in 0..width as usize {
         if top_prio[xi] != 0 {
@@ -346,5 +472,117 @@ fn draw_strings(
         }
     }
 
+    if show_note_names {
+        for (xi, prio) in top_prio.iter().enumerate() {
+            if *prio == 0 {
+                continue;
+            }
+            let pc = top_pc[xi];
+            if pc == 255 {
+                continue;
+            }
+            let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
+            crate::pixel_font::draw_text_u32(&mut buffer, width as usize, height as usize, xi as i32 + 4, 2, label, top_color[xi], 13, 5);
+        }
+
+        let y_top = split as i32 + 2;
+        for (xi, prio) in bot_prio.iter().enumerate() {
+            if *prio == 0 {
+                continue;
+            }
+            let pc = bot_pc[xi];
+            if pc == 255 {
+                continue;
+            }
+            let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
+            crate::pixel_font::draw_text_u32(&mut buffer, width as usize, height as usize, xi as i32 + 4, y_top, label, bot_color[xi], 13, 5);
+        }
+    }
+
+    // Settings overlay.
+    let (gear, panel, rows) = settings_layout(width, height);
+    // Gear button
+    fill_rect(&mut buffer, width as usize, height as usize, gear, 0x00222222);
+    crate::pixel_font::draw_text_u32(&mut buffer, width as usize, height as usize, gear.x + 4, gear.y + 4, "SET", 0x00FFFFFF, 13, 5);
+
+    if show_settings {
+        fill_rect(&mut buffer, width as usize, height as usize, panel, 0x00111111);
+        stroke_rect(&mut buffer, width as usize, height as usize, panel, 0x00333333);
+
+        // Row 1: TAP
+        draw_checkbox_row(
+            &mut buffer,
+            width as usize,
+            height as usize,
+            rows[0],
+            settings.play_on_tap,
+            "TAP",
+        );
+        draw_checkbox_row(
+            &mut buffer,
+            width as usize,
+            height as usize,
+            rows[1],
+            settings.show_note_names,
+            "LBL",
+        );
+        draw_checkbox_row(
+            &mut buffer,
+            width as usize,
+            height as usize,
+            rows[2],
+            settings.show_roman_chords,
+            "ROM",
+        );
+    }
+
     buffer.present().unwrap();
+}
+
+fn fill_rect(buf: &mut [u32], w: usize, h: usize, r: RectI32, color: u32) {
+    let x0 = r.x.max(0) as usize;
+    let y0 = r.y.max(0) as usize;
+    let x1 = (r.x + r.w).min(w as i32).max(0) as usize;
+    let y1 = (r.y + r.h).min(h as i32).max(0) as usize;
+
+    for y in y0..y1 {
+        let row = y * w;
+        for x in x0..x1 {
+            buf[row + x] = color;
+        }
+    }
+}
+
+fn stroke_rect(buf: &mut [u32], w: usize, h: usize, r: RectI32, color: u32) {
+    fill_rect(buf, w, h, RectI32 { x: r.x, y: r.y, w: r.w, h: 1 }, color);
+    fill_rect(buf, w, h, RectI32 { x: r.x, y: r.y + r.h - 1, w: r.w, h: 1 }, color);
+    fill_rect(buf, w, h, RectI32 { x: r.x, y: r.y, w: 1, h: r.h }, color);
+    fill_rect(buf, w, h, RectI32 { x: r.x + r.w - 1, y: r.y, w: 1, h: r.h }, color);
+}
+
+fn draw_checkbox_row(buf: &mut [u32], w: usize, h: usize, row: RectI32, value: bool, label: &str) {
+    let box_r = RectI32 {
+        x: row.x + 6,
+        y: row.y + 5,
+        w: 10,
+        h: 10,
+    };
+    fill_rect(buf, w, h, box_r, 0x00000000);
+    stroke_rect(buf, w, h, box_r, 0x00777777);
+    if value {
+        fill_rect(
+            buf,
+            w,
+            h,
+            RectI32 {
+                x: box_r.x + 2,
+                y: box_r.y + 2,
+                w: box_r.w - 4,
+                h: box_r.h - 4,
+            },
+            0x00FFFFFF,
+        );
+    }
+
+    crate::pixel_font::draw_text_u32(buf, w, h, row.x + 22, row.y + 3, label, 0x00FFFFFF, 13, 5);
 }

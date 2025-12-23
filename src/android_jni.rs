@@ -450,75 +450,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         (uknote.wrap_to_octave() + transpose_pc).rem_euclid(12)
     }
 
-    fn glyph_5x7(ch: char) -> [u8; 7] {
-        match ch {
-            'A' => [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001],
-            'B' => [0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110],
-            'C' => [0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110],
-            'D' => [0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110],
-            'E' => [0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111],
-            'F' => [0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000],
-            'G' => [0b01110, 0b10001, 0b10000, 0b10111, 0b10001, 0b10001, 0b01110],
-            '#' => [0b01010, 0b11111, 0b01010, 0b01010, 0b11111, 0b01010, 0b01010],
-            'b' => [0b10000, 0b10000, 0b11110, 0b10001, 0b10001, 0b10001, 0b11110],
-            _ => [0; 7],
-        }
-    }
-
-    fn draw_text(
-        pixels: &mut [i32],
-        w: usize,
-        h: usize,
-        x_left: i32,
-        y_top: i32,
-        text: &str,
-        color: i32,
-    ) {
+    fn draw_text(pixels: &mut [i32], w: usize, h: usize, x_left: i32, y_top: i32, text: &str, color: i32) {
         // +30% over the old 2x scale => 2.6x.
-        // We implement this as a rational scale so we can stay purely in integer pixel math.
-        const SCALE_NUM: i32 = 13;
-        const SCALE_DEN: i32 = 5;
-
-        let map = |u: i32| (u * SCALE_NUM) / SCALE_DEN;
-
-        let char_w: i32 = map(5);
-        let char_h: i32 = map(7);
-        let spacing: i32 = map(1).max(1);
-
-        let chars: Vec<char> = text.chars().collect();
-        let mut x = x_left;
-
-        for ch in chars {
-            let g = glyph_5x7(ch);
-            for (row, bits) in g.iter().enumerate() {
-                for col in 0..5 {
-                    if (bits & (1 << (4 - col))) == 0 {
-                        continue;
-                    }
-
-                    let x0 = x + map(col as i32);
-                    let x1 = x + map(col as i32 + 1);
-                    let y0 = y_top + map(row as i32);
-                    let y1 = y_top + map(row as i32 + 1);
-
-                    for py in y0..y1 {
-                        for px in x0..x1 {
-                            if px < 0 || py < 0 {
-                                continue;
-                            }
-                            let (px, py) = (px as usize, py as usize);
-                            if px >= w || py >= h {
-                                continue;
-                            }
-                            pixels[py * w + px] = color;
-                        }
-                    }
-                }
-            }
-            x += char_w + spacing;
-        }
-
-        let _ = char_h;
+        crate::pixel_font::draw_text_i32(pixels, w, h, x_left, y_top, text, color, 13, 5)
     }
 
     let len = w * h;
