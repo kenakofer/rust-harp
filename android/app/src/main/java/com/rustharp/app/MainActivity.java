@@ -80,10 +80,13 @@ public class MainActivity extends Activity {
     private boolean showNoteNames = false;
     private boolean playOnTap = true;
     private boolean showRomanChords = true;
+    private boolean showChordButtons = true;
     private int keyIndex = 0;
     private Spinner keySpinner;
     private boolean updatingKeySpinner = false;
     private SharedPreferences prefs;
+
+    private GridLayout chordGrid;
 
     public static native int rustInit();
     public static native long rustCreateFrontend();
@@ -238,6 +241,7 @@ public class MainActivity extends Activity {
         showNoteNames = prefs.getBoolean("showNoteNames", false);
         playOnTap = prefs.getBoolean("playOnTap", true);
         showRomanChords = prefs.getBoolean("showRomanChords", true);
+        showChordButtons = prefs.getBoolean("showChordButtons", true);
         keyIndex = prefs.getInt("keyIndex", 0);
         rustSetShowNoteNames(rustHandle, showNoteNames);
         rustSetPlayOnTap(rustHandle, playOnTap);
@@ -327,12 +331,12 @@ public class MainActivity extends Activity {
         root.addView(iv);
 
         // Touch chord/modifier grid (lower-left).
-        GridLayout grid = new GridLayout(this);
-        grid.setColumnCount(7);
-        grid.setRowCount(3);
-        grid.setUseDefaultMargins(false);
-        grid.setPadding(0, 0, 0, 0);
-        grid.setMotionEventSplittingEnabled(true);
+        chordGrid = new GridLayout(this);
+        chordGrid.setColumnCount(7);
+        chordGrid.setRowCount(3);
+        chordGrid.setUseDefaultMargins(false);
+        chordGrid.setPadding(0, 0, 0, 0);
+        chordGrid.setMotionEventSplittingEnabled(true);
 
         FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -340,7 +344,8 @@ public class MainActivity extends Activity {
         glp.leftMargin = 0;
         glp.bottomMargin = 0;
         glp.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
-        grid.setLayoutParams(glp);
+        chordGrid.setLayoutParams(glp);
+        chordGrid.setVisibility(showChordButtons ? View.VISIBLE : View.GONE);
 
         // ~30% bigger than before.
         int bw = dpToPx(83);
@@ -359,41 +364,40 @@ public class MainActivity extends Activity {
         uiButtons[BTN_III] = makeUiButton("iii", BTN_III, bw, bh);
         uiButtons[BTN_VII_DIM] = makeUiButton("vii\u00B0", BTN_VII_DIM, bw, bh);
 
-        // Row 3: Maj7 No3 Sus4 M/m Add2 Add7 Hept
+        // Row 3: Maj7 No3 Sus4 M/m Add2 Add7
         uiButtons[BTN_MAJ7] = makeUiButton("Maj7", BTN_MAJ7, bw, bh);
         uiButtons[BTN_NO3] = makeUiButton("No3", BTN_NO3, bw, bh);
         uiButtons[BTN_SUS4] = makeUiButton("Sus4", BTN_SUS4, bw, bh);
         uiButtons[BTN_MM] = makeUiButton("M/m", BTN_MM, bw, bh);
         uiButtons[BTN_ADD2] = makeUiButton("Add2", BTN_ADD2, bw, bh);
         uiButtons[BTN_ADD7] = makeUiButton("Add7", BTN_ADD7, bw, bh);
-        uiButtons[BTN_HEPT] = makeUiButton("Hept", BTN_HEPT, bw, bh);
 
         // Add in row-major order.
-        grid.addView(uiButtons[BTN_VIIB]);
-        grid.addView(uiButtons[BTN_IV]);
-        grid.addView(uiButtons[BTN_I]);
-        grid.addView(uiButtons[BTN_V]);
-        grid.addView(makeBlank(bw, bh));
-        grid.addView(makeBlank(bw, bh));
-        grid.addView(makeBlank(bw, bh));
+        chordGrid.addView(uiButtons[BTN_VIIB]);
+        chordGrid.addView(uiButtons[BTN_IV]);
+        chordGrid.addView(uiButtons[BTN_I]);
+        chordGrid.addView(uiButtons[BTN_V]);
+        chordGrid.addView(makeBlank(bw, bh));
+        chordGrid.addView(makeBlank(bw, bh));
+        chordGrid.addView(makeBlank(bw, bh));
 
-        grid.addView(uiButtons[BTN_II]);
-        grid.addView(uiButtons[BTN_VI]);
-        grid.addView(uiButtons[BTN_III]);
-        grid.addView(uiButtons[BTN_VII_DIM]);
-        grid.addView(makeBlank(bw, bh));
-        grid.addView(makeBlank(bw, bh));
-        grid.addView(makeBlank(bw, bh));
+        chordGrid.addView(uiButtons[BTN_II]);
+        chordGrid.addView(uiButtons[BTN_VI]);
+        chordGrid.addView(uiButtons[BTN_III]);
+        chordGrid.addView(uiButtons[BTN_VII_DIM]);
+        chordGrid.addView(makeBlank(bw, bh));
+        chordGrid.addView(makeBlank(bw, bh));
+        chordGrid.addView(makeBlank(bw, bh));
 
-        grid.addView(uiButtons[BTN_MAJ7]);
-        grid.addView(uiButtons[BTN_NO3]);
-        grid.addView(uiButtons[BTN_SUS4]);
-        grid.addView(uiButtons[BTN_MM]);
-        grid.addView(uiButtons[BTN_ADD2]);
-        grid.addView(uiButtons[BTN_ADD7]);
-        grid.addView(uiButtons[BTN_HEPT]);
+        chordGrid.addView(uiButtons[BTN_MAJ7]);
+        chordGrid.addView(uiButtons[BTN_NO3]);
+        chordGrid.addView(uiButtons[BTN_SUS4]);
+        chordGrid.addView(uiButtons[BTN_MM]);
+        chordGrid.addView(uiButtons[BTN_ADD2]);
+        chordGrid.addView(uiButtons[BTN_ADD7]);
+        chordGrid.addView(makeBlank(bw, bh));
 
-        root.addView(grid);
+        root.addView(chordGrid);
 
         // Status panel (lower-right): key selector.
         LinearLayout status = new LinearLayout(this);
@@ -502,6 +506,21 @@ public class MainActivity extends Activity {
             updateChordButtonLabels();
         });
         options.addView(cbRoman);
+
+        CheckBox cbButtons = new CheckBox(this);
+        cbButtons.setText("Chord buttons");
+        cbButtons.setTextColor(0xFFFFFFFF);
+        cbButtons.setChecked(showChordButtons);
+        cbButtons.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            showChordButtons = isChecked;
+            if (prefs != null) {
+                prefs.edit().putBoolean("showChordButtons", showChordButtons).apply();
+            }
+            if (chordGrid != null) {
+                chordGrid.setVisibility(showChordButtons ? View.VISIBLE : View.GONE);
+            }
+        });
+        options.addView(cbButtons);
 
         gear.setOnClickListener(v -> {
             options.setVisibility(options.getVisibility() == android.view.View.VISIBLE
