@@ -560,8 +560,10 @@ public class MainActivity extends Activity {
         int bottom = Math.min(height, top + bandHeight);
 
         List<Rect> rects = new ArrayList<>();
-        rects.add(new Rect(0, top, leftEdge, bottom));
-        rects.add(new Rect(rightEdgeStart, top, width, bottom));
+        // Due to bevel, It needs to extend off the left edge somewhat:
+        rects.add(new Rect(-edgePx, top, leftEdge, bottom));
+        // And off the right edge as well:
+        rects.add(new Rect(rightEdgeStart, top, width + edgePx, bottom));
         iv.setSystemGestureExclusionRects(rects);
     }
 
