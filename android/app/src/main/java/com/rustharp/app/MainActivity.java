@@ -22,6 +22,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.ArrayAdapter;
+import android.widget.Toast;
 import android.content.SharedPreferences;
 
 import java.util.ArrayList;
@@ -84,6 +85,11 @@ public class MainActivity extends Activity {
     private int keyIndex = 0;
     private Spinner keySpinner;
     private boolean updatingKeySpinner = false;
+
+    private String audioBackend = "AAudio"; // "AAudio" or "AudioTrack"
+    private Spinner audioSpinner;
+    private boolean updatingAudioSpinner = false;
+
     private SharedPreferences prefs;
 
     private GridLayout chordGrid;
@@ -243,6 +249,7 @@ public class MainActivity extends Activity {
         showRomanChords = prefs.getBoolean("showRomanChords", true);
         showChordButtons = prefs.getBoolean("showChordButtons", true);
         keyIndex = prefs.getInt("keyIndex", 0);
+        audioBackend = prefs.getString("audioBackend", "AAudio");
         rustSetShowNoteNames(rustHandle, showNoteNames);
         rustSetPlayOnTap(rustHandle, playOnTap);
         rustSetKeyIndex(rustHandle, keyIndex);
@@ -522,6 +529,33 @@ public class MainActivity extends Activity {
         });
         options.addView(cbButtons);
 
+        // Audio backend selection (applies on restart for now).
+        audioSpinner = new Spinner(this);
+        String[] audioLabels = new String[]{"AAudio", "AudioTrack"};
+        ArrayAdapter<String> audioAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, audioLabels);
+        audioAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        audioSpinner.setAdapter(audioAdapter);
+        audioSpinner.setSelection("AudioTrack".equals(audioBackend) ? 1 : 0);
+        audioSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                if (updatingAudioSpinner) return;
+                String chosen = (position == 1) ? "AudioTrack" : "AAudio";
+                if (!chosen.equals(audioBackend)) {
+                    audioBackend = chosen;
+                    if (prefs != null) {
+                        prefs.edit().putString("audioBackend", audioBackend).apply();
+                    }
+                    Toast.makeText(MainActivity.this, "Audio backend will change on restart", Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {
+            }
+        });
+        options.addView(audioSpinner);
+
         gear.setOnClickListener(v -> {
             options.setVisibility(options.getVisibility() == android.view.View.VISIBLE
                     ? android.view.View.GONE
@@ -547,12 +581,19 @@ public class MainActivity extends Activity {
 
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
 
-        boolean aaudioOk = rustStartAAudio(rustHandle);
-        if (!aaudioOk) {
+        // Audio backend selection is currently applied at startup.
+        // Switching at runtime would require re-plumbing the Rust audio message receiver.
+        if ("AudioTrack".equals(audioBackend)) {
             audio = new RustAudio(rustHandle, (android.media.AudioManager) getSystemService(AUDIO_SERVICE));
             audio.start();
         } else {
-            Log.i("RustHarp", "AAudio started");
+            boolean aaudioOk = rustStartAAudio(rustHandle);
+            if (!aaudioOk) {
+                audio = new RustAudio(rustHandle, (android.media.AudioManager) getSystemService(AUDIO_SERVICE));
+                audio.start();
+            } else {
+                Log.i("RustHarp", "AAudio started");
+            }
         }
     }
 
