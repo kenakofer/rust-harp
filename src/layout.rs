@@ -68,8 +68,9 @@ pub const ANDROID_NUM_STRINGS: usize = 22;
 
 /// Android-only: which `UnkeyedNote` should map to the first (left-most) physical string.
 ///
-/// This is intentionally independent from desktop.
-pub const ANDROID_LOWEST_NOTE: i16 = 12; // one octave above C
+/// This is intentionally independent from desktop. TODO things get weird if this isn't a multiple
+/// of 12
+pub const ANDROID_LOWEST_NOTE: i16 = 24;
 
 /// Android-specific note positions.
 ///
