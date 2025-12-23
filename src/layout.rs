@@ -1,6 +1,6 @@
-/// Pre-calculated unscaled relative x-positions for each string, ranging from 0.0 to 1.0.
+/// Desktop pre-calculated unscaled relative x-positions for each string, ranging from 0.0 to 1.0.
 ///
-/// Kept in a core module so desktop + Android can share the same layout.
+/// Android uses a separate layout (see `compute_note_positions_android*`).
 pub const UNSCALED_RELATIVE_X_POSITIONS: &[f32] = &[
     2.03124999999999972e-02,
     5.19531250000000028e-02,
@@ -60,41 +60,63 @@ pub fn compute_note_positions(width: f32) -> Vec<f32> {
     positions
 }
 
+/// Android layout config.
+///
+/// We intentionally keep Android layout separate from desktop: the phone needs fewer,
+/// wider-spaced strings for reliable touch.
+pub const ANDROID_NUM_STRINGS: usize = 22;
+
+/// Android-only: which `UnkeyedNote` should map to the first (left-most) physical string.
+///
+/// This is intentionally independent from desktop.
+pub const ANDROID_LOWEST_NOTE: i16 = 12; // one octave above C
+
 /// Android-specific note positions.
 ///
-/// Compared to `compute_note_positions`, this:
-/// - drops one low octave (7 strings) to give each remaining string more screen space
-/// - evenly spaces the remaining strings across the full width
+/// - Uses a fixed 22 physical strings
+/// - Evenly spaces them across the screen
+/// - Allows shifting the lowest playable note via `ANDROID_LOWEST_NOTE`
+///
+/// The returned vector is indexed by `UnkeyedNote` (0..N). Notes below
+/// `ANDROID_LOWEST_NOTE` are represented with non-finite x positions so touch + render
+/// logic can ignore them without needing special casing.
 pub fn compute_note_positions_android(width: f32) -> Vec<f32> {
-    compute_note_positions_evenly_spaced(width, 1)
+    compute_note_positions_android_with_lowest(width, ANDROID_LOWEST_NOTE)
 }
 
-fn compute_note_positions_evenly_spaced(width: f32, drop_low_octaves: usize) -> Vec<f32> {
-    let start_string = drop_low_octaves.saturating_mul(7);
-    let remaining_strings = NUM_STRINGS.saturating_sub(start_string);
-    if remaining_strings == 0 {
+pub fn compute_note_positions_android_with_lowest(width: f32, lowest_note: i16) -> Vec<f32> {
+    let width = width.max(1.0);
+
+    let strings = ANDROID_NUM_STRINGS;
+    if strings == 0 {
         return Vec::new();
     }
 
-    let width = width.max(1.0);
-    let scale = if remaining_strings > 1 {
-        (width - 1.0) / (remaining_strings as f32 - 1.0)
+    // Small padding so the first/last string isn't clipped by the edge.
+    let pad = 2.0f32;
+    let usable = (width - 2.0 * pad).max(1.0);
+    let step = if strings > 1 {
+        usable / (strings as f32 - 1.0)
     } else {
         0.0
     };
 
-    let mut positions = Vec::new();
+    // Keep indices aligned with UnkeyedNote (i as i16). Notes below lowest_note are dummy.
+    let dummy_len = lowest_note.max(0) as usize;
+    let mut positions: Vec<f32> = vec![f32::NEG_INFINITY; dummy_len];
 
-    for octave in drop_low_octaves.. {
-        for uknote in 0..12 {
-            let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[uknote as usize] as usize;
-            let string = octave * 7 + string_in_octave;
-            if string >= NUM_STRINGS {
-                return positions;
-            }
-            let idx = string - start_string;
-            positions.push(idx as f32 * scale);
+    // Build chromatic notes in order, mapping them onto a 7-strings-per-octave physical layout,
+    // but capped by `ANDROID_NUM_STRINGS`.
+    for rel_note in 0.. {
+        let octave = rel_note / 12;
+        let pc = rel_note % 12;
+        let string_in_octave = NOTE_TO_STRING_IN_OCTAVE[pc as usize] as usize;
+        let string = octave * 7 + string_in_octave;
+        if string >= strings {
+            break;
         }
+
+        positions.push(pad + string as f32 * step);
     }
 
     positions

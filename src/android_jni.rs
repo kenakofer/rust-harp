@@ -625,6 +625,9 @@ mod render_tests {
         // Find an x-position that occurs more than once.
         let mut xi_counts = std::collections::HashMap::<i32, usize>::new();
         for x in &positions {
+            if !x.is_finite() {
+                continue;
+            }
             *xi_counts.entry(x.round() as i32).or_insert(0) += 1;
         }
         let (dup_xi, _count) = xi_counts
@@ -678,6 +681,9 @@ mod render_tests {
         // Find a string x-position where the chord is active.
         let mut line_xs = std::collections::HashSet::<usize>::new();
         for x in &positions {
+            if !x.is_finite() {
+                continue;
+            }
             let xi = x.round() as i32;
             if xi >= 0 && xi < w as i32 {
                 line_xs.insert(xi as usize);
