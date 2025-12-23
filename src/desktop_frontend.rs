@@ -1,11 +1,15 @@
 use crate::chord::Chord;
-use crate::notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
+use crate::notes::{MidiNote, NoteVolume, Transpose, UnkeyedNote, UnmidiNote};
 use crate::output_midir::MidiBackend;
 use crate::strum;
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
 use crate::rows::RowId;
 use crate::ui_adapter::{self, AppAdapter};
 use crate::ui_events::{UiEvent, UiSession};
+use crate::ui_settings::UiAudioBackend;
+
+#[cfg(feature = "synth")]
+use crate::output_synth::SynthBackend;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use midir::os::unix::VirtualOutput;
@@ -73,10 +77,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         eprintln!("Warning: No MIDI ports found. Application will emit no sound.");
     }
 
-    let mut midi = MidiBackend::new(conn_out, MAIN_CHANNEL, BASS_CHANNEL);
+    let mut audio = DesktopAudio::new(MidiBackend::new(conn_out, MAIN_CHANNEL, BASS_CHANNEL));
 
     // If we have a connection, set the instruments
-    if let Some(conn) = midi.conn_mut() {
+    if let Some(conn) = audio.midi_mut().conn_mut() {
         let _ = conn.send(&[0xC0 | MAIN_CHANNEL, MAIN_PROGRAM]);
         let _ = conn.send(&[0xC0 | BASS_CHANNEL, BASS_PROGRAM]);
         let _ = conn.send(&[0xC0 | MICRO_CHANNEL, MICRO_PROGRAM]);
@@ -111,18 +115,19 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         match event {
             Event::WindowEvent { window_id, event } if window_id == window.id() => match event {
                 WindowEvent::CloseRequested => {
-                    // Turn off all active notes before closing
-                    let notes_to_stop: Vec<UnmidiNote> = ui.engine().active_notes().collect();
-                    for note in notes_to_stop {
-                        midi.stop_note(MIDI_BASE_TRANSPOSE + note);
-                    }
+                    audio.stop_all_notes_all_backends(ui.engine().active_notes());
                     elwt.exit();
                 }
 
                 WindowEvent::KeyboardInput { event, .. } => {
                     if let Some(ue) = ui_adapter::ui_event_from_winit(&event) {
                         let out = ui.handle(ue, &note_positions);
-                        let _ = process_app_effects(out.effects, &mut midi, Some(window.as_ref()));
+                        let _ = process_app_effects(
+                            out.effects,
+                            &mut audio,
+                            settings.audio_backend,
+                            Some(window.as_ref()),
+                        );
                     }
                 }
 
@@ -183,6 +188,24 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                             SettingsAction::ToggleShowRomanChords => {
                                                 settings.show_roman_chords = !settings.show_roman_chords;
                                             }
+                                            SettingsAction::CycleAudioBackend => {
+                                                // Stop currently playing notes on the *current* backend so we don't leave
+                                                // hanging notes behind when switching.
+                                                let notes: Vec<UnmidiNote> = ui.engine().active_notes().collect();
+                                                for n in notes {
+                                                    audio.stop_note(settings.audio_backend, MIDI_BASE_TRANSPOSE + n);
+                                                }
+
+                                                settings.audio_backend = match settings.audio_backend {
+                                                    UiAudioBackend::Synth => UiAudioBackend::Midi,
+                                                    _ => UiAudioBackend::Synth,
+                                                };
+
+                                                #[cfg(feature = "synth")]
+                                                if settings.audio_backend == UiAudioBackend::Synth && audio.synth.is_none() {
+                                                    settings.audio_backend = UiAudioBackend::Midi;
+                                                }
+                                            }
                                         }
                                     }
                                     window.request_redraw();
@@ -207,7 +230,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                             }),
                             &note_positions,
                         );
-                        let _ = process_app_effects(out.effects, &mut midi, Some(window.as_ref()));
+                        let _ = process_app_effects(
+                            out.effects,
+                            &mut audio,
+                            settings.audio_backend,
+                            Some(window.as_ref()),
+                        );
                     }
                 }
 
@@ -226,7 +254,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                             }),
                             &note_positions,
                         );
-                        let _ = process_app_effects(out.effects, &mut midi, Some(window.as_ref()));
+                        let _ = process_app_effects(
+                            out.effects,
+                            &mut audio,
+                            settings.audio_backend,
+                            Some(window.as_ref()),
+                        );
                     }
 
                     prev_pos = Some((curr_x, curr_y));
@@ -263,9 +296,81 @@ fn recompute_note_positions(positions: &mut Vec<f32>, width: f32) {
     *positions = crate::layout::compute_note_positions(width);
 }
 
+struct DesktopAudio {
+    midi: MidiBackend,
+    #[cfg(feature = "synth")]
+    synth: Option<SynthBackend>,
+}
+
+impl DesktopAudio {
+    fn new(midi: MidiBackend) -> Self {
+        #[cfg(feature = "synth")]
+        let synth = SynthBackend::new().ok();
+
+        Self {
+            midi,
+            #[cfg(feature = "synth")]
+            synth,
+        }
+    }
+
+    fn stop_note(&mut self, backend: UiAudioBackend, midi_note: MidiNote) {
+        match backend {
+            UiAudioBackend::Midi => self.midi.stop_note(midi_note),
+            UiAudioBackend::Synth => {
+                #[cfg(feature = "synth")]
+                if let Some(s) = &self.synth {
+                    s.stop_note(midi_note);
+                    return;
+                }
+                self.midi.stop_note(midi_note);
+            }
+            _ => self.midi.stop_note(midi_note),
+        }
+    }
+
+    fn play_note(&mut self, backend: UiAudioBackend, midi_note: MidiNote, volume: NoteVolume) {
+        match backend {
+            UiAudioBackend::Midi => self.midi.play_note(midi_note, volume),
+            UiAudioBackend::Synth => {
+                #[cfg(feature = "synth")]
+                if let Some(s) = &self.synth {
+                    s.play_note(midi_note, volume);
+                    return;
+                }
+                self.midi.play_note(midi_note, volume);
+            }
+            _ => self.midi.play_note(midi_note, volume),
+        }
+    }
+
+    fn stop_note_all_backends(&mut self, midi_note: MidiNote) {
+        self.midi.stop_note(midi_note);
+        #[cfg(feature = "synth")]
+        if let Some(s) = &self.synth {
+            s.stop_note(midi_note);
+        }
+    }
+
+    fn stop_all_notes_all_backends(&mut self, notes: impl Iterator<Item = UnmidiNote>) {
+        for n in notes {
+            self.stop_note_all_backends(MIDI_BASE_TRANSPOSE + n);
+        }
+    }
+
+    fn midi_available(&self) -> bool {
+        self.midi.is_available()
+    }
+
+    fn midi_mut(&mut self) -> &mut MidiBackend {
+        &mut self.midi
+    }
+}
+
 fn process_app_effects(
     effects: crate::app_state::AppEffects,
-    midi: &mut MidiBackend,
+    audio: &mut DesktopAudio,
+    audio_backend: UiAudioBackend,
     window: Option<&Window>,
 ) -> bool {
     let played = !effects.play_notes.is_empty();
@@ -282,10 +387,10 @@ fn process_app_effects(
     // IMPORTANT: stop before play so retriggering the same note doesn't immediately stop
     // the newly started note.
     for un in effects.stop_notes {
-        midi.stop_note(MIDI_BASE_TRANSPOSE + un);
+        audio.stop_note(audio_backend, MIDI_BASE_TRANSPOSE + un);
     }
     for pn in effects.play_notes {
-        midi.play_note(MIDI_BASE_TRANSPOSE + pn.note, pn.volume);
+        audio.play_note(audio_backend, MIDI_BASE_TRANSPOSE + pn.note, pn.volume);
     }
 
     played
@@ -295,11 +400,12 @@ fn process_app_effects(
 fn check_pluck(
     x1: f32,
     x2: f32,
-    midi: &mut MidiBackend,
+    audio: &mut DesktopAudio,
+    audio_backend: UiAudioBackend,
     app: &mut AppAdapter,
     note_positions: &[f32],
 ) {
-    if !midi.is_available() {
+    if audio_backend == UiAudioBackend::Midi && !audio.midi_available() {
         return;
     }
 
@@ -308,15 +414,19 @@ fn check_pluck(
 
         for note in crossing.notes {
             let effects = app.handle_strum_crossing(note);
-            if process_app_effects(effects, midi, None) {
+            if process_app_effects(effects, audio, audio_backend, None) {
                 played_any = true;
             }
         }
 
-        if !played_any {
-            // Damped string sound
-            midi.send_note_on(MICRO_CHANNEL, MICRO_NOTE, MICRO_VELOCITY);
-            midi.send_note_off(MICRO_CHANNEL, MICRO_NOTE);
+        if !played_any && audio_backend == UiAudioBackend::Midi {
+            // Damped string sound (MIDI only)
+            if let Some(conn) = audio.midi_mut().conn_mut() {
+                let on = 0x90 | (MICRO_CHANNEL & 0x0F);
+                let off = 0x80 | (MICRO_CHANNEL & 0x0F);
+                let _ = conn.send(&[on, MICRO_NOTE.0, MICRO_VELOCITY]);
+                let _ = conn.send(&[off, MICRO_NOTE.0, 0]);
+            }
         }
     }
 }
@@ -340,9 +450,10 @@ enum SettingsAction {
     TogglePlayOnTap,
     ToggleShowNoteNames,
     ToggleShowRomanChords,
+    CycleAudioBackend,
 }
 
-fn settings_layout(width: u32, _height: u32) -> (RectI32, RectI32, [RectI32; 3]) {
+fn settings_layout(width: u32, _height: u32) -> (RectI32, RectI32, [RectI32; 4]) {
     // Fixed-size pixel UI; good enough for now.
     let gear = RectI32 {
         x: width as i32 - 44,
@@ -351,14 +462,15 @@ fn settings_layout(width: u32, _height: u32) -> (RectI32, RectI32, [RectI32; 3])
         h: 18,
     };
 
+    let row_h = 20;
+
     let panel = RectI32 {
         x: width as i32 - 170,
         y: 30,
         w: 162,
-        h: 64,
+        h: 4 * row_h,
     };
 
-    let row_h = 20;
     let rows = [
         RectI32 {
             x: panel.x,
@@ -378,12 +490,18 @@ fn settings_layout(width: u32, _height: u32) -> (RectI32, RectI32, [RectI32; 3])
             w: panel.w,
             h: row_h,
         },
+        RectI32 {
+            x: panel.x,
+            y: panel.y + 3 * row_h,
+            w: panel.w,
+            h: row_h,
+        },
     ];
 
     (gear, panel, rows)
 }
 
-fn hit_settings_rows(x: f32, y: f32, rows: [RectI32; 3]) -> Option<SettingsAction> {
+fn hit_settings_rows(x: f32, y: f32, rows: [RectI32; 4]) -> Option<SettingsAction> {
     if hit_rect(x, y, rows[0]) {
         return Some(SettingsAction::TogglePlayOnTap);
     }
@@ -392,6 +510,9 @@ fn hit_settings_rows(x: f32, y: f32, rows: [RectI32; 3]) -> Option<SettingsActio
     }
     if hit_rect(x, y, rows[2]) {
         return Some(SettingsAction::ToggleShowRomanChords);
+    }
+    if hit_rect(x, y, rows[3]) {
+        return Some(SettingsAction::CycleAudioBackend);
     }
     None
 }
@@ -534,6 +655,19 @@ fn draw_strings(
             settings.show_roman_chords,
             "ROM",
         );
+
+        let backend_label = match settings.audio_backend {
+            UiAudioBackend::Synth => "SYN",
+            _ => "MID",
+        };
+        draw_value_row(
+            &mut buffer,
+            width as usize,
+            height as usize,
+            rows[3],
+            "AUD",
+            backend_label,
+        );
     }
 
     buffer.present().unwrap();
@@ -585,4 +719,9 @@ fn draw_checkbox_row(buf: &mut [u32], w: usize, h: usize, row: RectI32, value: b
     }
 
     crate::pixel_font::draw_text_u32(buf, w, h, row.x + 22, row.y + 3, label, 0x00FFFFFF, 13, 5);
+}
+
+fn draw_value_row(buf: &mut [u32], w: usize, h: usize, row: RectI32, label: &str, value: &str) {
+    crate::pixel_font::draw_text_u32(buf, w, h, row.x + 6, row.y + 3, label, 0x00FFFFFF, 13, 5);
+    crate::pixel_font::draw_text_u32(buf, w, h, row.x + 64, row.y + 3, value, 0x00FFFFFF, 13, 5);
 }

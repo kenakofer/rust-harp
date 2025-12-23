@@ -87,7 +87,7 @@ Plan (multi-step)
    - We won’t be able to fully unit test cpal/ALSA devices in CI, but we can keep the device-specific layer thin.
 
 Milestones
-- M1: Shared enum + settings UI hooks (no behavior change yet).
-- M2: Android switching works (AAudio <-> AudioTrack).
-- M3: Desktop Synth backend producing audio via cpal.
+- M1: Shared enum + settings UI hooks (no behavior change yet). ✅
+- M2: Android switching works (AAudio <-> AudioTrack). ✅
+- M3: Desktop Synth backend producing audio via cpal. (in progress)
 - M4: Desktop switching works (MIDI <-> Synth) + basic unit tests.

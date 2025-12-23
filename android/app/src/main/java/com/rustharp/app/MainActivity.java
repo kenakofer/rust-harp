@@ -22,7 +22,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.ArrayAdapter;
-import android.widget.Toast;
 import android.content.SharedPreferences;
 
 import java.util.ArrayList;
@@ -107,6 +106,7 @@ public class MainActivity extends Activity {
 
     public static native boolean rustStartAAudio(long handle);
     public static native void rustStopAAudio(long handle);
+    public static native void rustResetAudioChannel(long handle);
 
     public static native void rustSetShowNoteNames(long handle, boolean show);
     public static native void rustSetPlayOnTap(long handle, boolean enabled);
@@ -546,7 +546,7 @@ public class MainActivity extends Activity {
                     if (prefs != null) {
                         prefs.edit().putString("audioBackend", audioBackend).apply();
                     }
-                    Toast.makeText(MainActivity.this, "Audio backend will change on restart", Toast.LENGTH_SHORT).show();
+                    applyAudioBackend();
                 }
             }
 
@@ -581,19 +581,42 @@ public class MainActivity extends Activity {
 
         vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
 
-        // Audio backend selection is currently applied at startup.
-        // Switching at runtime would require re-plumbing the Rust audio message receiver.
+        // Start selected audio backend.
+        applyAudioBackend();
+    }
+
+    private void applyAudioBackend() {
+        if (rustHandle == 0) return;
+
+        // Stop anything currently running.
+        if (audio != null) {
+            audio.stop();
+            audio = null;
+        }
+        rustStopAAudio(rustHandle);
+
+        // Recreate the Rust audio message channel so AAudio/AudioTrack can both attach cleanly.
+        rustResetAudioChannel(rustHandle);
+
         if ("AudioTrack".equals(audioBackend)) {
             audio = new RustAudio(rustHandle, (android.media.AudioManager) getSystemService(AUDIO_SERVICE));
             audio.start();
+            return;
+        }
+
+        boolean aaudioOk = rustStartAAudio(rustHandle);
+        if (!aaudioOk) {
+            Log.w("RustHarp", "AAudio failed; falling back to AudioTrack");
+            updatingAudioSpinner = true;
+            audioBackend = "AudioTrack";
+            if (audioSpinner != null) audioSpinner.setSelection(1);
+            updatingAudioSpinner = false;
+            if (prefs != null) prefs.edit().putString("audioBackend", audioBackend).apply();
+
+            audio = new RustAudio(rustHandle, (android.media.AudioManager) getSystemService(AUDIO_SERVICE));
+            audio.start();
         } else {
-            boolean aaudioOk = rustStartAAudio(rustHandle);
-            if (!aaudioOk) {
-                audio = new RustAudio(rustHandle, (android.media.AudioManager) getSystemService(AUDIO_SERVICE));
-                audio.start();
-            } else {
-                Log.i("RustHarp", "AAudio started");
-            }
+            Log.i("RustHarp", "AAudio started");
         }
     }
 

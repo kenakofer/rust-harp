@@ -14,17 +14,21 @@ softbuffer = { version = "0.4", optional = true }
 midir = { version = "0.9", optional = true }
 log = { version = "0.4", optional = true }
 env_logger = { version = "0.11", optional = true }
+cpal = { version = "0.15", optional = true }
+crossbeam-channel = { version = "0.5", optional = true }
 # Android JNI surface
 jni = { version = "0.21", default-features = false, optional = true }
 
 bitflags = "2.10.0"
 
 [features]
-default = ["desktop", "midi"]
+default = ["desktop", "midi", "synth"]
 # Desktop UI (winit + softbuffer) and logging
 desktop = ["dep:winit", "dep:softbuffer", "dep:log", "dep:env_logger"]
 # MIDI runtime support
 midi = ["dep:midir"]
+# Built-in synth output (desktop via cpal)
+synth = ["dep:cpal", "dep:crossbeam-channel"]
 # Minimal JNI symbols for Android APK builds
 android = ["dep:jni"]
 

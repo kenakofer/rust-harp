@@ -88,6 +88,16 @@ impl AndroidFrontend {
         self.audio_rx.lock().unwrap().take()
     }
 
+    /// Recreate the audio message channel.
+    ///
+    /// This is used when switching between AAudio (callback owns the Receiver) and the legacy
+    /// AudioTrack path.
+    pub fn reset_audio_channel(&mut self) {
+        let (tx, rx) = mpsc::channel();
+        self.audio_tx = tx;
+        *self.audio_rx.lock().unwrap() = Some(rx);
+    }
+
     /// Legacy fallback (AudioTrack) fill: drain any queued messages then render mono i16.
     pub fn render_audio_i16_mono(&self, out: &mut [i16]) {
         // Match desktop's MIDI_BASE_TRANSPOSE (C2)

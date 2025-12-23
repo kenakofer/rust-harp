@@ -47,6 +47,19 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustStopAAudio(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustResetAudioChannel(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if handle == 0 {
+        return;
+    }
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    frontend.reset_audio_channel();
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustCreateFrontend(
     _env: JNIEnv,
     _class: JClass,
