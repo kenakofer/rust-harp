@@ -144,6 +144,43 @@ impl std::fmt::Debug for PitchClassSet {
     }
 }
 
+pub fn prefer_flats_for_key(key_pc: i16) -> bool {
+    let k = key_pc.rem_euclid(12);
+    matches!(k, 1 | 3 | 8 | 10) // Db, Eb, Ab, Bb
+}
+
+pub fn pitch_class_label(pc: i16, key_pc: i16) -> &'static str {
+    let pc = pc.rem_euclid(12);
+    match (prefer_flats_for_key(key_pc), pc) {
+        (false, 0) => "C",
+        (false, 1) => "C#",
+        (false, 2) => "D",
+        (false, 3) => "D#",
+        (false, 4) => "E",
+        (false, 5) => "F",
+        (false, 6) => "F#",
+        (false, 7) => "G",
+        (false, 8) => "G#",
+        (false, 9) => "A",
+        (false, 10) => "A#",
+        (false, 11) => "B",
+
+        (true, 0) => "C",
+        (true, 1) => "Db",
+        (true, 2) => "D",
+        (true, 3) => "Eb",
+        (true, 4) => "E",
+        (true, 5) => "F",
+        (true, 6) => "Gb",
+        (true, 7) => "G",
+        (true, 8) => "Ab",
+        (true, 9) => "A",
+        (true, 10) => "Bb",
+        (true, 11) => "B",
+        _ => "?",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
