@@ -39,7 +39,7 @@ public class MainActivity extends Activity {
     // Prefer flats in flat keys: Db, Eb, Ab, Bb.
     private static boolean preferFlatsForKey(int keyPc) {
         int k = ((keyPc % 12) + 12) % 12;
-        return k == 1 || k == 3 || k == 8 || k == 10;
+        return k == 1 || k == 3 || k == 5 || k == 8 || k == 10;
     }
     private static final int BTN_VIIB = 0;
 

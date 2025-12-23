@@ -146,7 +146,7 @@ impl std::fmt::Debug for PitchClassSet {
 
 pub fn prefer_flats_for_key(key_pc: i16) -> bool {
     let k = key_pc.rem_euclid(12);
-    matches!(k, 1 | 3 | 8 | 10) // Db, Eb, Ab, Bb
+    matches!(k, 1 | 3 | 5 | 8 | 10) // Db, Eb, F, Ab, Bb
 }
 
 pub fn pitch_class_label(pc: i16, key_pc: i16) -> &'static str {
