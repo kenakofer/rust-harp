@@ -3,6 +3,7 @@ use crate::notes::{MidiNote, Transpose, UnkeyedNote, UnmidiNote};
 use crate::output_midir::MidiBackend;
 use crate::strum;
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
+use crate::rows::RowId;
 use crate::ui_adapter::{self, AppAdapter};
 use crate::ui_events::{UiEvent, UiSession};
 
@@ -175,7 +176,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         &mut surface,
                         physical_size.width,
                         physical_size.height,
-                        ui.engine().active_chord(),
+                        *ui.engine().active_chord(),
+                        ui.engine()
+                            .active_chord_for_row(RowId::Bottom)
+                            .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
                         &note_positions,
                     );
                 }
@@ -185,16 +189,18 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         let pressed = state == winit::event::ElementState::Pressed;
                         is_mouse_down = pressed;
 
-                        let Some((x, _)) = prev_pos else {
+                        let Some((x, y)) = prev_pos else {
                             return;
                         };
 
                         let phase = if pressed { TouchPhase::Down } else { TouchPhase::Up };
+                        let h = window.inner_size().height.max(1) as f32;
                         let out = ui.handle(
                             UiEvent::Touch(TouchEvent {
                                 id: PointerId(0),
                                 phase,
                                 x,
+                                y_norm: (y / h).clamp(0.0, 1.0),
                             }),
                             &note_positions,
                         );
@@ -207,11 +213,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     let curr_y = position.y as f32;
 
                     if is_mouse_down {
+                        let h = window.inner_size().height.max(1) as f32;
                         let out = ui.handle(
                             UiEvent::Touch(TouchEvent {
                                 id: PointerId(0),
                                 phase: TouchPhase::Move,
                                 x: curr_x,
+                                y_norm: (curr_y / h).clamp(0.0, 1.0),
                             }),
                             &note_positions,
                         );
@@ -227,7 +235,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         &mut surface,
                         size.width,
                         size.height,
-                        ui.engine().active_chord(),
+                        *ui.engine().active_chord(),
+                        ui.engine()
+                            .active_chord_for_row(RowId::Bottom)
+                            .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
                         &note_positions,
                     );
                 }
@@ -321,36 +332,67 @@ fn draw_strings(
     surface: &mut Surface<Rc<Window>, Rc<Window>>,
     width: u32,
     height: u32,
-    active_chord: &Option<Chord>,
+    top_chord: Option<Chord>,
+    bottom_chord: Chord,
     positions: &[f32],
 ) {
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0);
 
-    if active_chord.is_none() {
-        buffer.present().unwrap();
-        return;
-    }
+    let split = height / 2;
 
-    for i in 0..positions.len() {
-        let uknote = UnkeyedNote(i as i16);
-        if active_chord.map_or(true, |c| c.contains(uknote)) {
-            let x = positions[i].round() as u32;
-            if x >= width {
+    fn fold_best(
+        chord: Option<Chord>,
+        width: u32,
+        positions: &[f32],
+    ) -> (Vec<u8>, Vec<u32>) {
+        let mut best_prio = vec![0u8; width as usize];
+        let mut best_color = vec![0u32; width as usize];
+
+        let Some(chord) = chord else {
+            return (best_prio, best_color);
+        };
+
+        for (i, x) in positions.iter().enumerate() {
+            let uknote = UnkeyedNote(i as i16);
+            if !chord.contains(uknote) {
                 continue;
             }
+            let xi = x.round() as i32;
+            if xi < 0 || xi >= width as i32 {
+                continue;
+            }
+            let xi = xi as usize;
 
-            let color = if active_chord.map_or(false, |c| c.has_root(uknote)) {
-                0xFF0000
+            let (prio, color) = if chord.has_root(uknote) {
+                (2, 0xFF0000)
             } else {
-                0xFFFFFF
+                (1, 0xFFFFFF)
             };
 
-            for y in 0..height {
-                let index = (y * width + x) as usize;
-                if index < buffer.len() {
-                    buffer[index] = color;
-                }
+            if prio > best_prio[xi] {
+                best_prio[xi] = prio;
+                best_color[xi] = color;
+            }
+        }
+
+        (best_prio, best_color)
+    }
+
+    let (top_prio, top_color) = fold_best(top_chord, width, positions);
+    let (bot_prio, bot_color) = fold_best(Some(bottom_chord), width, positions);
+
+    for xi in 0..width as usize {
+        if top_prio[xi] != 0 {
+            for y in 0..split {
+                let index = (y * width + xi as u32) as usize;
+                buffer[index] = top_color[xi];
+            }
+        }
+        if bot_prio[xi] != 0 {
+            for y in split..height {
+                let index = (y * width + xi as u32) as usize;
+                buffer[index] = bot_color[xi];
             }
         }
     }

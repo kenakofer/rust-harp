@@ -2,6 +2,7 @@ use crate::app_state::{AppEffects, KeyState};
 use crate::chord::Chord;
 use crate::input_map::UiKey;
 use crate::notes::{UnkeyedNote, UnmidiNote};
+use crate::rows::RowId;
 use crate::ui_events::{UiEvent, UiSession};
 
 fn ui_key_from_winit(key: &winit::keyboard::Key) -> Option<UiKey> {
@@ -44,7 +45,7 @@ impl AppAdapter {
     }
 
     pub fn handle_strum_crossing(&mut self, note: UnkeyedNote) -> AppEffects {
-        self.ui.engine_mut().handle_strum_crossing(note)
+        self.ui.engine_mut().handle_strum_crossing(RowId::Top, note)
     }
 
     pub fn active_chord(&self) -> &Option<Chord> {

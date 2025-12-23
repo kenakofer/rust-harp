@@ -39,6 +39,7 @@ pub enum KeyEvent {
         action: Actions,
     },
     StrumCrossing {
+        row: crate::rows::RowId,
         note: UnkeyedNote,
     },
 }
@@ -95,8 +96,11 @@ pub struct AppEffects {
 }
 
 pub struct AppState {
-    pub active_chord: Option<Chord>, //TODO privatize
+    pub active_chord: Option<Chord>, // Top row chord. TODO privatize
     pub active_notes: HashSet<UnmidiNote>,
+    active_notes_by_row: [HashSet<UnmidiNote>; 2],
+
+    bottom_chord: Chord,
 
     chord_keys_down: HashSet<ChordButton>,
     mod_keys_down: HashSet<ModButton>,
@@ -189,6 +193,9 @@ impl AppState {
         Self {
             active_chord: Some(Chord::new_triad(ROOT_I)),
             active_notes: HashSet::new(),
+            active_notes_by_row: std::array::from_fn(|_| HashSet::new()),
+
+            bottom_chord: heptatonic_major_chord(),
 
             chord_keys_down: HashSet::new(),
             mod_keys_down: HashSet::new(),
@@ -211,6 +218,9 @@ impl AppState {
         };
 
         self.active_notes.clear();
+        for s in self.active_notes_by_row.iter_mut() {
+            s.clear();
+        }
         self.transpose = t;
 
         effects
@@ -218,6 +228,13 @@ impl AppState {
 
     pub fn chord_button_down(&self, button: ChordButton) -> bool {
         self.chord_keys_down.contains(&button)
+    }
+
+    pub fn active_chord_for_row(&self, row: crate::rows::RowId) -> Option<Chord> {
+        match row {
+            crate::rows::RowId::Top => self.active_chord,
+            crate::rows::RowId::Bottom => Some(self.bottom_chord),
+        }
     }
 
     pub fn mod_button_down(&self, button: ModButton) -> bool {
@@ -232,18 +249,26 @@ impl AppState {
             play_notes: Vec::new(),
         };
 
-        if let KeyEvent::StrumCrossing { note } = event {
+        if let KeyEvent::StrumCrossing { row, note } = event {
             effects.redraw = false;
-            if self.active_chord.map_or(true, |c| c.contains(note)) {
+            let chord = match row {
+                crate::rows::RowId::Top => self.active_chord,
+                crate::rows::RowId::Bottom => Some(self.bottom_chord),
+            };
+            if chord.map_or(true, |c| c.contains(note)) {
                 let un = self.transpose + note;
 
                 // If this note is already active, stop it first so we only ever have one
                 // instance playing at a time.
                 if self.active_notes.remove(&un) {
                     effects.stop_notes.push(un);
+                    for s in self.active_notes_by_row.iter_mut() {
+                        s.remove(&un);
+                    }
                 }
 
                 self.active_notes.insert(un);
+                self.active_notes_by_row[row.index()].insert(un);
                 effects.play_notes.push(NoteOn {
                     note: un,
                     volume: STRUM_VOLUME,
@@ -330,11 +355,12 @@ impl AppState {
                 effects.stop_notes = (0..128)
                     .map(|i| UnmidiNote(i))
                     .filter(|un| !chord.contains(*un - self.transpose))
-                    .filter(|un| self.active_notes.contains(un))
+                    .filter(|un| self.active_notes_by_row[crate::rows::RowId::Top.index()].contains(un))
                     .collect();
 
                 for un in effects.stop_notes.iter() {
                     self.active_notes.remove(un);
+                    self.active_notes_by_row[crate::rows::RowId::Top.index()].remove(un);
                 }
             }
         }
@@ -351,8 +377,12 @@ impl AppState {
                     .for_each(|un| {
                         if self.active_notes.remove(&un) {
                             effects.stop_notes.push(un);
+                            for s in self.active_notes_by_row.iter_mut() {
+                                s.remove(&un);
+                            }
                         }
                         self.active_notes.insert(un);
+                        self.active_notes_by_row[crate::rows::RowId::Top.index()].insert(un);
                         effects.play_notes.push(NoteOn {
                             note: un,
                             volume: PULSE_VOLUME,
@@ -397,20 +427,24 @@ fn detect_implied_minor7_root(chord_keys_down: &HashSet<ChordButton>) -> Option<
     None
 }
 
+fn heptatonic_major_chord() -> Chord {
+    Chord::new(
+        ROOT_I,
+        Modifiers::MajorTri
+            | Modifiers::AddMajor2
+            | Modifiers::Add4
+            | Modifiers::AddMajor6
+            | Modifiers::AddMajor7,
+    )
+}
+
 // Decide chord from current chord_keys_down and previous chord state.
 fn decide_chord_base(
     venerated_old_chord: Option<&Chord>,
     chord_keys_down: &HashSet<ChordButton>,
 ) -> Option<Chord> {
     if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
-        return Some(Chord::new(
-            ROOT_I,
-            Modifiers::MajorTri
-                | Modifiers::AddMajor2
-                | Modifiers::Add4
-                | Modifiers::AddMajor6
-                | Modifiers::AddMajor7,
-        ));
+        return Some(heptatonic_major_chord());
     }
 
     // Check/apply double-held-chord sevenths
@@ -540,6 +574,7 @@ mod tests {
         state.transpose = Transpose(12);
 
         let effects = state.handle_key_event(KeyEvent::StrumCrossing {
+            row: crate::rows::RowId::Top,
             note: UnkeyedNote(4),
         });
 
@@ -559,6 +594,7 @@ mod tests {
         state.transpose = Transpose(12);
 
         let effects = state.handle_key_event(KeyEvent::StrumCrossing {
+            row: crate::rows::RowId::Top,
             note: UnkeyedNote(3),
         });
 
@@ -571,9 +607,11 @@ mod tests {
         let mut state = AppState::new();
 
         let effects1 = state.handle_key_event(KeyEvent::StrumCrossing {
+            row: crate::rows::RowId::Top,
             note: UnkeyedNote(0),
         });
         let effects2 = state.handle_key_event(KeyEvent::StrumCrossing {
+            row: crate::rows::RowId::Top,
             note: UnkeyedNote(0),
         });
 
@@ -591,9 +629,11 @@ mod tests {
         let mut state = AppState::new();
 
         state.handle_key_event(KeyEvent::StrumCrossing {
+            row: crate::rows::RowId::Top,
             note: UnkeyedNote(0),
         });
         state.handle_key_event(KeyEvent::StrumCrossing {
+            row: crate::rows::RowId::Top,
             note: UnkeyedNote(4),
         });
 

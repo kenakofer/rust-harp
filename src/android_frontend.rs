@@ -133,13 +133,14 @@ impl AndroidFrontend {
 mod tests {
     use super::*;
     use crate::notes::UnkeyedNote;
+    use crate::rows::RowId;
 
     #[test]
     fn android_frontend_emits_note_on_messages() {
         let mut f = AndroidFrontend::new();
         let rx = f.take_audio_rx().expect("expected audio rx");
 
-        let effects = f.engine_mut().handle_strum_crossing(UnkeyedNote(0));
+        let effects = f.engine_mut().handle_strum_crossing(RowId::Top, UnkeyedNote(0));
         assert_eq!(effects.play_notes.len(), 1);
 
         f.push_effects(effects);
@@ -155,10 +156,10 @@ mod tests {
         let mut f = AndroidFrontend::new();
         let rx = f.take_audio_rx().expect("expected audio rx");
 
-        f.push_effects(f.engine_mut().handle_strum_crossing(UnkeyedNote(0)));
+        f.push_effects(f.engine_mut().handle_strum_crossing(RowId::Top, UnkeyedNote(0)));
         let _ = rx.try_recv();
 
-        f.push_effects(f.engine_mut().handle_strum_crossing(UnkeyedNote(0)));
+        f.push_effects(f.engine_mut().handle_strum_crossing(RowId::Top, UnkeyedNote(0)));
 
         match rx.try_recv() {
             Ok(AudioMsg::NoteOff(_)) => {}

@@ -7,6 +7,7 @@ pub mod notes;
 pub mod output_midi;
 #[cfg(feature = "midi")]
 pub mod output_midir;
+pub mod rows;
 pub mod strum;
 pub mod touch;
 pub mod ui_events;

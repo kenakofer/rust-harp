@@ -91,7 +91,7 @@ public class MainActivity extends Activity {
     public static native int rustHandleAndroidKey(long handle, int keyCode, int unicodeChar, boolean isDown);
     public static native int rustHandleUiButton(long handle, int buttonId, boolean isDown);
     public static native int rustGetUiButtonsMask(long handle);
-    public static native int rustHandleTouch(long handle, long pointerId, int phase, int x, int width);
+    public static native int rustHandleTouch(long handle, long pointerId, int phase, int x, int y, int width, int height);
 
     public static native void rustSetAudioSampleRate(long handle, int sampleRateHz);
     public static native int rustFillAudio(long handle, int frames, short[] outPcm);
@@ -279,7 +279,7 @@ public class MainActivity extends Activity {
                     updateGestureExclusion();
                 }
                 for (int i = 0; i < e.getPointerCount(); i++) {
-                    int flags = rustHandleTouch(rustHandle, e.getPointerId(i), 1, (int) e.getX(i), w);
+                    int flags = rustHandleTouch(rustHandle, e.getPointerId(i), 1, (int) e.getX(i), (int) e.getY(i), w, h);
                     if ((flags & 1) != 0) redraw();
                     if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
                     if ((flags & 4) != 0) vibrateTick();
@@ -311,7 +311,7 @@ public class MainActivity extends Activity {
                 return true;
             }
 
-            int flags = rustHandleTouch(rustHandle, pid, phase, (int) e.getX(idx), w);
+            int flags = rustHandleTouch(rustHandle, pid, phase, (int) e.getX(idx), (int) e.getY(idx), w, h);
             if ((flags & 1) != 0) redraw();
             if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
             if ((flags & 4) != 0) vibrateTick();

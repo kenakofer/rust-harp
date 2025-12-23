@@ -2,6 +2,7 @@ use crate::app_state::{AppEffects, KeyState};
 use crate::engine::Engine;
 use crate::input_map::{self, UiButton, UiKey};
 use crate::notes::{Transpose, UnkeyedNote};
+use crate::rows::RowId;
 use crate::touch::{TouchEvent, TouchTracker};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -13,13 +14,19 @@ pub enum UiEvent {
     SetTranspose(Transpose),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TouchNote {
+    pub row: RowId,
+    pub note: UnkeyedNote,
+}
+
 #[derive(Debug)]
 pub struct UiOutput {
     pub effects: AppEffects,
     /// True when the UI should emit a haptic "tick" for this event.
     pub haptic: bool,
     /// Touch-triggered notes (strike + strum crossings), expressed as unkeyed string indices.
-    pub touch_notes: Vec<UnkeyedNote>,
+    pub touch_notes: Vec<TouchNote>,
 }
 
 fn empty_effects() -> AppEffects {
@@ -107,23 +114,26 @@ impl UiSession {
                 }
             }
             UiEvent::Touch(te) => {
-                let chord = *self.engine.active_chord();
-                let out = self.touch.handle_event(te, note_positions, |n| match chord {
-                    Some(c) => c.contains(n),
-                    None => true,
+                let row = RowId::from_y_norm(te.y_norm);
+
+                let out = self.touch.handle_event(te, note_positions, |r, n| {
+                    match self.engine.active_chord_for_row(r) {
+                        Some(c) => c.contains(n),
+                        None => true,
+                    }
                 });
 
                 let mut effects = empty_effects();
                 let mut touch_notes = Vec::new();
 
                 if let Some(note) = out.strike {
-                    touch_notes.push(note);
-                    merge_effects(&mut effects, self.engine.handle_strum_crossing(note));
+                    touch_notes.push(TouchNote { row, note });
+                    merge_effects(&mut effects, self.engine.handle_strum_crossing(row, note));
                 }
                 for crossing in out.crossings {
                     for note in crossing.notes {
-                        touch_notes.push(note);
-                        merge_effects(&mut effects, self.engine.handle_strum_crossing(note));
+                        touch_notes.push(TouchNote { row, note });
+                        merge_effects(&mut effects, self.engine.handle_strum_crossing(row, note));
                     }
                 }
 
@@ -181,11 +191,18 @@ mod tests {
             id: crate::touch::PointerId(1),
             phase: crate::touch::TouchPhase::Down,
             x: 1.2,
+            y_norm: 0.25,
         });
         log.record(e2.clone());
         let out2 = s1.handle(e2, &positions);
         assert_eq!(out2.touch_notes.len(), 1);
-        assert_eq!(out2.touch_notes[0], UnkeyedNote(0));
+        assert_eq!(
+            out2.touch_notes[0],
+            TouchNote {
+                row: RowId::Top,
+                note: UnkeyedNote(0)
+            }
+        );
 
         // Replay into a fresh session and compare key state snapshots.
         let mut s2 = UiSession::new();
@@ -210,6 +227,7 @@ mod tests {
                 id: crate::touch::PointerId(1),
                 phase: crate::touch::TouchPhase::Down,
                 x: -1.0,
+                y_norm: 0.25,
             }),
             &positions,
         );
@@ -219,6 +237,7 @@ mod tests {
                 id: crate::touch::PointerId(1),
                 phase: crate::touch::TouchPhase::Move,
                 x: 2.2,
+                y_norm: 0.25,
             }),
             &positions,
         );
@@ -226,7 +245,20 @@ mod tests {
         assert!(out.haptic);
         assert_eq!(
             out.touch_notes,
-            vec![UnkeyedNote(0), UnkeyedNote(1), UnkeyedNote(2)]
+            vec![
+                TouchNote {
+                    row: RowId::Top,
+                    note: UnkeyedNote(0)
+                },
+                TouchNote {
+                    row: RowId::Top,
+                    note: UnkeyedNote(1)
+                },
+                TouchNote {
+                    row: RowId::Top,
+                    note: UnkeyedNote(2)
+                },
+            ]
         );
     }
 
@@ -251,10 +283,11 @@ mod tests {
             id: crate::touch::PointerId(1),
             phase: crate::touch::TouchPhase::Down,
             x: 0.1,
+            y_norm: 0.25,
         });
         log.record(e3.clone());
         let out3 = s1.handle(e3, &positions);
-        assert_eq!(out3.touch_notes, Vec::<UnkeyedNote>::new());
+        assert_eq!(out3.touch_notes, Vec::<TouchNote>::new());
 
         // Re-enable play-on-tap; now touch-down should strike the nearest allowed note.
         let e4 = UiEvent::SetPlayOnTap(true);
@@ -265,10 +298,17 @@ mod tests {
             id: crate::touch::PointerId(2),
             phase: crate::touch::TouchPhase::Down,
             x: 0.1,
+            y_norm: 0.25,
         });
         log.record(e5.clone());
         let out5 = s1.handle(e5, &positions);
-        assert_eq!(out5.touch_notes, vec![UnkeyedNote(0)]);
+        assert_eq!(
+            out5.touch_notes,
+            vec![TouchNote {
+                row: RowId::Top,
+                note: UnkeyedNote(0)
+            }]
+        );
 
         let mut s2 = UiSession::new();
         let _ = log.replay(&mut s2, &positions);

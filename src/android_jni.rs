@@ -313,7 +313,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
     pointer_id: jlong,
     phase: jint,
     x: jint,
+    y: jint,
     width: jint,
+    height: jint,
 ) -> jint {
     if handle == 0 {
         return 0;
@@ -326,10 +328,12 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
         _ => TouchPhase::Cancel,
     };
 
+    let h = height.max(1) as f32;
     let event = TouchEvent {
         id: PointerId(pointer_id as u64),
         phase,
         x: x as f32,
+        y_norm: (y as f32 / h).clamp(0.0, 1.0),
     };
 
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
@@ -424,15 +428,23 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         return;
     }
 
-    let (active_chord, show_note_names, transpose_pc) = if handle != 0 {
+    let (top_chord, bottom_chord, show_note_names, transpose_pc) = if handle != 0 {
         let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+        let eng = frontend.engine();
         (
-            *frontend.engine().active_chord(),
+            eng.active_chord_for_row(crate::rows::RowId::Top),
+            eng.active_chord_for_row(crate::rows::RowId::Bottom)
+                .unwrap_or_else(|| crate::chord::Chord::new_triad(crate::notes::UnkeyedNote(0))),
             frontend.show_note_names(),
-            frontend.engine().transpose().wrap_to_octave(),
+            eng.transpose().wrap_to_octave(),
         )
     } else {
-        (None, false, 0)
+        (
+            None,
+            crate::chord::Chord::new_triad(crate::notes::UnkeyedNote(0)),
+            false,
+            0,
+        )
     };
 
     fn label_pitch_class(uknote: crate::notes::UnkeyedNote, transpose_pc: i16) -> i16 {
@@ -514,64 +526,86 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     let mut pixels = vec![0xFF000000u32 as i32; len];
 
     let positions = layout::compute_note_positions_android(w as f32);
+    let split = h / 2;
 
-    // Multiple notes can map to the same physical string position (duplicate x values).
-    // When that happens, prioritize what we draw so inactive greys don't paint over
-    // active/root lines.
-    // Priority: root (red) > chord tone (white) > inactive (dim gray)
-    let mut best_prio_per_x: Vec<u8> = vec![0; w];
-    let mut best_color_per_x: Vec<i32> = vec![0xFF333333u32 as i32; w];
-    let mut best_pc_per_x: Vec<u8> = vec![255; w];
+    fn compute_best(
+        w: usize,
+        positions: &[f32],
+        chord: Option<crate::chord::Chord>,
+        transpose_pc: i16,
+        label_pitch_class: fn(crate::notes::UnkeyedNote, i16) -> i16,
+    ) -> (Vec<u8>, Vec<i32>, Vec<u8>) {
+        // Priority: root (red) > chord tone (white) > inactive (dim gray)
+        let mut best_prio_per_x: Vec<u8> = vec![0; w];
+        let mut best_color_per_x: Vec<i32> = vec![0xFF333333u32 as i32; w];
+        let mut best_pc_per_x: Vec<u8> = vec![255; w];
 
-    for (i, x) in positions.iter().enumerate() {
-        let uknote = crate::notes::UnkeyedNote(i as i16);
-        let xi = x.round() as i32;
-        if xi < 0 || xi >= w as i32 {
-            continue;
-        }
-        let xi = xi as usize;
-
-        let (prio, color) = if let Some(chord) = active_chord {
-            if chord.has_root(uknote) {
-                (3, 0xFFFF0000u32 as i32) // red
-            } else if chord.contains(uknote) {
-                (2, 0xFFFFFFFFu32 as i32) // white
-            } else {
-                (1, 0xFF333333u32 as i32) // dim gray
+        for (i, x) in positions.iter().enumerate() {
+            let uknote = crate::notes::UnkeyedNote(i as i16);
+            let xi = x.round() as i32;
+            if xi < 0 || xi >= w as i32 {
+                continue;
             }
-        } else {
-            (1, 0xFF333333u32 as i32)
-        };
+            let xi = xi as usize;
 
-        if prio > best_prio_per_x[xi] {
-            best_prio_per_x[xi] = prio;
-            best_color_per_x[xi] = color;
-            best_pc_per_x[xi] = (label_pitch_class(uknote, transpose_pc) as u8);
+            let (prio, color) = if let Some(ch) = chord {
+                if ch.has_root(uknote) {
+                    (3, 0xFFFF0000u32 as i32) // red
+                } else if ch.contains(uknote) {
+                    (2, 0xFFFFFFFFu32 as i32) // white
+                } else {
+                    (1, 0xFF333333u32 as i32) // dim gray
+                }
+            } else {
+                (1, 0xFF333333u32 as i32)
+            };
+
+            if prio > best_prio_per_x[xi] {
+                best_prio_per_x[xi] = prio;
+                best_color_per_x[xi] = color;
+                best_pc_per_x[xi] = (label_pitch_class(uknote, transpose_pc) as u8);
+            }
         }
+
+        (best_prio_per_x, best_color_per_x, best_pc_per_x)
     }
 
-    for (xi, prio) in best_prio_per_x.iter().enumerate() {
-        if *prio == 0 {
-            continue;
+    let (top_prio, top_color, top_pc) =
+        compute_best(w, &positions, top_chord, transpose_pc, label_pitch_class);
+    let (bot_prio, bot_color, bot_pc) = compute_best(
+        w,
+        &positions,
+        Some(bottom_chord),
+        transpose_pc,
+        label_pitch_class,
+    );
+
+    for xi in 0..w {
+        if top_prio[xi] != 0 {
+            let color = top_color[xi];
+            for y in 0..split {
+                pixels[y * w + xi] = color;
+            }
         }
-        let color = best_color_per_x[xi];
-        for y in 0..h {
-            pixels[y * w + xi] = color;
+        if bot_prio[xi] != 0 {
+            let color = bot_color[xi];
+            for y in split..h {
+                pixels[y * w + xi] = color;
+            }
         }
     }
 
     if show_note_names {
-        for (xi, prio) in best_prio_per_x.iter().enumerate() {
+        // Top row labels.
+        for (xi, prio) in top_prio.iter().enumerate() {
             if *prio < 2 {
                 continue;
             }
-            let pc = best_pc_per_x[xi];
+            let pc = top_pc[xi];
             if pc == 255 {
                 continue;
             }
             let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            // Leave a little padding from the very top, and keep the label just to the right
-            // of the string so it doesn't overlap the line.
             draw_text(
                 &mut pixels,
                 w,
@@ -579,7 +613,29 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                 xi as i32 + 4,
                 2,
                 label,
-                best_color_per_x[xi],
+                top_color[xi],
+            );
+        }
+
+        // Bottom row labels.
+        let y_top = split as i32 + 2;
+        for (xi, prio) in bot_prio.iter().enumerate() {
+            if *prio < 2 {
+                continue;
+            }
+            let pc = bot_pc[xi];
+            if pc == 255 {
+                continue;
+            }
+            let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
+            draw_text(
+                &mut pixels,
+                w,
+                h,
+                xi as i32 + 4,
+                y_top,
+                label,
+                bot_color[xi],
             );
         }
     }
