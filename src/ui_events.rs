@@ -192,8 +192,90 @@ mod tests {
         let _ = log.replay(&mut s2, &positions);
 
         assert_eq!(s1.engine().active_chord(), s2.engine().active_chord());
-        let a1: Vec<_> = s1.engine().active_notes().collect();
-        let a2: Vec<_> = s2.engine().active_notes().collect();
+        let a1: std::collections::BTreeSet<i16> = s1.engine().active_notes().map(|n| n.0).collect();
+        let a2: std::collections::BTreeSet<i16> = s2.engine().active_notes().map(|n| n.0).collect();
+        assert_eq!(a1, a2);
+    }
+
+    #[test]
+    fn touch_move_emits_haptic_and_touch_notes() {
+        let positions: Vec<f32> = (0..12).map(|i| i as f32).collect();
+        let mut s = UiSession::new();
+
+        // Disable tap-strike so we only test strum crossings here.
+        let _ = s.handle(UiEvent::SetPlayOnTap(false), &positions);
+
+        let _ = s.handle(
+            UiEvent::Touch(TouchEvent {
+                id: crate::touch::PointerId(1),
+                phase: crate::touch::TouchPhase::Down,
+                x: -1.0,
+            }),
+            &positions,
+        );
+
+        let out = s.handle(
+            UiEvent::Touch(TouchEvent {
+                id: crate::touch::PointerId(1),
+                phase: crate::touch::TouchPhase::Move,
+                x: 2.2,
+            }),
+            &positions,
+        );
+
+        assert!(out.haptic);
+        assert_eq!(
+            out.touch_notes,
+            vec![UnkeyedNote(0), UnkeyedNote(1), UnkeyedNote(2)]
+        );
+    }
+
+    #[test]
+    fn ui_event_log_replay_preserves_transpose_and_play_on_tap() {
+        let positions: Vec<f32> = (0..12).map(|i| i as f32).collect();
+
+        let mut s1 = UiSession::new();
+        let mut log = UiEventLog::default();
+
+        let e1 = UiEvent::SetTranspose(crate::notes::Transpose(3));
+        log.record(e1.clone());
+        let _ = s1.handle(e1, &positions);
+        assert_eq!(s1.engine().transpose().0, 3);
+
+        // With play-on-tap disabled, touch-down should not strike.
+        let e2 = UiEvent::SetPlayOnTap(false);
+        log.record(e2.clone());
+        let _ = s1.handle(e2, &positions);
+
+        let e3 = UiEvent::Touch(TouchEvent {
+            id: crate::touch::PointerId(1),
+            phase: crate::touch::TouchPhase::Down,
+            x: 0.1,
+        });
+        log.record(e3.clone());
+        let out3 = s1.handle(e3, &positions);
+        assert_eq!(out3.touch_notes, Vec::<UnkeyedNote>::new());
+
+        // Re-enable play-on-tap; now touch-down should strike the nearest allowed note.
+        let e4 = UiEvent::SetPlayOnTap(true);
+        log.record(e4.clone());
+        let _ = s1.handle(e4, &positions);
+
+        let e5 = UiEvent::Touch(TouchEvent {
+            id: crate::touch::PointerId(2),
+            phase: crate::touch::TouchPhase::Down,
+            x: 0.1,
+        });
+        log.record(e5.clone());
+        let out5 = s1.handle(e5, &positions);
+        assert_eq!(out5.touch_notes, vec![UnkeyedNote(0)]);
+
+        let mut s2 = UiSession::new();
+        let _ = log.replay(&mut s2, &positions);
+
+        assert_eq!(s1.engine().transpose(), s2.engine().transpose());
+        let a1: std::collections::BTreeSet<i16> = s1.engine().active_notes().map(|n| n.0).collect();
+        let a2: std::collections::BTreeSet<i16> = s2.engine().active_notes().map(|n| n.0).collect();
         assert_eq!(a1, a2);
     }
 }
