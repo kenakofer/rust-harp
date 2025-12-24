@@ -157,7 +157,7 @@ pub fn compute_note_positions_android_with_lowest(width: f32, lowest_note: i16) 
     }
 
     // Small padding so the first/last string isn't clipped by the edge.
-    let pad = 2.0f32;
+    let pad = 5.0f32;
     let usable = (width - 2.0 * pad).max(1.0);
 
     fn semitone_step(pc: i32) -> f32 {
