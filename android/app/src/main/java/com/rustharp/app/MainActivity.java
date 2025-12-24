@@ -310,14 +310,17 @@ public class MainActivity extends Activity {
                         lastTapButton = chordBtnId;
                         lastTapUpMs = now;
 
-                        // Tiny visual cue: briefly show "M/m" on the tapped button.
+                                        // Tiny visual cue: briefly show what a double-tap would toggle to.
                         if (v instanceof Button) {
                             Button b = (Button) v;
                             String old = b.getText().toString();
-                            b.setText("M/m");
+                            String min = WheelOverlayView.minorOf(old);
+                            String maj = WheelOverlayView.majorOf(old);
+                            String cue = old.equals(min) ? maj : min;
+                            b.setText(cue);
                             b.postDelayed(() -> {
                                 // Only restore if it hasn't been overwritten.
-                                if ("M/m".contentEquals(b.getText())) {
+                                if (cue.contentEquals(b.getText())) {
                                     b.setText(old);
                                 }
                             }, DOUBLE_TAP_MS);
@@ -361,12 +364,15 @@ public class MainActivity extends Activity {
             this.anchor = anchor;
             this.anchorIsMajorDegree = anchorIsMajorDegree;
             this.dir = dir;
+            setVisibility(android.view.View.VISIBLE);
+            bringToFront();
             invalidate();
         }
 
         void clearWheel() {
             this.anchor = null;
             this.dir = WHEEL_NONE;
+            setVisibility(android.view.View.GONE);
             invalidate();
         }
 
@@ -376,17 +382,30 @@ public class MainActivity extends Activity {
             return c == 'I' || c == 'V' || c == 'i' || c == 'v';
         }
 
+        private static String romanCase(String s, boolean upper) {
+            StringBuilder out = new StringBuilder(s.length());
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                if (c == 'I' || c == 'V' || c == 'i' || c == 'v') {
+                    out.append(upper ? Character.toUpperCase(c) : Character.toLowerCase(c));
+                } else {
+                    out.append(c);
+                }
+            }
+            return out.toString();
+        }
+
         private static String minorOf(String base) {
-            // Roman: lowercase. Absolute: add 'm' unless already minor/dim.
+            // Roman: lowercase (keep flats/other suffixes). Absolute: add 'm' unless already minor/dim.
             if (base.endsWith("dim") || base.endsWith("m")) return base;
-            if (looksRoman(base)) return base.toLowerCase();
+            if (looksRoman(base)) return romanCase(base, false);
             return base + "m";
         }
 
         private static String majorOf(String base) {
-            // Roman: uppercase. Absolute: strip trailing 'm'.
+            // Roman: uppercase (keep flats/other suffixes). Absolute: strip trailing 'm'.
             if (base.endsWith("m")) return base.substring(0, base.length() - 1);
-            if (looksRoman(base)) return base.toUpperCase();
+            if (looksRoman(base)) return romanCase(base, true);
             return base;
         }
 
@@ -439,13 +458,14 @@ public class MainActivity extends Activity {
 
             android.graphics.RectF oval = new android.graphics.RectF(cx - r, cy - r, cx + r, cy + r);
 
-            // Draw wedges (8 sectors). Start at -90deg (top), clockwise 45deg.
+            // Draw wedges (8 sectors). Align sector centers with the quantizer (N is straight up).
+            final float startDeg = -112.5f; // -90 - 22.5
             for (int i = 0; i < 8; i++) {
                 boolean sel = (i == dir);
                 pFill.setStyle(android.graphics.Paint.Style.FILL);
                 pFill.setColor(sel ? 0x66FFFFFF : 0x22000000);
-                c.drawArc(oval, -90 + i * 45, 45, true, pFill);
-                c.drawArc(oval, -90 + i * 45, 45, true, pStroke);
+                c.drawArc(oval, startDeg + i * 45, 45, true, pFill);
+                c.drawArc(oval, startDeg + i * 45, 45, true, pStroke);
             }
 
             // Labels.
@@ -455,7 +475,7 @@ public class MainActivity extends Activity {
 
             float labelR = r * 0.72f;
             for (int i = 0; i < 8; i++) {
-                float midDeg = -90 + i * 45 + 22.5f;
+                float midDeg = -90 + i * 45;
                 double rad = Math.toRadians(midDeg);
                 float tx = cx + (float) (Math.cos(rad) * labelR);
                 float ty = cy + (float) (Math.sin(rad) * labelR);
@@ -632,8 +652,8 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
-        glp.leftMargin = 0;
-        glp.bottomMargin = 0;
+        glp.leftMargin = dpToPx(30);
+        glp.bottomMargin = dpToPx(30);
         glp.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
         chordGrid.setLayoutParams(glp);
         chordGrid.setVisibility(showChordButtons ? View.VISIBLE : View.GONE);
@@ -676,14 +696,15 @@ public class MainActivity extends Activity {
         chordGrid.addView(uiButtons[BTN_III]);
         chordGrid.addView(uiButtons[BTN_VII_DIM]);
 
-        // Wheel overlay draws above the background strings but below the chord buttons.
+        root.addView(chordGrid);
+
+        // Wheel overlay draws above the chord buttons (made visible only while a wheel gesture is active).
         wheelOverlay = new WheelOverlayView(this);
         wheelOverlay.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
+        wheelOverlay.setVisibility(View.GONE);
         root.addView(wheelOverlay);
-
-        root.addView(chordGrid);
 
         // Status panel (lower-right): key selector.
         LinearLayout status = new LinearLayout(this);
