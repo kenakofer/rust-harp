@@ -251,7 +251,8 @@ public class MainActivity extends Activity {
                 rustApplyChordWheelChoice(rustHandle, chordBtnId, -1);
 
                 if (wheelOverlay != null) {
-                    wheelOverlay.setWheelState((Button) v, wheelDir);
+                    boolean isMajorDegree = (chordBtnId == BTN_VIIB || chordBtnId == BTN_IV || chordBtnId == BTN_I || chordBtnId == BTN_V);
+                    wheelOverlay.setWheelState((Button) v, isMajorDegree, wheelDir);
                 }
                 redraw();
                 updateUiButtons();
@@ -275,7 +276,8 @@ public class MainActivity extends Activity {
                         if ((flags & 1) != 0) redraw();
                         updateUiButtons();
                         if (wheelOverlay != null) {
-                            wheelOverlay.setWheelState((Button) v, wheelDir);
+                            boolean isMajorDegree = (chordBtnId == BTN_VIIB || chordBtnId == BTN_IV || chordBtnId == BTN_I || chordBtnId == BTN_V);
+                            wheelOverlay.setWheelState((Button) v, isMajorDegree, wheelDir);
                         }
                     }
                 }
@@ -335,9 +337,11 @@ public class MainActivity extends Activity {
     private static class WheelOverlayView extends android.view.View {
         private Button anchor;
         private int dir = WHEEL_NONE;
+        private boolean anchorIsMajorDegree = true;
 
         private final android.graphics.Paint pFill = new android.graphics.Paint();
         private final android.graphics.Paint pStroke = new android.graphics.Paint();
+        private final android.graphics.Paint pText = new android.graphics.Paint();
 
         WheelOverlayView(android.content.Context ctx) {
             super(ctx);
@@ -347,10 +351,15 @@ public class MainActivity extends Activity {
             pStroke.setStyle(android.graphics.Paint.Style.STROKE);
             pStroke.setStrokeWidth(2);
             pStroke.setColor(0x66FFFFFF);
+
+            pText.setAntiAlias(true);
+            pText.setColor(0xFFFFFFFF);
+            pText.setTextAlign(android.graphics.Paint.Align.CENTER);
         }
 
-        void setWheelState(Button anchor, int dir) {
+        void setWheelState(Button anchor, boolean anchorIsMajorDegree, int dir) {
             this.anchor = anchor;
+            this.anchorIsMajorDegree = anchorIsMajorDegree;
             this.dir = dir;
             invalidate();
         }
@@ -359,6 +368,57 @@ public class MainActivity extends Activity {
             this.anchor = null;
             this.dir = WHEEL_NONE;
             invalidate();
+        }
+
+        private static boolean looksRoman(String s) {
+            if (s.isEmpty()) return false;
+            char c = s.charAt(0);
+            return c == 'I' || c == 'V' || c == 'i' || c == 'v';
+        }
+
+        private static String minorOf(String base) {
+            // Roman: lowercase. Absolute: add 'm' unless already minor/dim.
+            if (base.endsWith("dim") || base.endsWith("m")) return base;
+            if (looksRoman(base)) return base.toLowerCase();
+            return base + "m";
+        }
+
+        private static String majorOf(String base) {
+            // Roman: uppercase. Absolute: strip trailing 'm'.
+            if (base.endsWith("m")) return base.substring(0, base.length() - 1);
+            if (looksRoman(base)) return base.toUpperCase();
+            return base;
+        }
+
+        private static String[] labelsFor(String base, boolean majorDegree) {
+            // Caret-notation matches the spec (IV^7, iv^M7, etc) and renders reliably.
+            String maj = base;
+            String min = minorOf(base);
+            String majFromMin = majorOf(base);
+
+            if (majorDegree) {
+                return new String[]{
+                        maj + "^7",
+                        maj + "^9",
+                        maj + "+2",
+                        min + "^9",
+                        min + "^7",
+                        min + "^M7",
+                        maj + "sus",
+                        maj + "^M7",
+                };
+            }
+
+            return new String[]{
+                    majFromMin + "^7",
+                    majFromMin + "^9",
+                    base + "+2",
+                    base + "^9",
+                    base + "^7",
+                    base + "^M7",
+                    base + "sus",
+                    majFromMin + "^M7",
+            };
         }
 
         @Override
@@ -375,7 +435,7 @@ public class MainActivity extends Activity {
             float top = loc[1] - root[1];
             float cx = left + anchor.getWidth() / 2.0f;
             float cy = top + anchor.getHeight() / 2.0f;
-            float r = Math.max(anchor.getWidth(), anchor.getHeight()) * 0.9f;
+            float r = Math.max(anchor.getWidth(), anchor.getHeight()) * 0.95f;
 
             android.graphics.RectF oval = new android.graphics.RectF(cx - r, cy - r, cx + r, cy + r);
 
@@ -383,9 +443,27 @@ public class MainActivity extends Activity {
             for (int i = 0; i < 8; i++) {
                 boolean sel = (i == dir);
                 pFill.setStyle(android.graphics.Paint.Style.FILL);
-                pFill.setColor(sel ? 0x55FFFFFF : 0x22000000);
+                pFill.setColor(sel ? 0x66FFFFFF : 0x22000000);
                 c.drawArc(oval, -90 + i * 45, 45, true, pFill);
                 c.drawArc(oval, -90 + i * 45, 45, true, pStroke);
+            }
+
+            // Labels.
+            String base = anchor.getText().toString();
+            String[] labels = labelsFor(base, anchorIsMajorDegree);
+            pText.setTextSize(Math.max(18.0f, r * 0.18f));
+
+            float labelR = r * 0.72f;
+            for (int i = 0; i < 8; i++) {
+                float midDeg = -90 + i * 45 + 22.5f;
+                double rad = Math.toRadians(midDeg);
+                float tx = cx + (float) (Math.cos(rad) * labelR);
+                float ty = cy + (float) (Math.sin(rad) * labelR);
+
+                boolean sel = (i == dir);
+                pText.setColor(sel ? 0xFF000000 : 0xFFFFFFFF);
+                // Center vertically on the baseline a bit.
+                c.drawText(labels[i], tx, ty + pText.getTextSize() * 0.35f, pText);
             }
         }
     }
