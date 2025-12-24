@@ -351,6 +351,8 @@ impl AppState {
             self.active_chord = new_chord;
 
             if let Some(chord) = new_chord {
+                self.bottom_chord = dynamic_heptatonic_for_active_chord(&chord);
+
                 effects.stop_notes = (0..128)
                     .map(|i| UnmidiNote(i))
                     .filter(|un| !chord.contains(*un - self.transpose))
@@ -426,15 +428,67 @@ fn detect_implied_minor7_root(chord_keys_down: &HashSet<ChordButton>) -> Option<
     None
 }
 
-fn heptatonic_major_chord() -> Chord {
+fn heptatonic_major_chord_root(root: UnkeyedNote) -> Chord {
     Chord::new(
-        ROOT_I,
+        root,
         Modifiers::MajorTri
             | Modifiers::AddMajor2
             | Modifiers::Add4
             | Modifiers::AddMajor6
             | Modifiers::AddMajor7,
     )
+}
+
+fn heptatonic_major_chord() -> Chord {
+    heptatonic_major_chord_root(ROOT_I)
+}
+
+fn chord_pitch_classes(chord: &Chord) -> [bool; 12] {
+    let mut pcs = [false; 12];
+    for pc in 0..12 {
+        pcs[pc] = chord.contains(UnkeyedNote(pc as i16));
+    }
+    pcs
+}
+
+/// Choose a major heptatonic (diatonic) scale root such that the resulting
+/// heptatonic contains all notes in the active chord.
+///
+/// We search outward in both directions around the circle of fifths from the
+/// current key (which is always `UnkeyedNote(0)` in our unkeyed coordinate space).
+fn choose_heptatonic_root_for_active_chord(active: &Chord) -> UnkeyedNote {
+    let needed = chord_pitch_classes(active);
+
+    for k in 0..12 {
+        let offset = if k == 0 {
+            0
+        } else {
+            let n = ((k + 1) / 2) as i16;
+            let sign = if k % 2 == 1 { 1 } else { -1 };
+            sign * 7 * n
+        };
+
+        let root_pc = offset.rem_euclid(12);
+        let root = UnkeyedNote(root_pc);
+        let hept = heptatonic_major_chord_root(root);
+
+        let mut ok = true;
+        for pc in 0..12 {
+            if needed[pc] && !hept.contains(UnkeyedNote(pc as i16)) {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            return root;
+        }
+    }
+
+    ROOT_I
+}
+
+fn dynamic_heptatonic_for_active_chord(active: &Chord) -> Chord {
+    heptatonic_major_chord_root(choose_heptatonic_root_for_active_chord(active))
 }
 
 // Decide chord from current chord_keys_down and previous chord state.
@@ -513,6 +567,23 @@ mod tests {
 
         let chord = state.active_chord.unwrap();
         assert!(chord.contains(UnkeyedNote(10))); // minor 7
+    }
+
+    #[test]
+    fn dynamic_heptatonic_contains_active_chord() {
+        // E major triad: contains G# (pc 8), which is outside the default C-major heptatonic.
+        let chord = Chord::new(UnkeyedNote(4), Modifiers::MajorTri);
+        let hept = dynamic_heptatonic_for_active_chord(&chord);
+
+        for pc in 0..12 {
+            let n = UnkeyedNote(pc);
+            if chord.contains(n) {
+                assert!(hept.contains(n));
+            }
+        }
+
+        // Deterministic choice: the closest-by-fifths heptatonic that contains E major is A major.
+        assert_eq!(hept.get_root().wrap_to_octave(), 9);
     }
 
     #[test]
