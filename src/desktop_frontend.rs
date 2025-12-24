@@ -565,10 +565,13 @@ fn draw_strings(
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0);
 
-    let split = height / 2;
+    // 40% top, 20% middle, 40% bottom
+    let top_end = height * 2 / 5;
+    let mid_end = height * 3 / 5;
 
     fn fold_best(
         chord: Option<Chord>,
+        chromatic_all: bool,
         width: u32,
         positions: &[f32],
         transpose_pc: i16,
@@ -577,22 +580,27 @@ fn draw_strings(
         let mut best_color = vec![0u32; width as usize];
         let mut best_pc = vec![255u8; width as usize];
 
-        let Some(chord) = chord else {
-            return (best_prio, best_color, best_pc);
-        };
-
         for (i, x) in positions.iter().enumerate() {
             let uknote = UnkeyedNote(i as i16);
-            if !chord.contains(uknote) {
-                continue;
+
+            if !chromatic_all {
+                let Some(chord) = chord else {
+                    continue;
+                };
+                if !chord.contains(uknote) {
+                    continue;
+                }
             }
+
             let xi = x.round() as i32;
             if xi < 0 || xi >= width as i32 {
                 continue;
             }
             let xi = xi as usize;
 
-            let (prio, color) = if chord.has_root(uknote) {
+            let (prio, color) = if chromatic_all {
+                (1, 0x00FFFFFF)
+            } else if chord.map_or(false, |c| c.has_root(uknote)) {
                 (2, 0x00FF0000)
             } else {
                 (1, 0x00FFFFFF)
@@ -608,18 +616,25 @@ fn draw_strings(
         (best_prio, best_color, best_pc)
     }
 
-    let (top_prio, top_color, top_pc) = fold_best(top_chord, width, positions, transpose_pc);
-    let (bot_prio, bot_color, bot_pc) = fold_best(Some(bottom_chord), width, positions, transpose_pc);
+    let (top_prio, top_color, top_pc) = fold_best(top_chord, false, width, positions, transpose_pc);
+    let (mid_prio, mid_color, _mid_pc) = fold_best(None, true, width, positions, transpose_pc);
+    let (bot_prio, bot_color, bot_pc) = fold_best(Some(bottom_chord), false, width, positions, transpose_pc);
 
     for xi in 0..width as usize {
         if top_prio[xi] != 0 {
-            for y in 0..split {
+            for y in 0..top_end {
                 let index = (y * width + xi as u32) as usize;
                 buffer[index] = top_color[xi];
             }
         }
+        if mid_prio[xi] != 0 {
+            for y in top_end..mid_end {
+                let index = (y * width + xi as u32) as usize;
+                buffer[index] = mid_color[xi];
+            }
+        }
         if bot_prio[xi] != 0 {
-            for y in split..height {
+            for y in mid_end..height {
                 let index = (y * width + xi as u32) as usize;
                 buffer[index] = bot_color[xi];
             }
@@ -636,10 +651,22 @@ fn draw_strings(
                 continue;
             }
             let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            crate::pixel_font::draw_text_u32(&mut buffer, width as usize, height as usize, xi as i32 + 4, 2, label, top_color[xi], 13, 5);
+            crate::pixel_font::draw_text_u32(
+                &mut buffer,
+                width as usize,
+                height as usize,
+                xi as i32 + 4,
+                2,
+                label,
+                top_color[xi],
+                13,
+                5,
+            );
         }
 
-        let y_top = split as i32 + 2;
+        // Middle row is chromatic; never draw note-name labels there.
+
+        let y_bot = mid_end as i32 + 2;
         for (xi, prio) in bot_prio.iter().enumerate() {
             if *prio == 0 {
                 continue;
@@ -649,7 +676,17 @@ fn draw_strings(
                 continue;
             }
             let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            crate::pixel_font::draw_text_u32(&mut buffer, width as usize, height as usize, xi as i32 + 4, y_top, label, bot_color[xi], 13, 5);
+            crate::pixel_font::draw_text_u32(
+                &mut buffer,
+                width as usize,
+                height as usize,
+                xi as i32 + 4,
+                y_bot,
+                label,
+                bot_color[xi],
+                13,
+                5,
+            );
         }
     }
 
