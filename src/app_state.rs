@@ -100,7 +100,7 @@ pub struct AppEffects {
 pub struct AppState {
     pub active_chord: Option<Chord>, // Top row chord. TODO privatize
     pub active_notes: HashSet<UnmidiNote>,
-    active_notes_by_row: [HashSet<UnmidiNote>; 3],
+    active_notes_by_row: [HashSet<UnmidiNote>; 2],
 
     bottom_chord: Chord,
 
@@ -235,9 +235,6 @@ impl AppState {
     pub fn active_chord_for_row(&self, row: crate::rows::RowId) -> Option<Chord> {
         match row {
             crate::rows::RowId::Top => self.active_chord,
-            // Middle row is chromatic: all 12 notes are enabled.
-            // Represent this as None so filtering allows everything.
-            crate::rows::RowId::Middle => None,
             crate::rows::RowId::Bottom => Some(self.bottom_chord),
         }
     }
@@ -258,7 +255,6 @@ impl AppState {
             effects.redraw = false;
             let chord = match row {
                 crate::rows::RowId::Top => self.active_chord,
-                crate::rows::RowId::Middle => None,
                 crate::rows::RowId::Bottom => Some(self.bottom_chord),
             };
             if chord.map_or(true, |c| c.contains(note)) {

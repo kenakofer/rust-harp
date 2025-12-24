@@ -474,16 +474,12 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     let mut pixels = vec![0xFF000000u32 as i32; len];
 
     let positions = layout::compute_note_positions_android(w as f32);
-
-    // 40% top, 20% middle, 40% bottom
-    let top_end = h * 2 / 5;
-    let mid_end = h * 3 / 5;
+    let split = h / 2;
 
     fn compute_best(
         w: usize,
         positions: &[f32],
         chord: Option<crate::chord::Chord>,
-        chromatic_all: bool,
         transpose_pc: i16,
         label_pitch_class: fn(crate::notes::UnkeyedNote, i16) -> i16,
     ) -> (Vec<u8>, Vec<i32>, Vec<u8>) {
@@ -499,18 +495,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                 continue;
             }
             let xi = xi as usize;
-
-            if chromatic_all {
-                // Middle row: every note is enabled and visible.
-                let prio = 2;
-                let color = 0xFFFFFFFFu32 as i32;
-                if prio > best_prio_per_x[xi] {
-                    best_prio_per_x[xi] = prio;
-                    best_color_per_x[xi] = color;
-                    best_pc_per_x[xi] = label_pitch_class(uknote, transpose_pc) as u8;
-                }
-                continue;
-            }
 
             // Chromatic "in-between" strings should only be visible when active.
             if crate::notes::is_black_key(uknote) {
@@ -547,14 +531,11 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     }
 
     let (top_prio, top_color, top_pc) =
-        compute_best(w, &positions, top_chord, false, transpose_pc, label_pitch_class);
-    let (mid_prio, mid_color, mid_pc) =
-        compute_best(w, &positions, None, true, transpose_pc, label_pitch_class);
+        compute_best(w, &positions, top_chord, transpose_pc, label_pitch_class);
     let (bot_prio, bot_color, bot_pc) = compute_best(
         w,
         &positions,
         Some(bottom_chord),
-        false,
         transpose_pc,
         label_pitch_class,
     );
@@ -562,19 +543,13 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     for xi in 0..w {
         if top_prio[xi] != 0 {
             let color = top_color[xi];
-            for y in 0..top_end {
-                pixels[y * w + xi] = color;
-            }
-        }
-        if mid_prio[xi] != 0 {
-            let color = mid_color[xi];
-            for y in top_end..mid_end {
+            for y in 0..split {
                 pixels[y * w + xi] = color;
             }
         }
         if bot_prio[xi] != 0 {
             let color = bot_color[xi];
-            for y in mid_end..h {
+            for y in split..h {
                 pixels[y * w + xi] = color;
             }
         }
@@ -591,13 +566,19 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                 continue;
             }
             let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            draw_text(&mut pixels, w, h, xi as i32 + 4, 2, label, top_color[xi]);
+            draw_text(
+                &mut pixels,
+                w,
+                h,
+                xi as i32 + 4,
+                2,
+                label,
+                top_color[xi],
+            );
         }
 
-        // Middle row is chromatic; never draw note-name labels there.
-
         // Bottom row labels.
-        let y_bot = mid_end as i32 + 2;
+        let y_top = split as i32 + 2;
         for (xi, prio) in bot_prio.iter().enumerate() {
             if *prio < 2 {
                 continue;
@@ -607,7 +588,15 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                 continue;
             }
             let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            draw_text(&mut pixels, w, h, xi as i32 + 4, y_bot, label, bot_color[xi]);
+            draw_text(
+                &mut pixels,
+                w,
+                h,
+                xi as i32 + 4,
+                y_top,
+                label,
+                bot_color[xi],
+            );
         }
     }
 
