@@ -111,6 +111,21 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetPlayOnTap(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetA4TuningHz(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    a4_tuning_hz: jint,
+) {
+    if handle == 0 {
+        return;
+    }
+    let hz = (a4_tuning_hz as i32).clamp(430, 450) as u16;
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    frontend.set_a4_tuning_hz(hz);
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetKeyIndex(
     _env: JNIEnv,
     _class: JClass,

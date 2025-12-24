@@ -13,21 +13,35 @@ struct Voice {
 
 pub struct SquareSynth {
     sample_rate_hz: f32,
+    a4_tuning_hz: f32,
     sample: u64,
     voices: Vec<Voice>,
 }
 
 impl SquareSynth {
     pub fn new(sample_rate_hz: u32) -> Self {
+        Self::with_tuning(sample_rate_hz, 440)
+    }
+
+    pub fn with_tuning(sample_rate_hz: u32, a4_tuning_hz: u16) -> Self {
         Self {
             sample_rate_hz: sample_rate_hz as f32,
+            a4_tuning_hz: a4_tuning_hz.clamp(430, 450) as f32,
             sample: 0,
             voices: Vec::new(),
         }
     }
 
+    pub fn a4_tuning_hz(&self) -> u16 {
+        self.a4_tuning_hz.round() as u16
+    }
+
+    pub fn set_a4_tuning_hz(&mut self, a4_tuning_hz: u16) {
+        self.a4_tuning_hz = a4_tuning_hz.clamp(430, 450) as f32;
+    }
+
     pub fn note_on(&mut self, midi: MidiNote, volume_0_to_127: u8) {
-        let freq_hz = midi_to_hz(midi.0 as f32);
+        let freq_hz = midi_to_hz(midi.0 as f32, self.a4_tuning_hz);
 
         // Conservative headroom; we’ll also soft-limit after mixing.
         let amp0 = (volume_0_to_127 as f32 / 127.0) * 0.12;
@@ -185,8 +199,8 @@ impl SquareSynth {
     }
 }
 
-fn midi_to_hz(midi: f32) -> f32 {
-    440.0 * (2.0f32).powf((midi - 69.0) / 12.0)
+fn midi_to_hz(midi: f32, a4_tuning_hz: f32) -> f32 {
+    a4_tuning_hz * (2.0f32).powf((midi - 69.0) / 12.0)
 }
 
 #[cfg(test)]
@@ -232,5 +246,17 @@ mod tests {
 
         let tail_max = buf[5500..].iter().fold(0.0f32, |m, &x| m.max(x.abs()));
         assert!(tail_max < 1.0e-3, "expected near-silence, got tail_max={tail_max}");
+    }
+
+    #[test]
+    fn tuning_a4_is_clamped_and_settable() {
+        let mut s = SquareSynth::with_tuning(48_000, 432);
+        assert_eq!(s.a4_tuning_hz(), 432);
+
+        s.set_a4_tuning_hz(450);
+        assert_eq!(s.a4_tuning_hz(), 450);
+
+        s.set_a4_tuning_hz(1000);
+        assert_eq!(s.a4_tuning_hz(), 450);
     }
 }

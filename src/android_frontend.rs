@@ -11,6 +11,7 @@ pub enum AudioMsg {
     NoteOn(NoteOn),
     NoteOff(crate::notes::UnmidiNote),
     SetSampleRate(u32),
+    SetA4Tuning(u16),
 }
 
 /// Android-facing wrapper that owns the core Engine + touch tracker.
@@ -27,6 +28,7 @@ pub struct AndroidFrontend {
     legacy_synth: Mutex<SquareSynth>,
 
     show_note_names: bool,
+    a4_tuning_hz: u16,
 }
 
 impl AndroidFrontend {
@@ -38,6 +40,7 @@ impl AndroidFrontend {
             audio_rx: Mutex::new(Some(rx)),
             legacy_synth: Mutex::new(SquareSynth::new(48_000)),
             show_note_names: false,
+            a4_tuning_hz: 440,
         }
     }
 
@@ -81,7 +84,16 @@ impl AndroidFrontend {
 
         // Keep the legacy path in sync too.
         let mut s = self.legacy_synth.lock().unwrap();
-        *s = SquareSynth::new(sr);
+        let a4 = s.a4_tuning_hz();
+        *s = SquareSynth::with_tuning(sr, a4);
+    }
+
+    pub fn set_a4_tuning_hz(&mut self, a4_tuning_hz: u16) {
+        self.a4_tuning_hz = a4_tuning_hz.clamp(430, 450);
+        let _ = self.audio_tx.send(AudioMsg::SetA4Tuning(self.a4_tuning_hz));
+
+        let mut s = self.legacy_synth.lock().unwrap();
+        s.set_a4_tuning_hz(self.a4_tuning_hz);
     }
 
     pub fn take_audio_rx(&self) -> Option<Receiver<AudioMsg>> {
@@ -118,7 +130,11 @@ impl AndroidFrontend {
                         s.note_off(MidiNote(m));
                     }
                     Ok(AudioMsg::SetSampleRate(sr)) => {
-                        *s = SquareSynth::new(sr);
+                        let a4 = s.a4_tuning_hz();
+                        *s = SquareSynth::with_tuning(sr, a4);
+                    }
+                    Ok(AudioMsg::SetA4Tuning(a4)) => {
+                        s.set_a4_tuning_hz(a4);
                     }
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => break,

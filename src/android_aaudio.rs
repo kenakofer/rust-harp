@@ -157,7 +157,11 @@ unsafe extern "C" fn data_cb(
                 ctx.synth.note_off(MidiNote(m));
             }
             AudioMsg::SetSampleRate(sr) => {
-                ctx.synth = SquareSynth::new(sr.max(1));
+                let a4 = ctx.synth.a4_tuning_hz();
+                ctx.synth = SquareSynth::with_tuning(sr.max(1), a4);
+            }
+            AudioMsg::SetA4Tuning(a4) => {
+                ctx.synth.set_a4_tuning_hz(a4);
             }
         }
     }

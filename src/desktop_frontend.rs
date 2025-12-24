@@ -106,6 +106,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let mut ui = UiSession::new();
     let mut settings = crate::ui_settings::load_desktop_settings();
     ui.set_play_on_tap(settings.play_on_tap);
+    audio.set_a4_tuning_hz(settings.a4_tuning_hz);
     let mut show_settings = false;
 
     // 4. Run Event Loop
@@ -206,6 +207,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                                     settings.audio_backend = UiAudioBackend::Midi;
                                                 }
 
+                                                audio.set_a4_tuning_hz(settings.a4_tuning_hz);
+                                                crate::ui_settings::save_desktop_settings(&settings);
+                                            }
+                                            SettingsAction::SetA4Tuning(hz) => {
+                                                settings.a4_tuning_hz = hz.clamp(430, 450);
+                                                audio.set_a4_tuning_hz(settings.a4_tuning_hz);
                                                 crate::ui_settings::save_desktop_settings(&settings);
                                             }
                                         }
@@ -315,6 +322,13 @@ impl DesktopAudio {
             midi,
             #[cfg(feature = "synth")]
             synth,
+        }
+    }
+
+    fn set_a4_tuning_hz(&mut self, a4_tuning_hz: u16) {
+        #[cfg(feature = "synth")]
+        if let Some(s) = &self.synth {
+            s.set_a4_tuning_hz(a4_tuning_hz);
         }
     }
 
@@ -455,9 +469,10 @@ enum SettingsAction {
     ToggleShowNoteNames,
     ToggleShowRomanChords,
     CycleAudioBackend,
+    SetA4Tuning(u16),
 }
 
-fn settings_layout(width: u32, _height: u32) -> (RectI32, RectI32, [RectI32; 4]) {
+fn settings_layout(width: u32, _height: u32) -> (RectI32, RectI32, [RectI32; 5]) {
     // Fixed-size pixel UI; good enough for now.
     let gear = RectI32 {
         x: width as i32 - 44,
@@ -472,7 +487,7 @@ fn settings_layout(width: u32, _height: u32) -> (RectI32, RectI32, [RectI32; 4])
         x: width as i32 - 170,
         y: 30,
         w: 162,
-        h: 4 * row_h,
+        h: 5 * row_h,
     };
 
     let rows = [
@@ -500,12 +515,18 @@ fn settings_layout(width: u32, _height: u32) -> (RectI32, RectI32, [RectI32; 4])
             w: panel.w,
             h: row_h,
         },
+        RectI32 {
+            x: panel.x,
+            y: panel.y + 4 * row_h,
+            w: panel.w,
+            h: row_h,
+        },
     ];
 
     (gear, panel, rows)
 }
 
-fn hit_settings_rows(x: f32, y: f32, rows: [RectI32; 4]) -> Option<SettingsAction> {
+fn hit_settings_rows(x: f32, y: f32, rows: [RectI32; 5]) -> Option<SettingsAction> {
     if hit_rect(x, y, rows[0]) {
         return Some(SettingsAction::TogglePlayOnTap);
     }
@@ -517,6 +538,14 @@ fn hit_settings_rows(x: f32, y: f32, rows: [RectI32; 4]) -> Option<SettingsActio
     }
     if hit_rect(x, y, rows[3]) {
         return Some(SettingsAction::CycleAudioBackend);
+    }
+    if hit_rect(x, y, rows[4]) {
+        // Map x position to 430..450.
+        let x0 = (rows[4].x + 60) as f32;
+        let x1 = (rows[4].x + rows[4].w - 6) as f32;
+        let t = ((x - x0) / (x1 - x0)).clamp(0.0, 1.0);
+        let hz = (430.0 + t * 20.0).round() as u16;
+        return Some(SettingsAction::SetA4Tuning(hz));
     }
     None
 }
@@ -672,6 +701,18 @@ fn draw_strings(
             "AUD",
             backend_label,
         );
+
+        // Tuning slider.
+        draw_slider_row(
+            &mut buffer,
+            width as usize,
+            height as usize,
+            rows[4],
+            "A4",
+            settings.a4_tuning_hz,
+            430,
+            450,
+        );
     }
 
     buffer.present().unwrap();
@@ -728,4 +769,46 @@ fn draw_checkbox_row(buf: &mut [u32], w: usize, h: usize, row: RectI32, value: b
 fn draw_value_row(buf: &mut [u32], w: usize, h: usize, row: RectI32, label: &str, value: &str) {
     crate::pixel_font::draw_text_u32(buf, w, h, row.x + 6, row.y + 3, label, 0x00FFFFFF, 13, 5);
     crate::pixel_font::draw_text_u32(buf, w, h, row.x + 64, row.y + 3, value, 0x00FFFFFF, 13, 5);
+}
+
+fn draw_slider_row(
+    buf: &mut [u32],
+    w: usize,
+    h: usize,
+    row: RectI32,
+    label: &str,
+    value: u16,
+    min: u16,
+    max: u16,
+) {
+    crate::pixel_font::draw_text_u32(buf, w, h, row.x + 6, row.y + 3, label, 0x00FFFFFF, 13, 5);
+
+    let value_str = value.to_string();
+    crate::pixel_font::draw_text_u32(buf, w, h, row.x + 28, row.y + 3, &value_str, 0x00FFFFFF, 13, 5);
+
+    let bar = RectI32 {
+        x: row.x + 60,
+        y: row.y + 7,
+        w: row.w - 66,
+        h: 6,
+    };
+    fill_rect(buf, w, h, bar, 0x00111111);
+    stroke_rect(buf, w, h, bar, 0x00333333);
+
+    let t = ((value.saturating_sub(min)) as f32 / (max - min) as f32).clamp(0.0, 1.0);
+    let fill_w = (t * (bar.w as f32)).round() as i32;
+    if fill_w > 0 {
+        fill_rect(
+            buf,
+            w,
+            h,
+            RectI32 {
+                x: bar.x,
+                y: bar.y,
+                w: fill_w,
+                h: bar.h,
+            },
+            0x00AAAAAA,
+        );
+    }
 }

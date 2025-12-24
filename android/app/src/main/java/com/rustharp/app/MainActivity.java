@@ -22,6 +22,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.ArrayAdapter;
+import android.widget.SeekBar;
+import android.widget.TextView;
 import android.content.SharedPreferences;
 
 import java.util.ArrayList;
@@ -89,6 +91,8 @@ public class MainActivity extends Activity {
     private Spinner audioSpinner;
     private boolean updatingAudioSpinner = false;
 
+    private int a4TuningHz = 440; // 430..450
+
     private SharedPreferences prefs;
 
     private GridLayout chordGrid;
@@ -110,6 +114,7 @@ public class MainActivity extends Activity {
 
     public static native void rustSetShowNoteNames(long handle, boolean show);
     public static native void rustSetPlayOnTap(long handle, boolean enabled);
+    public static native void rustSetA4TuningHz(long handle, int a4TuningHz);
     public static native int rustSetKeyIndex(long handle, int keyIndex);
     public static native int rustGetKeyIndex(long handle);
 
@@ -561,6 +566,40 @@ public class MainActivity extends Activity {
         });
         options.addView(audioSpinner);
 
+        // Tuning: A4 reference in Hz (430..450)
+        TextView tuningLabel = new TextView(this);
+        tuningLabel.setTextColor(0xFFFFFFFF);
+        tuningLabel.setText("A4 " + a4TuningHz + "Hz");
+        options.addView(tuningLabel);
+
+        SeekBar tuning = new SeekBar(this);
+        tuning.setMax(20);
+        tuning.setProgress(Math.max(0, Math.min(20, a4TuningHz - 430)));
+        tuning.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int hz = 430 + progress;
+                if (hz == a4TuningHz) return;
+                a4TuningHz = hz;
+                tuningLabel.setText("A4 " + a4TuningHz + "Hz");
+                if (prefs != null) {
+                    prefs.edit().putInt("a4TuningHz", a4TuningHz).apply();
+                }
+                if (rustHandle != 0) {
+                    rustSetA4TuningHz(rustHandle, a4TuningHz);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+        options.addView(tuning);
+
         gear.setOnClickListener(v -> {
             options.setVisibility(options.getVisibility() == android.view.View.VISIBLE
                     ? android.view.View.GONE
@@ -602,6 +641,7 @@ public class MainActivity extends Activity {
 
         // Recreate the Rust audio message channel so AAudio/AudioTrack can both attach cleanly.
         rustResetAudioChannel(rustHandle);
+        rustSetA4TuningHz(rustHandle, a4TuningHz);
 
         if ("AudioTrack".equals(audioBackend)) {
             audio = new RustAudio(rustHandle, (android.media.AudioManager) getSystemService(AUDIO_SERVICE));

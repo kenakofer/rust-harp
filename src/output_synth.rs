@@ -8,6 +8,7 @@ use crossbeam_channel::{Receiver, Sender};
 enum Msg {
     NoteOn(MidiNote, NoteVolume),
     NoteOff(MidiNote),
+    SetA4Tuning(u16),
 }
 
 pub struct SynthBackend {
@@ -54,6 +55,10 @@ impl SynthBackend {
     pub fn stop_note(&self, midi_note: MidiNote) {
         let _ = self.tx.send(Msg::NoteOff(midi_note));
     }
+
+    pub fn set_a4_tuning_hz(&self, a4_tuning_hz: u16) {
+        let _ = self.tx.send(Msg::SetA4Tuning(a4_tuning_hz));
+    }
 }
 
 fn drain_msgs(rx: &Receiver<Msg>, synth: &mut SquareSynth) {
@@ -61,6 +66,7 @@ fn drain_msgs(rx: &Receiver<Msg>, synth: &mut SquareSynth) {
         match m {
             Msg::NoteOn(note, vol) => synth.note_on(note, vol.0),
             Msg::NoteOff(note) => synth.note_off(note),
+            Msg::SetA4Tuning(a4) => synth.set_a4_tuning_hz(a4),
         }
     }
 }

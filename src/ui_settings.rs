@@ -36,6 +36,9 @@ pub struct UiSettings {
 
     // Selected audio output backend (UI-facing selection; not all backends are implemented on all platforms yet).
     pub audio_backend: UiAudioBackend,
+
+    // Synth tuning reference (A4) in Hz.
+    pub a4_tuning_hz: u16,
 }
 
 impl Default for UiSettings {
@@ -46,6 +49,7 @@ impl Default for UiSettings {
             show_roman_chords: true,
             show_chord_buttons: true,
             audio_backend: UiAudioBackend::Midi,
+            a4_tuning_hz: 440,
         }
     }
 }
@@ -58,8 +62,12 @@ fn encode_settings(s: &UiSettings) -> String {
     };
 
     format!(
-        "show_note_names={}\nplay_on_tap={}\nshow_roman_chords={}\naudio_backend={}\n",
-        s.show_note_names, s.play_on_tap, s.show_roman_chords, backend
+        "show_note_names={}\nplay_on_tap={}\nshow_roman_chords={}\naudio_backend={}\na4_tuning_hz={}\n",
+        s.show_note_names,
+        s.play_on_tap,
+        s.show_roman_chords,
+        backend,
+        s.a4_tuning_hz
     )
 }
 
@@ -77,6 +85,11 @@ fn decode_settings(input: &str) -> UiSettings {
                 s.audio_backend = match v.trim() {
                     "synth" => UiAudioBackend::Synth,
                     _ => UiAudioBackend::Midi,
+                }
+            }
+            "a4_tuning_hz" => {
+                if let Ok(hz) = v.trim().parse::<u16>() {
+                    s.a4_tuning_hz = hz.clamp(430, 450);
                 }
             }
             _ => {}
@@ -164,6 +177,7 @@ mod tests {
             show_roman_chords: false,
             show_chord_buttons: true,
             audio_backend: UiAudioBackend::Synth,
+            a4_tuning_hz: 432,
         };
 
         let enc = super::encode_settings(&s);
@@ -172,5 +186,6 @@ mod tests {
         assert_eq!(dec.play_on_tap, false);
         assert_eq!(dec.show_roman_chords, false);
         assert_eq!(dec.audio_backend, UiAudioBackend::Synth);
+        assert_eq!(dec.a4_tuning_hz, 432);
     }
 }
