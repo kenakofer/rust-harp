@@ -235,10 +235,10 @@ impl AppState {
     pub fn active_chord_for_row(&self, row: crate::rows::RowId) -> Option<Chord> {
         match row {
             crate::rows::RowId::Top => self.active_chord,
-            // Middle row is chromatic: all 12 notes are enabled.
+            crate::rows::RowId::Middle => Some(self.bottom_chord),
+            // Bottom row is chromatic: all 12 notes are enabled.
             // Represent this as None so filtering allows everything.
-            crate::rows::RowId::Middle => None,
-            crate::rows::RowId::Bottom => Some(self.bottom_chord),
+            crate::rows::RowId::Bottom => None,
         }
     }
 
@@ -258,8 +258,8 @@ impl AppState {
             effects.redraw = false;
             let chord = match row {
                 crate::rows::RowId::Top => self.active_chord,
-                crate::rows::RowId::Middle => None,
-                crate::rows::RowId::Bottom => Some(self.bottom_chord),
+                crate::rows::RowId::Middle => Some(self.bottom_chord),
+                crate::rows::RowId::Bottom => None,
             };
             if chord.map_or(true, |c| c.contains(note)) {
                 let un = self.transpose + note;

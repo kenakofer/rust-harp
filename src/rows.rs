@@ -7,10 +7,10 @@ pub enum RowId {
 
 impl RowId {
     pub fn from_y_norm(y: f32) -> Self {
-        // 40% top, 20% middle, 40% bottom
+        // 40% top, 40% middle, 20% bottom
         if y < 0.4 {
             RowId::Top
-        } else if y < 0.6 {
+        } else if y < 0.8 {
             RowId::Middle
         } else {
             RowId::Bottom

@@ -457,12 +457,12 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         return;
     }
 
-    let (top_chord, bottom_chord, show_note_names, transpose_pc) = if handle != 0 {
+    let (top_chord, middle_chord, show_note_names, transpose_pc) = if handle != 0 {
         let frontend = unsafe { &*(handle as *const AndroidFrontend) };
         let eng = frontend.engine();
         (
             eng.active_chord_for_row(crate::rows::RowId::Top),
-            eng.active_chord_for_row(crate::rows::RowId::Bottom)
+            eng.active_chord_for_row(crate::rows::RowId::Middle)
                 .unwrap_or_else(|| crate::chord::Chord::new_triad(crate::notes::UnkeyedNote(0))),
             frontend.show_note_names(),
             eng.transpose().wrap_to_octave(),
@@ -490,9 +490,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
 
     let positions = layout::compute_note_positions_android(w as f32);
 
-    // 40% top, 20% middle, 40% bottom
+    // 40% top, 40% middle, 20% bottom
     let top_end = h * 2 / 5;
-    let mid_end = h * 3 / 5;
+    let mid_end = h * 4 / 5;
 
     fn compute_best(
         w: usize,
@@ -516,7 +516,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             let xi = xi as usize;
 
             if chromatic_all {
-                // Middle row: every note is enabled and visible.
+                // Bottom row: every note is enabled and visible.
                 let prio = 2;
                 let color = 0xFFFFFFFFu32 as i32;
                 if prio > best_prio_per_x[xi] {
@@ -563,16 +563,16 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
 
     let (top_prio, top_color, top_pc) =
         compute_best(w, &positions, top_chord, false, transpose_pc, label_pitch_class);
-    let (mid_prio, mid_color, mid_pc) =
-        compute_best(w, &positions, None, true, transpose_pc, label_pitch_class);
-    let (bot_prio, bot_color, bot_pc) = compute_best(
+    let (mid_prio, mid_color, mid_pc) = compute_best(
         w,
         &positions,
-        Some(bottom_chord),
+        Some(middle_chord),
         false,
         transpose_pc,
         label_pitch_class,
     );
+    let (bot_prio, bot_color, bot_pc) =
+        compute_best(w, &positions, None, true, transpose_pc, label_pitch_class);
 
     for xi in 0..w {
         if top_prio[xi] != 0 {
@@ -609,20 +609,20 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             draw_text(&mut pixels, w, h, xi as i32 + 4, 2, label, top_color[xi]);
         }
 
-        // Middle row is chromatic; never draw note-name labels there.
+        // Bottom row is chromatic; never draw note-name labels there.
 
-        // Bottom row labels.
-        let y_bot = mid_end as i32 + 2;
-        for (xi, prio) in bot_prio.iter().enumerate() {
+        // Middle row labels.
+        let y_mid = top_end as i32 + 2;
+        for (xi, prio) in mid_prio.iter().enumerate() {
             if *prio < 2 {
                 continue;
             }
-            let pc = bot_pc[xi];
+            let pc = mid_pc[xi];
             if pc == 255 {
                 continue;
             }
             let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            draw_text(&mut pixels, w, h, xi as i32 + 4, y_bot, label, bot_color[xi]);
+            draw_text(&mut pixels, w, h, xi as i32 + 4, y_mid, label, mid_color[xi]);
         }
     }
 

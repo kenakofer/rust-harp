@@ -147,8 +147,8 @@ impl UiSession {
                 for crossing in out.crossings {
                     for note in crossing.notes {
                         // Chromatic "in-between" strings are normally only active when in-chord,
-                        // but the Middle row is explicitly chromatic (all notes enabled).
-                        if row != RowId::Middle && crate::notes::is_black_key(note) {
+                        // but the Bottom row is explicitly chromatic (all notes enabled).
+                        if row != RowId::Bottom && crate::notes::is_black_key(note) {
                             if let Some(ch) = active_chord {
                                 if !ch.contains(note) {
                                     continue;

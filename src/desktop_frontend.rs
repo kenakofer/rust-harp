@@ -149,7 +149,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         physical_size.height,
                         *ui.engine().active_chord(),
                         ui.engine()
-                            .active_chord_for_row(RowId::Bottom)
+                            .active_chord_for_row(RowId::Middle)
                             .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
                         &note_positions,
                         settings.show_note_names,
@@ -284,7 +284,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         size.height,
                         *ui.engine().active_chord(),
                         ui.engine()
-                            .active_chord_for_row(RowId::Bottom)
+                            .active_chord_for_row(RowId::Middle)
                             .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
                         &note_positions,
                         settings.show_note_names,
@@ -565,9 +565,9 @@ fn draw_strings(
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0);
 
-    // 40% top, 20% middle, 40% bottom
+    // 40% top, 40% middle, 20% bottom
     let top_end = height * 2 / 5;
-    let mid_end = height * 3 / 5;
+    let mid_end = height * 4 / 5;
 
     fn fold_best(
         chord: Option<Chord>,
@@ -617,8 +617,8 @@ fn draw_strings(
     }
 
     let (top_prio, top_color, top_pc) = fold_best(top_chord, false, width, positions, transpose_pc);
-    let (mid_prio, mid_color, _mid_pc) = fold_best(None, true, width, positions, transpose_pc);
-    let (bot_prio, bot_color, bot_pc) = fold_best(Some(bottom_chord), false, width, positions, transpose_pc);
+    let (mid_prio, mid_color, mid_pc) = fold_best(Some(bottom_chord), false, width, positions, transpose_pc);
+    let (bot_prio, bot_color, _bot_pc) = fold_best(None, true, width, positions, transpose_pc);
 
     for xi in 0..width as usize {
         if top_prio[xi] != 0 {
@@ -664,14 +664,14 @@ fn draw_strings(
             );
         }
 
-        // Middle row is chromatic; never draw note-name labels there.
+        // Bottom row is chromatic; never draw note-name labels there.
 
-        let y_bot = mid_end as i32 + 2;
-        for (xi, prio) in bot_prio.iter().enumerate() {
+        let y_mid = top_end as i32 + 2;
+        for (xi, prio) in mid_prio.iter().enumerate() {
             if *prio == 0 {
                 continue;
             }
-            let pc = bot_pc[xi];
+            let pc = mid_pc[xi];
             if pc == 255 {
                 continue;
             }
@@ -681,9 +681,9 @@ fn draw_strings(
                 width as usize,
                 height as usize,
                 xi as i32 + 4,
-                y_bot,
+                y_mid,
                 label,
-                bot_color[xi],
+                mid_color[xi],
                 13,
                 5,
             );
