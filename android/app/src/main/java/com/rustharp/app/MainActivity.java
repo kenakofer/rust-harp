@@ -22,7 +22,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.ArrayAdapter;
-import android.widget.TextView;
 import android.content.SharedPreferences;
 
 import java.util.ArrayList;
@@ -89,13 +88,6 @@ public class MainActivity extends Activity {
     private String audioBackend = "AAudio"; // "AAudio" or "AudioTrack"
     private Spinner audioSpinner;
     private boolean updatingAudioSpinner = false;
-
-    // Touch pressure/size metric selection + dynamic calibration.
-    // We pass the normalized value down to Rust as the "pressure" parameter.
-    private String touchMetric = "pressure"; // "pressure", "size", "major"
-    private float touchMin = Float.NaN;
-    private float touchMax = Float.NaN;
-    private long lastTouchCalSaveMs = 0;
 
     private SharedPreferences prefs;
 
@@ -258,11 +250,6 @@ public class MainActivity extends Activity {
         showChordButtons = prefs.getBoolean("showChordButtons", true);
         keyIndex = prefs.getInt("keyIndex", 0);
         audioBackend = prefs.getString("audioBackend", "AAudio");
-
-        touchMetric = prefs.getString("touchMetric", "pressure");
-        touchMin = prefs.getFloat("touchMin", Float.NaN);
-        touchMax = prefs.getFloat("touchMax", Float.NaN);
-
         rustSetShowNoteNames(rustHandle, showNoteNames);
         rustSetPlayOnTap(rustHandle, playOnTap);
         rustSetKeyIndex(rustHandle, keyIndex);
@@ -303,8 +290,8 @@ public class MainActivity extends Activity {
                     updateGestureExclusion();
                 }
                 for (int i = 0; i < e.getPointerCount(); i++) {
-                    float intensity = computeTouchIntensity(e, i);
-                    int flags = rustHandleTouch(rustHandle, e.getPointerId(i), 1, (int) e.getX(i), (int) e.getY(i), w, h, intensity);
+                    float p = e.getPressure(i);
+                    int flags = rustHandleTouch(rustHandle, e.getPointerId(i), 1, (int) e.getX(i), (int) e.getY(i), w, h, p);
                     if ((flags & 1) != 0) redraw();
                     if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
                     if ((flags & 4) != 0) vibrateTick();
@@ -339,9 +326,8 @@ public class MainActivity extends Activity {
             float p = e.getPressure(idx);
             float size = e.getSize(idx);
             float major = e.getToolMajor(idx);
-            float intensity = computeTouchIntensity(e, idx);
-            Log.d("RustHarp", "touch " + (phase==0?"down":(phase==2?"up":"other")) + " p=" + p + " size=" + size + " major=" + major + " intensity=" + intensity + " metric=" + touchMetric);
-            int flags = rustHandleTouch(rustHandle, pid, phase, (int) e.getX(idx), (int) e.getY(idx), w, h, intensity);
+            Log.d("RustHarp", "touch " + (phase==0?"down":(phase==2?"up":"other")) + " p=" + p + " size=" + size + " major=" + major);
+            int flags = rustHandleTouch(rustHandle, pid, phase, (int) e.getX(idx), (int) e.getY(idx), w, h, p);
             if ((flags & 1) != 0) redraw();
             if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
             if ((flags & 4) != 0) vibrateTick();
@@ -548,44 +534,6 @@ public class MainActivity extends Activity {
         });
         options.addView(cbButtons);
 
-        // Touch metric selection.
-        TextView metricLabel = new TextView(this);
-        metricLabel.setText("Touch metric");
-        metricLabel.setTextColor(0xFFFFFFFF);
-        options.addView(metricLabel);
-
-        Spinner metricSpinner = new Spinner(this);
-        String[] metricLabels = new String[]{"Press", "Size", "Major"};
-        ArrayAdapter<String> metricAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, metricLabels);
-        metricAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        metricSpinner.setAdapter(metricAdapter);
-        int metricIdx = "size".equals(touchMetric) ? 1 : ("major".equals(touchMetric) ? 2 : 0);
-        metricSpinner.setSelection(metricIdx);
-        metricSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                String chosen = (position == 1) ? "size" : (position == 2 ? "major" : "pressure");
-                if (!chosen.equals(touchMetric)) {
-                    touchMetric = chosen;
-                    // Reset calibration for the new metric.
-                    touchMin = Float.NaN;
-                    touchMax = Float.NaN;
-                    if (prefs != null) {
-                        prefs.edit()
-                                .putString("touchMetric", touchMetric)
-                                .putFloat("touchMin", touchMin)
-                                .putFloat("touchMax", touchMax)
-                                .apply();
-                    }
-                }
-            }
-
-            @Override
-            public void onNothingSelected(android.widget.AdapterView<?> parent) {
-            }
-        });
-        options.addView(metricSpinner);
-
         // Audio backend selection (applies on restart for now).
         audioSpinner = new Spinner(this);
         String[] audioLabels = new String[]{"AAudio", "AudioTrack"};
@@ -707,53 +655,6 @@ public class MainActivity extends Activity {
         iv.setSystemGestureExclusionRects(rects);
     }
 
-    private float computeTouchIntensity(MotionEvent e, int pointerIndex) {
-        float p = e.getPressure(pointerIndex);
-        float size = e.getSize(pointerIndex);
-        float major = e.getToolMajor(pointerIndex);
-
-        float raw;
-        if ("size".equals(touchMetric)) {
-            raw = size;
-        } else if ("major".equals(touchMetric)) {
-            raw = major;
-        } else {
-            raw = p;
-        }
-
-        // Dynamic calibration: track an envelope min/max with slow decay toward current values.
-        final float alpha = 0.001f;
-        if (Float.isNaN(touchMin) || Float.isNaN(touchMax) || (touchMax - touchMin) < 1e-6f) {
-            touchMin = raw;
-            touchMax = raw + 1e-3f;
-        } else {
-            if (raw < touchMin) touchMin = raw;
-            else touchMin += (raw - touchMin) * alpha;
-
-            if (raw > touchMax) touchMax = raw;
-            else touchMax += (raw - touchMax) * alpha;
-
-            if ((touchMax - touchMin) < 1e-4f) {
-                touchMax = touchMin + 1e-4f;
-            }
-        }
-
-        // Persist calibration occasionally to avoid spamming SharedPreferences.
-        long now = android.os.SystemClock.elapsedRealtime();
-        if (prefs != null && (now - lastTouchCalSaveMs) > 1000) {
-            lastTouchCalSaveMs = now;
-            prefs.edit().putFloat("touchMin", touchMin).putFloat("touchMax", touchMax).apply();
-        }
-
-        float denom = (touchMax - touchMin);
-        if (denom < 1e-6f) return 1.0f;
-
-        float t = (raw - touchMin) / denom;
-        if (t < 0f) t = 0f;
-        if (t > 1f) t = 1f;
-        return t;
-    }
-
     private void vibrateTick() {
         if (vibrator == null || !vibrator.hasVibrator()) return;
         // Shortest reliable tick tends to be ~10ms.
@@ -806,15 +707,6 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         // Don't allow system back gesture/button to exit the app while playing.
         // (We still allow the user to leave via the launcher/task switcher.)
-    }
-
-    @Override
-    protected void onPause() {
-        // Ensure calibration is saved even if the app is backgrounded quickly.
-        if (prefs != null) {
-            prefs.edit().putFloat("touchMin", touchMin).putFloat("touchMax", touchMax).apply();
-        }
-        super.onPause();
     }
 
     @Override
