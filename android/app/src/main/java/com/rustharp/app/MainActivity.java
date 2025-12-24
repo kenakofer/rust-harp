@@ -285,8 +285,6 @@ public class MainActivity extends Activity {
             }
 
             if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) && wheelActiveButton == chordBtnId) {
-                rustHandleUiButton(rustHandle, chordBtnId, false);
-
                 long now = android.os.SystemClock.uptimeMillis();
                 boolean wasTap = (wheelDir == WHEEL_NONE);
 
@@ -298,8 +296,9 @@ public class MainActivity extends Activity {
                     wheelOverlay.clearWheel();
                 }
 
-                if (wasTap) {
+                if (action == MotionEvent.ACTION_UP && wasTap) {
                     if (lastTapButton == chordBtnId && (now - lastTapUpMs) <= DOUBLE_TAP_MS) {
+                        // Toggle while the chord is still logically held, then release below.
                         int flags = rustToggleChordWheelMinorMajor(rustHandle, chordBtnId);
                         if ((flags & 1) != 0) redraw();
                         updateUiButtons();
@@ -310,7 +309,7 @@ public class MainActivity extends Activity {
                         lastTapButton = chordBtnId;
                         lastTapUpMs = now;
 
-                                        // Tiny visual cue: briefly show what a double-tap would toggle to.
+                        // Tiny visual cue: briefly show what a double-tap would toggle to.
                         if (v instanceof Button) {
                             Button b = (Button) v;
                             String old = b.getText().toString();
@@ -327,6 +326,9 @@ public class MainActivity extends Activity {
                         }
                     }
                 }
+
+                // Always release at the end (double-tap toggle simulates a press in Rust).
+                rustHandleUiButton(rustHandle, chordBtnId, false);
 
                 redraw();
                 updateUiButtons();
