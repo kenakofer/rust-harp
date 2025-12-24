@@ -108,6 +108,12 @@ pub struct AppState {
     mod_keys_down: HashSet<ModButton>,
     action_keys_down: HashSet<ActionButton>,
 
+    // Android app uses a swipe-wheel to set these modifiers persistently.
+    wheel_modifiers: Modifiers,
+    wheel_modifiers_dirty: bool,
+
+    allow_implied_sevenths: bool,
+
     modifier_stage: Modifiers,
     action_stage: Actions,
 
@@ -203,10 +209,35 @@ impl AppState {
             mod_keys_down: HashSet::new(),
             action_keys_down: HashSet::new(),
 
+            wheel_modifiers: Modifiers::empty(),
+            wheel_modifiers_dirty: false,
+
+            allow_implied_sevenths: true,
+
             modifier_stage: Modifiers::empty(),
             action_stage: Actions::empty(),
 
             transpose: Transpose(0),
+        }
+    }
+
+    pub fn set_allow_implied_sevenths(&mut self, enabled: bool) {
+        self.allow_implied_sevenths = enabled;
+    }
+
+    pub fn set_wheel_modifiers(&mut self, modifiers: Modifiers) {
+        if self.wheel_modifiers != modifiers {
+            self.wheel_modifiers = modifiers;
+            self.wheel_modifiers_dirty = true;
+        }
+    }
+
+    pub fn toggle_wheel_minor_major(&mut self) {
+        let mm = Modifiers::SwitchMinorMajor;
+        if self.wheel_modifiers.contains(mm) {
+            self.set_wheel_modifiers(self.wheel_modifiers - mm);
+        } else {
+            self.set_wheel_modifiers(self.wheel_modifiers | mm);
         }
     }
 
@@ -330,18 +361,28 @@ impl AppState {
             return effects;
         }
 
-        let venerated_old_chord = if chord_was_pressed {
+        let venerated_old_chord = if chord_was_pressed || self.wheel_modifiers_dirty {
             None
         } else {
             self.active_chord
         };
-        let mut new_chord = decide_chord_base(venerated_old_chord.as_ref(), &self.chord_keys_down);
+        let mut new_chord = decide_chord_base(
+            venerated_old_chord.as_ref(),
+            &self.chord_keys_down,
+            self.allow_implied_sevenths,
+        );
+        self.wheel_modifiers_dirty = false;
 
         // Apply held modifiers
         for entry in MOD_BUTTON_TABLE.iter() {
             if self.mod_keys_down.contains(&entry.button) {
                 self.modifier_stage.insert(entry.modifiers);
             }
+        }
+
+        // Apply persistent wheel modifiers (Android chord swipe-wheel).
+        if !self.chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
+            self.modifier_stage.insert(self.wheel_modifiers);
         }
 
         if let Some(ref mut chord) = new_chord {
@@ -499,14 +540,17 @@ fn dynamic_heptatonic_for_active_chord(active: &Chord) -> Chord {
 fn decide_chord_base(
     venerated_old_chord: Option<&Chord>,
     chord_keys_down: &HashSet<ChordButton>,
+    allow_implied_sevenths: bool,
 ) -> Option<Chord> {
     if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
         return Some(heptatonic_major_chord());
     }
 
     // Check/apply double-held-chord sevenths
-    if let Some(root) = detect_implied_minor7_root(chord_keys_down) {
-        return Some(Chord::new(root, Modifiers::MajorTri | Modifiers::AddMinor7));
+    if allow_implied_sevenths {
+        if let Some(root) = detect_implied_minor7_root(chord_keys_down) {
+            return Some(Chord::new(root, Modifiers::MajorTri | Modifiers::AddMinor7));
+        }
     }
 
     for entry in CHORD_BUTTON_TABLE.iter() {

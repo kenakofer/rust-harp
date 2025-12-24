@@ -1,5 +1,6 @@
 pub mod app_state;
 pub mod chord;
+pub mod chord_wheel;
 pub mod engine;
 pub mod input_map;
 pub mod layout;

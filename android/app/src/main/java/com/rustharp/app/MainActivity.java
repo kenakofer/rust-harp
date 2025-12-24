@@ -118,6 +118,11 @@ public class MainActivity extends Activity {
     public static native int rustSetKeyIndex(long handle, int keyIndex);
     public static native int rustGetKeyIndex(long handle);
 
+    // App-only chord-wheel behavior knobs.
+    public static native void rustSetImpliedSevenths(long handle, boolean enabled);
+    public static native int rustApplyChordWheelChoice(long handle, int chordButtonId, int dir8);
+    public static native int rustToggleChordWheelMinorMajor(long handle, int chordButtonId);
+
     public static native void rustRenderStrings(long handle, int width, int height, int[] outPixels);
 
     private void redraw() {
@@ -196,6 +201,195 @@ public class MainActivity extends Activity {
         return b;
     }
 
+    // ---- Chord wheel gesture (app-only) ----
+    private static final int WHEEL_NONE = -1;
+    private static final int WHEEL_DEADZONE_DP = 10;
+    private static final int DOUBLE_TAP_MS = 350;
+
+    private int wheelActiveButton = -1;
+    private int wheelPointerId = -1;
+    private float wheelDownX = 0;
+    private float wheelDownY = 0;
+    private int wheelDir = WHEEL_NONE;
+
+    private int lastTapButton = -1;
+    private long lastTapUpMs = 0;
+
+    private WheelOverlayView wheelOverlay;
+
+    private int dpToPxF(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density);
+    }
+
+    private int quantizeDir8(float dx, float dy) {
+        // dx,dy in screen coords (dy positive down). Return 0..7 where 0=N and clockwise.
+        double a = Math.atan2(dy, dx);          // 0=east
+        double shifted = a + Math.PI / 2.0;    // 0=north
+        double twoPi = Math.PI * 2.0;
+        double norm = (shifted % twoPi + twoPi) % twoPi;
+        double sector = (norm + (Math.PI / 8.0)) / (Math.PI / 4.0);
+        return ((int) Math.floor(sector)) & 7;
+    }
+
+    private android.view.View.OnTouchListener chordWheelTouchListener(int chordBtnId) {
+        return (v, e) -> {
+            if (rustHandle == 0) return true;
+            int action = e.getActionMasked();
+
+            if (action == MotionEvent.ACTION_DOWN) {
+                // Only allow one wheel at a time (simpler + avoids multi-chord ambiguity).
+                if (wheelActiveButton != -1) return true;
+
+                wheelActiveButton = chordBtnId;
+                wheelPointerId = e.getPointerId(0);
+                wheelDownX = e.getX();
+                wheelDownY = e.getY();
+                wheelDir = WHEEL_NONE;
+
+                // Clear any prior wheel modifiers for a fresh triad selection.
+                // This also re-applies the chord immediately (while held).
+                rustApplyChordWheelChoice(rustHandle, chordBtnId, -1);
+
+                if (wheelOverlay != null) {
+                    wheelOverlay.setWheelState((Button) v, wheelDir);
+                }
+                redraw();
+                updateUiButtons();
+                return true;
+            }
+
+            if (action == MotionEvent.ACTION_MOVE && wheelActiveButton == chordBtnId) {
+                int idx = e.findPointerIndex(wheelPointerId);
+                if (idx < 0) return true;
+                float x = e.getX(idx);
+                float y = e.getY(idx);
+                float dx = x - wheelDownX;
+                float dy = y - wheelDownY;
+                float dist2 = dx * dx + dy * dy;
+                int dead = dpToPxF(WHEEL_DEADZONE_DP);
+                if (dist2 >= dead * dead) {
+                    int dir = quantizeDir8(dx, dy);
+                    if (dir != wheelDir) {
+                        wheelDir = dir;
+                        int flags = rustApplyChordWheelChoice(rustHandle, chordBtnId, dir);
+                        if ((flags & 1) != 0) redraw();
+                        updateUiButtons();
+                        if (wheelOverlay != null) {
+                            wheelOverlay.setWheelState((Button) v, wheelDir);
+                        }
+                    }
+                }
+                return true;
+            }
+
+            if ((action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) && wheelActiveButton == chordBtnId) {
+                rustHandleUiButton(rustHandle, chordBtnId, false);
+
+                long now = android.os.SystemClock.uptimeMillis();
+                boolean wasTap = (wheelDir == WHEEL_NONE);
+
+                // End wheel state.
+                wheelActiveButton = -1;
+                wheelPointerId = -1;
+                wheelDir = WHEEL_NONE;
+                if (wheelOverlay != null) {
+                    wheelOverlay.clearWheel();
+                }
+
+                if (wasTap) {
+                    if (lastTapButton == chordBtnId && (now - lastTapUpMs) <= DOUBLE_TAP_MS) {
+                        int flags = rustToggleChordWheelMinorMajor(rustHandle, chordBtnId);
+                        if ((flags & 1) != 0) redraw();
+                        updateUiButtons();
+                        lastTapButton = -1;
+                        lastTapUpMs = 0;
+                    } else {
+                        // Arm double-tap window.
+                        lastTapButton = chordBtnId;
+                        lastTapUpMs = now;
+
+                        // Tiny visual cue: briefly show "M/m" on the tapped button.
+                        if (v instanceof Button) {
+                            Button b = (Button) v;
+                            String old = b.getText().toString();
+                            b.setText("M/m");
+                            b.postDelayed(() -> {
+                                // Only restore if it hasn't been overwritten.
+                                if ("M/m".contentEquals(b.getText())) {
+                                    b.setText(old);
+                                }
+                            }, DOUBLE_TAP_MS);
+                        }
+                    }
+                }
+
+                redraw();
+                updateUiButtons();
+                return true;
+            }
+
+            return true;
+        };
+    }
+
+    private static class WheelOverlayView extends android.view.View {
+        private Button anchor;
+        private int dir = WHEEL_NONE;
+
+        private final android.graphics.Paint pFill = new android.graphics.Paint();
+        private final android.graphics.Paint pStroke = new android.graphics.Paint();
+
+        WheelOverlayView(android.content.Context ctx) {
+            super(ctx);
+            setWillNotDraw(false);
+            pFill.setAntiAlias(true);
+            pStroke.setAntiAlias(true);
+            pStroke.setStyle(android.graphics.Paint.Style.STROKE);
+            pStroke.setStrokeWidth(2);
+            pStroke.setColor(0x66FFFFFF);
+        }
+
+        void setWheelState(Button anchor, int dir) {
+            this.anchor = anchor;
+            this.dir = dir;
+            invalidate();
+        }
+
+        void clearWheel() {
+            this.anchor = null;
+            this.dir = WHEEL_NONE;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(android.graphics.Canvas c) {
+            super.onDraw(c);
+            if (anchor == null) return;
+
+            int[] loc = new int[2];
+            int[] root = new int[2];
+            anchor.getLocationOnScreen(loc);
+            getLocationOnScreen(root);
+
+            float left = loc[0] - root[0];
+            float top = loc[1] - root[1];
+            float cx = left + anchor.getWidth() / 2.0f;
+            float cy = top + anchor.getHeight() / 2.0f;
+            float r = Math.max(anchor.getWidth(), anchor.getHeight()) * 0.9f;
+
+            android.graphics.RectF oval = new android.graphics.RectF(cx - r, cy - r, cx + r, cy + r);
+
+            // Draw wedges (8 sectors). Start at -90deg (top), clockwise 45deg.
+            for (int i = 0; i < 8; i++) {
+                boolean sel = (i == dir);
+                pFill.setStyle(android.graphics.Paint.Style.FILL);
+                pFill.setColor(sel ? 0x55FFFFFF : 0x22000000);
+                c.drawArc(oval, -90 + i * 45, 45, true, pFill);
+                c.drawArc(oval, -90 + i * 45, 45, true, pStroke);
+            }
+        }
+    }
+
     private Button makeBlank(int wPx, int hPx) {
         Button b = makeUiButton("", -1, wPx, hPx);
         // Keep layout spacing, but don't draw or intercept touches.
@@ -258,6 +452,8 @@ public class MainActivity extends Activity {
         rustSetShowNoteNames(rustHandle, showNoteNames);
         rustSetPlayOnTap(rustHandle, playOnTap);
         rustSetKeyIndex(rustHandle, keyIndex);
+        // App chord buttons should not auto-generate implied sevenths when multi-pressed.
+        rustSetImpliedSevenths(rustHandle, false);
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
         w = dm.widthPixels;
@@ -347,10 +543,10 @@ public class MainActivity extends Activity {
 
         root.addView(iv);
 
-        // Touch chord/modifier grid (lower-left).
+        // Touch chord grid (lower-left). Modifier buttons removed; modifiers are selected via a swipe-wheel.
         chordGrid = new GridLayout(this);
-        chordGrid.setColumnCount(7);
-        chordGrid.setRowCount(3);
+        chordGrid.setColumnCount(4);
+        chordGrid.setRowCount(2);
         chordGrid.setUseDefaultMargins(false);
         chordGrid.setPadding(0, 0, 0, 0);
         chordGrid.setMotionEventSplittingEnabled(true);
@@ -381,38 +577,33 @@ public class MainActivity extends Activity {
         uiButtons[BTN_III] = makeUiButton("iii", BTN_III, bw, bh);
         uiButtons[BTN_VII_DIM] = makeUiButton("vii\u00B0", BTN_VII_DIM, bw, bh);
 
-        // Row 3: Maj7 No3 Sus4 M/m Add2 Add7
-        uiButtons[BTN_MAJ7] = makeUiButton("Maj7", BTN_MAJ7, bw, bh);
-        uiButtons[BTN_NO3] = makeUiButton("No3", BTN_NO3, bw, bh);
-        uiButtons[BTN_SUS4] = makeUiButton("Sus4", BTN_SUS4, bw, bh);
-        uiButtons[BTN_MM] = makeUiButton("M/m", BTN_MM, bw, bh);
-        uiButtons[BTN_ADD2] = makeUiButton("Add2", BTN_ADD2, bw, bh);
-        uiButtons[BTN_ADD7] = makeUiButton("Add7", BTN_ADD7, bw, bh);
+        // Chord-wheel gesture replaces the default button press logic for these chord buttons.
+        uiButtons[BTN_VIIB].setOnTouchListener(chordWheelTouchListener(BTN_VIIB));
+        uiButtons[BTN_IV].setOnTouchListener(chordWheelTouchListener(BTN_IV));
+        uiButtons[BTN_I].setOnTouchListener(chordWheelTouchListener(BTN_I));
+        uiButtons[BTN_V].setOnTouchListener(chordWheelTouchListener(BTN_V));
+        uiButtons[BTN_II].setOnTouchListener(chordWheelTouchListener(BTN_II));
+        uiButtons[BTN_VI].setOnTouchListener(chordWheelTouchListener(BTN_VI));
+        uiButtons[BTN_III].setOnTouchListener(chordWheelTouchListener(BTN_III));
+        uiButtons[BTN_VII_DIM].setOnTouchListener(chordWheelTouchListener(BTN_VII_DIM));
 
         // Add in row-major order.
         chordGrid.addView(uiButtons[BTN_VIIB]);
         chordGrid.addView(uiButtons[BTN_IV]);
         chordGrid.addView(uiButtons[BTN_I]);
         chordGrid.addView(uiButtons[BTN_V]);
-        chordGrid.addView(makeBlank(bw, bh));
-        chordGrid.addView(makeBlank(bw, bh));
-        chordGrid.addView(makeBlank(bw, bh));
 
         chordGrid.addView(uiButtons[BTN_II]);
         chordGrid.addView(uiButtons[BTN_VI]);
         chordGrid.addView(uiButtons[BTN_III]);
         chordGrid.addView(uiButtons[BTN_VII_DIM]);
-        chordGrid.addView(makeBlank(bw, bh));
-        chordGrid.addView(makeBlank(bw, bh));
-        chordGrid.addView(makeBlank(bw, bh));
 
-        chordGrid.addView(uiButtons[BTN_MAJ7]);
-        chordGrid.addView(uiButtons[BTN_NO3]);
-        chordGrid.addView(uiButtons[BTN_SUS4]);
-        chordGrid.addView(uiButtons[BTN_MM]);
-        chordGrid.addView(uiButtons[BTN_ADD2]);
-        chordGrid.addView(uiButtons[BTN_ADD7]);
-        chordGrid.addView(makeBlank(bw, bh));
+        // Wheel overlay draws above the background strings but below the chord buttons.
+        wheelOverlay = new WheelOverlayView(this);
+        wheelOverlay.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(wheelOverlay);
 
         root.addView(chordGrid);
 

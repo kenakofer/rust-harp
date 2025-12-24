@@ -5,6 +5,8 @@ use crate::layout;
 
 #[cfg(all(target_os = "android", feature = "android"))]
 use crate::android_aaudio;
+
+use crate::chord_wheel::{self, WheelDir8};
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
 
 use jni::objects::{JClass, JIntArray, JShortArray};
@@ -108,6 +110,20 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetPlayOnTap(
     }
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     frontend.set_play_on_tap(enabled != 0);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetImpliedSevenths(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    enabled: jboolean,
+) {
+    if handle == 0 {
+        return;
+    }
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    frontend.engine_mut().set_allow_implied_sevenths(enabled != 0);
 }
 
 #[no_mangle]
@@ -254,6 +270,117 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
 
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button { state, button });
+
+    let redraw = effects.redraw;
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+    frontend.push_effects(effects);
+
+    (if redraw { 1 } else { 0 }) | (if has_play { 2 } else { 0 })
+}
+
+fn chord_button_from_ui_button(button: UiButton) -> Option<crate::app_state::ChordButton> {
+    use crate::app_state::ChordButton;
+    match button {
+        UiButton::VIIB => Some(ChordButton::VIIB),
+        UiButton::IV => Some(ChordButton::IV),
+        UiButton::I => Some(ChordButton::I),
+        UiButton::V => Some(ChordButton::V),
+        UiButton::II => Some(ChordButton::II),
+        UiButton::VI => Some(ChordButton::VI),
+        UiButton::III => Some(ChordButton::III),
+        UiButton::VIIDim => Some(ChordButton::VII),
+        UiButton::Hept => Some(ChordButton::HeptatonicMajor),
+        _ => None,
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustApplyChordWheelChoice(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    chord_button_id: jint,
+    dir8: jint,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    // Only degree chord buttons participate in the wheel.
+    let button = match chord_button_id {
+        0 => UiButton::VIIB,
+        1 => UiButton::IV,
+        2 => UiButton::I,
+        3 => UiButton::V,
+        4 => UiButton::II,
+        5 => UiButton::VI,
+        6 => UiButton::III,
+        7 => UiButton::VIIDim,
+        _ => return 0,
+    };
+
+    let chord_button = match chord_button_from_ui_button(button) {
+        Some(b) => b,
+        None => return 0,
+    };
+
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+
+    let mods = if dir8 < 0 {
+        crate::chord::Modifiers::empty()
+    } else {
+        let dir = match WheelDir8::from_i32(dir8) {
+            Some(d) => d,
+            None => return 0,
+        };
+        chord_wheel::modifiers_for(chord_button, dir)
+    };
+
+    frontend.engine_mut().set_wheel_modifiers(mods);
+
+    // Trigger a recompute immediately (while the chord button is still held).
+    let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button {
+        state: KeyState::Pressed,
+        button,
+    });
+
+    let redraw = effects.redraw;
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+    frontend.push_effects(effects);
+
+    (if redraw { 1 } else { 0 }) | (if has_play { 2 } else { 0 })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustToggleChordWheelMinorMajor(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    chord_button_id: jint,
+) -> jint {
+    if handle == 0 {
+        return 0;
+    }
+
+    let button = match chord_button_id {
+        0 => UiButton::VIIB,
+        1 => UiButton::IV,
+        2 => UiButton::I,
+        3 => UiButton::V,
+        4 => UiButton::II,
+        5 => UiButton::VI,
+        6 => UiButton::III,
+        7 => UiButton::VIIDim,
+        _ => return 0,
+    };
+
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    frontend.engine_mut().toggle_wheel_minor_major();
+
+    let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button {
+        state: KeyState::Pressed,
+        button,
+    });
 
     let redraw = effects.redraw;
     let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();

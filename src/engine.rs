@@ -57,4 +57,16 @@ impl Engine {
     pub fn active_notes(&self) -> impl Iterator<Item = UnmidiNote> + '_ {
         self.state.active_notes.iter().cloned()
     }
+
+    pub fn set_allow_implied_sevenths(&mut self, enabled: bool) {
+        self.state.set_allow_implied_sevenths(enabled);
+    }
+
+    pub fn set_wheel_modifiers(&mut self, modifiers: crate::chord::Modifiers) {
+        self.state.set_wheel_modifiers(modifiers);
+    }
+
+    pub fn toggle_wheel_minor_major(&mut self) {
+        self.state.toggle_wheel_minor_major();
+    }
 }
