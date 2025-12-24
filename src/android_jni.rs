@@ -8,7 +8,7 @@ use crate::android_aaudio;
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
 
 use jni::objects::{JClass, JIntArray, JShortArray};
-use jni::sys::{jboolean, jint, jlong, jshort};
+use jni::sys::{jboolean, jint, jlong, jshort, jfloat};
 use jni::JNIEnv;
 
 /// Simple JNI hook so an Android Activity can verify the Rust library loads.
