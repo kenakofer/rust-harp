@@ -229,6 +229,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                 phase,
                                 x,
                                 y_norm: (y / h).clamp(0.0, 1.0),
+                                pressure: 1.0,
                             }),
                             &note_positions,
                         );
@@ -253,6 +254,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                 phase: TouchPhase::Move,
                                 x: curr_x,
                                 y_norm: (curr_y / h).clamp(0.0, 1.0),
+                                pressure: 1.0,
                             }),
                             &note_positions,
                         );

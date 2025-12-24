@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use bitflags::bitflags;
 
-const STRUM_VOLUME: NoteVolume = NoteVolume(70);
+pub const DEFAULT_STRUM_VOLUME: NoteVolume = NoteVolume(70);
 const PULSE_VOLUME: NoteVolume = NoteVolume(50);
 
 const ROOT_VIIB: UnkeyedNote = UnkeyedNote(10);
@@ -41,6 +41,8 @@ pub enum KeyEvent {
     StrumCrossing {
         row: crate::rows::RowId,
         note: UnkeyedNote,
+        /// Touch/strum intensity snapshot at note-on.
+        volume: NoteVolume,
     },
 }
 
@@ -249,7 +251,7 @@ impl AppState {
             play_notes: Vec::new(),
         };
 
-        if let KeyEvent::StrumCrossing { row, note } = event {
+        if let KeyEvent::StrumCrossing { row, note, volume } = event {
             effects.redraw = false;
             let chord = match row {
                 crate::rows::RowId::Top => self.active_chord,
@@ -269,10 +271,7 @@ impl AppState {
 
                 self.active_notes.insert(un);
                 self.active_notes_by_row[row.index()].insert(un);
-                effects.play_notes.push(NoteOn {
-                    note: un,
-                    volume: STRUM_VOLUME,
-                });
+                effects.play_notes.push(NoteOn { note: un, volume });
             }
             return effects;
         }
@@ -576,13 +575,14 @@ mod tests {
         let effects = state.handle_key_event(KeyEvent::StrumCrossing {
             row: crate::rows::RowId::Top,
             note: UnkeyedNote(4),
+            volume: DEFAULT_STRUM_VOLUME,
         });
 
         assert_eq!(
             effects.play_notes,
             vec![NoteOn {
                 note: UnmidiNote(16),
-                volume: STRUM_VOLUME,
+                volume: DEFAULT_STRUM_VOLUME,
             }]
         );
         assert!(state.active_notes.contains(&UnmidiNote(16)));
@@ -596,6 +596,7 @@ mod tests {
         let effects = state.handle_key_event(KeyEvent::StrumCrossing {
             row: crate::rows::RowId::Top,
             note: UnkeyedNote(3),
+            volume: DEFAULT_STRUM_VOLUME,
         });
 
         assert!(effects.play_notes.is_empty());
@@ -609,10 +610,12 @@ mod tests {
         let effects1 = state.handle_key_event(KeyEvent::StrumCrossing {
             row: crate::rows::RowId::Top,
             note: UnkeyedNote(0),
+            volume: DEFAULT_STRUM_VOLUME,
         });
         let effects2 = state.handle_key_event(KeyEvent::StrumCrossing {
             row: crate::rows::RowId::Top,
             note: UnkeyedNote(0),
+            volume: DEFAULT_STRUM_VOLUME,
         });
 
         assert_eq!(effects1.play_notes.len(), 1);
@@ -631,10 +634,12 @@ mod tests {
         state.handle_key_event(KeyEvent::StrumCrossing {
             row: crate::rows::RowId::Top,
             note: UnkeyedNote(0),
+            volume: DEFAULT_STRUM_VOLUME,
         });
         state.handle_key_event(KeyEvent::StrumCrossing {
             row: crate::rows::RowId::Top,
             note: UnkeyedNote(4),
+            volume: DEFAULT_STRUM_VOLUME,
         });
 
         assert!(state.active_notes.contains(&UnmidiNote(0)));

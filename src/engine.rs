@@ -28,9 +28,14 @@ impl Engine {
         self.state.handle_key_event(event)
     }
 
-    pub fn handle_strum_crossing(&mut self, row: RowId, note: UnkeyedNote) -> AppEffects {
+    pub fn handle_strum_crossing(
+        &mut self,
+        row: RowId,
+        note: UnkeyedNote,
+        volume: crate::notes::NoteVolume,
+    ) -> AppEffects {
         self.state
-            .handle_key_event(KeyEvent::StrumCrossing { row, note })
+            .handle_key_event(KeyEvent::StrumCrossing { row, note, volume })
     }
 
     pub fn active_chord(&self) -> &Option<Chord> {

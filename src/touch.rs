@@ -21,6 +21,8 @@ pub struct TouchEvent {
     pub x: f32,
     /// Normalized vertical position in [0,1].
     pub y_norm: f32,
+    /// Normalized finger pressure (best-effort), typically in [0,1].
+    pub pressure: f32,
 }
 
 /// Result of processing a touch/mouse event.
@@ -203,7 +205,8 @@ mod tests {
                     phase: TouchPhase::Down,
                     x: 5.0,
                     y_norm: Y,
-                },
+                    pressure: 1.0,
+},
                 &positions,
                 |_, _| true,
             ),
@@ -219,7 +222,8 @@ mod tests {
                 phase: TouchPhase::Move,
                 x: 25.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -243,7 +247,8 @@ mod tests {
                 phase: TouchPhase::Up,
                 x: 25.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -256,7 +261,8 @@ mod tests {
                     phase: TouchPhase::Move,
                     x: 30.0,
                     y_norm: Y,
-                },
+                    pressure: 1.0,
+},
                 &positions,
                 |_, _| true,
             ),
@@ -279,7 +285,8 @@ mod tests {
                 phase: TouchPhase::Down,
                 x: 0.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -289,7 +296,8 @@ mod tests {
                 phase: TouchPhase::Down,
                 x: 100.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -300,7 +308,8 @@ mod tests {
                 phase: TouchPhase::Move,
                 x: 15.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -318,7 +327,8 @@ mod tests {
                 phase: TouchPhase::Move,
                 x: 5.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -353,7 +363,8 @@ mod tests {
                 phase: TouchPhase::Down,
                 x: 11.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -365,7 +376,8 @@ mod tests {
                 phase: TouchPhase::Down,
                 x: 9.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -378,7 +390,8 @@ mod tests {
                 phase: TouchPhase::Move,
                 x: 25.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -397,7 +410,8 @@ mod tests {
                 phase: TouchPhase::Up,
                 x: 25.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -407,7 +421,8 @@ mod tests {
                 phase: TouchPhase::Down,
                 x: 10.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -426,7 +441,8 @@ mod tests {
                 phase: TouchPhase::Down,
                 x: 1.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, n| n == UnkeyedNote(2),
         );
@@ -444,7 +460,8 @@ mod tests {
                 phase: TouchPhase::Down,
                 x: 11.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -457,7 +474,8 @@ mod tests {
                 phase: TouchPhase::Move,
                 x: 0.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -470,7 +488,8 @@ mod tests {
                 phase: TouchPhase::Move,
                 x: 30.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );
@@ -489,7 +508,8 @@ mod tests {
                 phase: TouchPhase::Move,
                 x: 0.0,
                 y_norm: Y,
-            },
+                pressure: 1.0,
+},
             &positions,
             |_, _| true,
         );

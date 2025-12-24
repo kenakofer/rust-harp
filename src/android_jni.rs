@@ -328,6 +328,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
     y: jint,
     width: jint,
     height: jint,
+    pressure: jfloat,
 ) -> jint {
     if handle == 0 {
         return 0;
@@ -346,6 +347,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
         phase,
         x: x as f32,
         y_norm: (y as f32 / h).clamp(0.0, 1.0),
+        pressure: pressure as f32,
     };
 
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };

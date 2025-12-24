@@ -1,7 +1,7 @@
 use crate::app_state::{AppEffects, KeyState};
 use crate::engine::Engine;
 use crate::input_map::{self, UiButton, UiKey};
-use crate::notes::{Transpose, UnkeyedNote};
+use crate::notes::{NoteVolume, Transpose, UnkeyedNote};
 use crate::rows::RowId;
 use crate::touch::{TouchEvent, TouchTracker};
 
@@ -36,6 +36,14 @@ fn empty_effects() -> AppEffects {
         redraw: false,
         change_key: None,
     }
+}
+
+fn touch_volume(pressure: f32) -> NoteVolume {
+    // Prototype mapping (tune these constants based on device feel).
+    let p = pressure.clamp(0.0, 1.0);
+    let min = 25.0;
+    let max = 110.0;
+    NoteVolume((min + (max - min) * p).round() as u8)
 }
 
 fn merge_effects(a: &mut AppEffects, b: AppEffects) {
@@ -115,6 +123,7 @@ impl UiSession {
             }
             UiEvent::Touch(te) => {
                 let row = RowId::from_y_norm(te.y_norm);
+                let vol = touch_volume(te.pressure);
 
                 let out = self.touch.handle_event(te, note_positions, |r, n| {
                     match self.engine.active_chord_for_row(r) {
@@ -130,7 +139,10 @@ impl UiSession {
 
                 if let Some(note) = out.strike {
                     touch_notes.push(TouchNote { row, note });
-                    merge_effects(&mut effects, self.engine.handle_strum_crossing(row, note));
+                    merge_effects(
+                        &mut effects,
+                        self.engine.handle_strum_crossing(row, note, vol),
+                    );
                 }
                 for crossing in out.crossings {
                     for note in crossing.notes {
@@ -146,7 +158,10 @@ impl UiSession {
                         }
 
                         touch_notes.push(TouchNote { row, note });
-                        merge_effects(&mut effects, self.engine.handle_strum_crossing(row, note));
+                        merge_effects(
+                            &mut effects,
+                            self.engine.handle_strum_crossing(row, note, vol),
+                        );
                     }
                 }
 
@@ -205,7 +220,8 @@ mod tests {
             phase: crate::touch::TouchPhase::Down,
             x: 1.2,
             y_norm: 0.25,
-        });
+            pressure: 1.0,
+});
         log.record(e2.clone());
         let out2 = s1.handle(e2, &positions);
         assert_eq!(out2.touch_notes.len(), 1);
@@ -241,7 +257,8 @@ mod tests {
                 phase: crate::touch::TouchPhase::Down,
                 x: -1.0,
                 y_norm: 0.25,
-            }),
+                pressure: 1.0,
+}),
             &positions,
         );
 
@@ -251,7 +268,8 @@ mod tests {
                 phase: crate::touch::TouchPhase::Move,
                 x: 2.2,
                 y_norm: 0.25,
-            }),
+                pressure: 1.0,
+}),
             &positions,
         );
 
@@ -294,7 +312,8 @@ mod tests {
             phase: crate::touch::TouchPhase::Down,
             x: 0.1,
             y_norm: 0.25,
-        });
+            pressure: 1.0,
+});
         log.record(e3.clone());
         let out3 = s1.handle(e3, &positions);
         assert_eq!(out3.touch_notes, Vec::<TouchNote>::new());
@@ -309,7 +328,8 @@ mod tests {
             phase: crate::touch::TouchPhase::Down,
             x: 0.1,
             y_norm: 0.25,
-        });
+            pressure: 1.0,
+});
         log.record(e5.clone());
         let out5 = s1.handle(e5, &positions);
         assert_eq!(

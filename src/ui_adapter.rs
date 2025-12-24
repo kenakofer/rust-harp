@@ -45,7 +45,11 @@ impl AppAdapter {
     }
 
     pub fn handle_strum_crossing(&mut self, note: UnkeyedNote) -> AppEffects {
-        self.ui.engine_mut().handle_strum_crossing(RowId::Top, note)
+        self.ui.engine_mut().handle_strum_crossing(
+            RowId::Top,
+            note,
+            crate::app_state::DEFAULT_STRUM_VOLUME,
+        )
     }
 
     pub fn active_chord(&self) -> &Option<Chord> {
