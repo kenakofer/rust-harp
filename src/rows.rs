@@ -1,13 +1,17 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum RowId {
     Top,
+    Middle,
     Bottom,
 }
 
 impl RowId {
     pub fn from_y_norm(y: f32) -> Self {
-        if y < 0.5 {
+        // 40% top, 20% middle, 40% bottom
+        if y < 0.4 {
             RowId::Top
+        } else if y < 0.6 {
+            RowId::Middle
         } else {
             RowId::Bottom
         }
@@ -16,7 +20,8 @@ impl RowId {
     pub fn index(self) -> usize {
         match self {
             RowId::Top => 0,
-            RowId::Bottom => 1,
+            RowId::Middle => 1,
+            RowId::Bottom => 2,
         }
     }
 }
