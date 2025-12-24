@@ -594,19 +594,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             draw_text(&mut pixels, w, h, xi as i32 + 4, 2, label, top_color[xi]);
         }
 
-        // Middle row labels.
-        let y_mid = top_end as i32 + 2;
-        for (xi, prio) in mid_prio.iter().enumerate() {
-            if *prio < 2 {
-                continue;
-            }
-            let pc = mid_pc[xi];
-            if pc == 255 {
-                continue;
-            }
-            let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            draw_text(&mut pixels, w, h, xi as i32 + 4, y_mid, label, mid_color[xi]);
-        }
+        // Middle row is chromatic; never draw note-name labels there.
 
         // Bottom row labels.
         let y_bot = mid_end as i32 + 2;

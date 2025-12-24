@@ -588,7 +588,7 @@ fn draw_strings(
     }
 
     let (top_prio, top_color, top_pc) = fold_best(top_chord, false, width, positions, transpose_pc);
-    let (mid_prio, mid_color, mid_pc) = fold_best(None, true, width, positions, transpose_pc);
+    let (mid_prio, mid_color, _mid_pc) = fold_best(None, true, width, positions, transpose_pc);
     let (bot_prio, bot_color, bot_pc) = fold_best(Some(bottom_chord), false, width, positions, transpose_pc);
 
     for xi in 0..width as usize {
@@ -635,28 +635,7 @@ fn draw_strings(
             );
         }
 
-        let y_mid = top_end as i32 + 2;
-        for (xi, prio) in mid_prio.iter().enumerate() {
-            if *prio == 0 {
-                continue;
-            }
-            let pc = mid_pc[xi];
-            if pc == 255 {
-                continue;
-            }
-            let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            crate::pixel_font::draw_text_u32(
-                &mut buffer,
-                width as usize,
-                height as usize,
-                xi as i32 + 4,
-                y_mid,
-                label,
-                mid_color[xi],
-                13,
-                5,
-            );
-        }
+        // Middle row is chromatic; never draw note-name labels there.
 
         let y_bot = mid_end as i32 + 2;
         for (xi, prio) in bot_prio.iter().enumerate() {
