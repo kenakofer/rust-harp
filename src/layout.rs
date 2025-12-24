@@ -121,6 +121,14 @@ pub fn compute_note_positions(width: f32) -> Vec<f32> {
 /// wider-spaced strings for reliable touch.
 pub const ANDROID_NUM_STRINGS: usize = 22;
 
+/// Controls how much horizontal space chromatic (black-key) semitone steps consume
+/// relative to the two diatonic semitone steps (E→F and B→C).
+///
+/// - 1.0: all 12 semitones per octave are evenly spaced.
+/// - 0.5: matches our prior Android behavior (chromatic steps are half as wide as the
+///        diatonic semitone steps), which keeps the 7 diatonic notes per octave evenly spaced.
+pub const CHROMATIC_SPACING_RATIO: f32 = 0.75;
+
 /// Android-only: which `UnkeyedNote` should map to the first (left-most) physical string.
 ///
 /// This is intentionally independent from desktop. TODO things get weird if this isn't a multiple
@@ -151,18 +159,31 @@ pub fn compute_note_positions_android_with_lowest(width: f32, lowest_note: i16) 
     // Small padding so the first/last string isn't clipped by the edge.
     let pad = 2.0f32;
     let usable = (width - 2.0 * pad).max(1.0);
-    let step = if strings > 1 {
-        usable / (strings as f32 - 1.0)
-    } else {
-        0.0
-    };
+
+    fn semitone_step(pc: i32) -> f32 {
+        // In major diatonic (heptatonic) layout, E→F (4→5) and B→C (11→0) are the two
+        // half-step gaps; everything else is a whole-step region.
+        if pc == 4 || pc == 11 {
+            1.0
+        } else {
+            CHROMATIC_SPACING_RATIO
+        }
+    }
+
+    // Offsets within an octave (pitch class 0..11).
+    let mut pc_units = [0.0f32; 12];
+    for pc in 1..12 {
+        pc_units[pc] = pc_units[pc - 1] + semitone_step((pc - 1) as i32);
+    }
+    let octave_units: f32 = (0..12).map(semitone_step).sum();
 
     // Keep indices aligned with UnkeyedNote (i as i16). Notes below lowest_note are dummy.
     let dummy_len = lowest_note.max(0) as usize;
     let mut positions: Vec<f32> = vec![f32::NEG_INFINITY; dummy_len];
 
-    // Build chromatic notes in order, keeping the 7-per-octave "white key" strings fixed,
-    // and placing the 5 chromatic notes halfway between their neighbors.
+    // Determine which chromatic notes exist based on the number of diatonic "anchor" strings,
+    // matching the previous range/termination behavior.
+    let mut units: Vec<f32> = Vec::new();
     for rel_note in 0.. {
         let octave = rel_note / 12;
         let pc = rel_note % 12;
@@ -176,17 +197,12 @@ pub fn compute_note_positions_android_with_lowest(width: f32, lowest_note: i16) 
             break;
         }
 
-        let mut string_x = [0.0f32; 7];
-        for s in 0..7 {
-            if base + s < strings {
-                string_x[s] = pad + (base + s) as f32 * step;
-            }
-        }
-
-        if let Some(x) = note_x_from_strings(pc as i32, &string_x) {
-            positions.push(x);
-        }
+        units.push(octave as f32 * octave_units + pc_units[pc]);
     }
+
+    let max_units = units.last().copied().unwrap_or(0.0).max(1.0);
+    let scale = usable / max_units;
+    positions.extend(units.into_iter().map(|u| pad + u * scale));
 
     positions
 }
@@ -213,34 +229,22 @@ mod tests {
     }
 
     #[test]
-    fn android_black_keys_are_midpoints() {
+    fn android_chromatic_spacing_ratio_is_applied() {
         let w = 1000.0f32;
         let pos = compute_note_positions_android_with_lowest(w, 0);
 
-        // Recompute expected physical string positions for octave 0.
-        let pad = 2.0f32;
-        let usable = (w - 2.0 * pad).max(1.0);
-        let step = usable / (ANDROID_NUM_STRINGS as f32 - 1.0);
-        let x0 = pad + 0.0 * step;
-        let x1 = pad + 1.0 * step;
-        let x2 = pad + 2.0 * step;
-        let x3 = pad + 3.0 * step;
-        let x4 = pad + 4.0 * step;
-        let x5 = pad + 5.0 * step;
-        let x6 = pad + 6.0 * step;
+        // Regardless of ratio, black keys should be centered between the adjacent diatonic notes
+        // within a whole-step region.
+        assert!((pos[1] - (pos[0] + pos[2]) * 0.5).abs() < 0.0001);
+        assert!((pos[3] - (pos[2] + pos[4]) * 0.5).abs() < 0.0001);
+        assert!((pos[6] - (pos[5] + pos[7]) * 0.5).abs() < 0.0001);
+        assert!((pos[8] - (pos[7] + pos[9]) * 0.5).abs() < 0.0001);
+        assert!((pos[10] - (pos[9] + pos[11]) * 0.5).abs() < 0.0001);
 
-        assert!((pos[0] - x0).abs() < 0.0001);
-        assert!((pos[2] - x1).abs() < 0.0001);
-        assert!((pos[4] - x2).abs() < 0.0001);
-        assert!((pos[5] - x3).abs() < 0.0001);
-        assert!((pos[7] - x4).abs() < 0.0001);
-        assert!((pos[9] - x5).abs() < 0.0001);
-        assert!((pos[11] - x6).abs() < 0.0001);
-
-        assert!((pos[1] - (x0 + x1) * 0.5).abs() < 0.0001);
-        assert!((pos[3] - (x1 + x2) * 0.5).abs() < 0.0001);
-        assert!((pos[6] - (x3 + x4) * 0.5).abs() < 0.0001);
-        assert!((pos[8] - (x4 + x5) * 0.5).abs() < 0.0001);
-        assert!((pos[10] - (x5 + x6) * 0.5).abs() < 0.0001);
+        // But the gap across a whole-step region (C→D) should scale with the ratio.
+        // In our model, C→D spans two "chromatic" semitone steps.
+        let cd = pos[2] - pos[0];
+        let ef = pos[5] - pos[4];
+        assert!(cd > ef); // whole-step region is wider than the diatonic semitone gap
     }
 }
