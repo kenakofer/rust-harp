@@ -484,6 +484,18 @@ fn heptatonic_major_chord_root(root: UnkeyedNote) -> Chord {
     )
 }
 
+fn harmonic_minor_chord_root(root: UnkeyedNote) -> Chord {
+    // Harmonic minor: 0,2,3,5,7,8,11
+    Chord::new(
+        root,
+        Modifiers::MinorTri
+            | Modifiers::AddMajor2
+            | Modifiers::Add4
+            | Modifiers::AddMinor6
+            | Modifiers::AddMajor7,
+    )
+}
+
 fn heptatonic_major_chord() -> Chord {
     heptatonic_major_chord_root(ROOT_I)
 }
@@ -496,12 +508,12 @@ fn chord_pitch_classes(chord: &Chord) -> [bool; 12] {
     pcs
 }
 
-/// Choose a major heptatonic (diatonic) scale root such that the resulting
-/// heptatonic contains all notes in the active chord.
+/// Choose a heptatonic scale (harmonic minor preferred, then major) such that the
+/// resulting scale contains all notes in the active chord.
 ///
 /// We search outward in both directions around the circle of fifths from the
 /// current key (which is always `UnkeyedNote(0)` in our unkeyed coordinate space).
-fn choose_heptatonic_root_for_active_chord(active: &Chord) -> UnkeyedNote {
+fn choose_heptatonic_for_active_chord(active: &Chord) -> Chord {
     let needed = chord_pitch_classes(active);
 
     for k in 0..12 {
@@ -515,25 +527,27 @@ fn choose_heptatonic_root_for_active_chord(active: &Chord) -> UnkeyedNote {
 
         let root_pc = offset.rem_euclid(12);
         let root = UnkeyedNote(root_pc);
-        let hept = heptatonic_major_chord_root(root);
 
-        let mut ok = true;
-        for pc in 0..12 {
-            if needed[pc] && !hept.contains(UnkeyedNote(pc as i16)) {
-                ok = false;
-                break;
+        // Prefer harmonic minor for this candidate root, then fall back to major.
+        for hept in [harmonic_minor_chord_root(root), heptatonic_major_chord_root(root)] {
+            let mut ok = true;
+            for pc in 0..12 {
+                if needed[pc] && !hept.contains(UnkeyedNote(pc as i16)) {
+                    ok = false;
+                    break;
+                }
             }
-        }
-        if ok {
-            return root;
+            if ok {
+                return hept;
+            }
         }
     }
 
-    ROOT_I
+    heptatonic_major_chord_root(ROOT_I)
 }
 
 fn dynamic_heptatonic_for_active_chord(active: &Chord) -> Chord {
-    heptatonic_major_chord_root(choose_heptatonic_root_for_active_chord(active))
+    choose_heptatonic_for_active_chord(active)
 }
 
 // Decide chord from current chord_keys_down and previous chord state.

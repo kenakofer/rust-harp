@@ -10,6 +10,7 @@ bitflags! {
         const DiminTri = 1 << 2;
         const AddMajor2 = 1 << 3;
         const AddMajor6 = 1 << 4;
+        const AddMinor6 = 1 << 12;
         const AddMinor7 = 1 << 5;
         const AddMajor7 = 1 << 6;
         const Minor3ToMajor = 1 << 7;
@@ -37,7 +38,7 @@ impl Chord {
     const MINOR_ROOTS: [i16; 3] = [2, 4, 9];
     const DIMIN_ROOTS: [i16; 1] = [11];
 
-    const ORDERED_MOD_APPLICATIONS: [(Modifiers, ModifierFn); 12] = [
+    const ORDERED_MOD_APPLICATIONS: [(Modifiers, ModifierFn); 13] = [
         // Destructive, initializer modifiers, should be first
         (Modifiers::MajorTri, |m| *m = PitchClassSet::MAJOR_TRI),
         (Modifiers::MinorTri, |m| *m = PitchClassSet::MINOR_TRI),
@@ -45,6 +46,7 @@ impl Chord {
         // Constructive modifiers
         (Modifiers::AddMajor2, |m| m.insert(UnrootedNote(2))),
         (Modifiers::AddMajor6, |m| m.insert(UnrootedNote(9))),
+        (Modifiers::AddMinor6, |m| m.insert(UnrootedNote(8))),
         (Modifiers::AddMinor7, |m| m.insert(UnrootedNote(10))),
         (Modifiers::AddMajor7, |m| m.insert(UnrootedNote(11))),
         (Modifiers::Minor3ToMajor, |m| {
