@@ -806,6 +806,8 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         use crate::android_frontend::{NoteVisualKind, NOTE_STRIKE_VIS_MS, NOTE_STRUM_VIS_MS};
         use crate::rows::RowId;
 
+        const INACTIVE_GRAY: i32 = 0xFF333333u32 as i32;
+
         fn blend_to_white(c: i32, f: f32) -> i32 {
             let f = f.clamp(0.0, 1.0);
             let cu = c as u32;
@@ -816,6 +818,22 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             let ng = (g + (255.0 - g) * f).round() as u32;
             let nb = (b + (255.0 - b) * f).round() as u32;
             (0xFF00_0000u32 | (nr << 16) | (ng << 8) | nb) as i32
+        }
+
+        fn blend_towards(src: i32, dst: i32, f: f32) -> i32 {
+            let f = f.clamp(0.0, 1.0);
+            let su = src as u32;
+            let du = dst as u32;
+            let sr = ((su >> 16) & 0xFF) as f32;
+            let sg = ((su >> 8) & 0xFF) as f32;
+            let sb = (su & 0xFF) as f32;
+            let dr = ((du >> 16) & 0xFF) as f32;
+            let dg = ((du >> 8) & 0xFF) as f32;
+            let db = (du & 0xFF) as f32;
+            let r = (sr + (dr - sr) * f).round() as u32;
+            let g = (sg + (dg - sg) * f).round() as u32;
+            let b = (sb + (db - sb) * f).round() as u32;
+            (0xFF00_0000u32 | (r << 16) | (g << 8) | b) as i32
         }
 
         let now = std::time::Instant::now();
@@ -844,6 +862,17 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                 RowId::Bottom => (mid_end, h),
             };
 
+            // Match the string's existing color; skip inactive (dim gray) strings.
+            let base_color = match e.row {
+                RowId::Top => top_color[xi as usize],
+                RowId::Middle => mid_color[xi as usize],
+                RowId::Bottom => bot_color[xi as usize],
+            };
+            if base_color == INACTIVE_GRAY {
+                continue;
+            }
+            let highlight_color = blend_to_white(base_color, 0.75);
+
             let age_ms = now
                 .saturating_duration_since(e.at)
                 .as_millis() as f32;
@@ -869,7 +898,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             for x in x0..=x1 {
                 for y in y0..y1 {
                     let idx = y * w + x;
-                    pixels[idx] = blend_to_white(pixels[idx], mix);
+                    pixels[idx] = blend_towards(pixels[idx], highlight_color, mix);
                 }
             }
         }
