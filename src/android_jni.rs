@@ -154,6 +154,23 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFlushDeferredNoteO
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHasActiveNoteVisuals(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jboolean {
+    if handle == 0 {
+        return 0;
+    }
+    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    if frontend.has_active_note_visuals() {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetA4TuningHz(
     _env: JNIEnv,
     _class: JClass,
@@ -559,7 +576,8 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
     // Bit 0: needs redraw
     // Bit 1: has play notes
     // Bit 2: haptic pulse
-    (if redraw { 1 } else { 0 })
+    let wants_anim = frontend.has_active_note_visuals();
+    (if redraw || wants_anim { 1 } else { 0 })
         | (if has_play { 2 } else { 0 })
         | (if haptic { 4 } else { 0 })
 }
@@ -642,7 +660,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         return;
     }
 
-    let (top_chord, middle_chord, show_note_names, transpose_pc) = if handle != 0 {
+    let (top_chord, middle_chord, show_note_names, transpose_pc, visuals) = if handle != 0 {
         let frontend = unsafe { &*(handle as *const AndroidFrontend) };
         let eng = frontend.engine();
         (
@@ -651,6 +669,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                 .unwrap_or_else(|| crate::chord::Chord::new_triad(crate::notes::UnkeyedNote(0))),
             frontend.show_note_names(),
             eng.transpose().wrap_to_octave(),
+            frontend.note_visuals_snapshot(),
         )
     } else {
         (
@@ -658,6 +677,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             crate::chord::Chord::new_triad(crate::notes::UnkeyedNote(0)),
             false,
             0,
+            Vec::new(),
         )
     };
 
@@ -759,6 +779,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     let (bot_prio, bot_color, bot_pc) =
         compute_best(w, &positions, None, true, transpose_pc, label_pitch_class);
 
+    // Base strings.
     for xi in 0..w {
         if top_prio[xi] != 0 {
             let color = top_color[xi];
@@ -776,6 +797,70 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             let color = bot_color[xi];
             for y in mid_end..h {
                 pixels[y * w + xi] = color;
+            }
+        }
+    }
+
+    // Note-on visuals: strike = flash+fade; strum = widen then shrink.
+    if !visuals.is_empty() {
+        use crate::android_frontend::{NoteVisualKind, NOTE_STRIKE_VIS_MS, NOTE_STRUM_VIS_MS};
+        use crate::rows::RowId;
+
+        fn blend_to_white(c: i32, f: f32) -> i32 {
+            let f = f.clamp(0.0, 1.0);
+            let cu = c as u32;
+            let r = ((cu >> 16) & 0xFF) as f32;
+            let g = ((cu >> 8) & 0xFF) as f32;
+            let b = (cu & 0xFF) as f32;
+            let nr = (r + (255.0 - r) * f).round() as u32;
+            let ng = (g + (255.0 - g) * f).round() as u32;
+            let nb = (b + (255.0 - b) * f).round() as u32;
+            (0xFF00_0000u32 | (nr << 16) | (ng << 8) | nb) as i32
+        }
+
+        let now = std::time::Instant::now();
+        for e in visuals {
+            let ni = e.note.wrap_to_octave() as usize;
+            if ni >= positions.len() {
+                continue;
+            }
+            let xi = positions[ni].round() as i32;
+            if xi < 0 || xi >= w as i32 {
+                continue;
+            }
+            let (y0, y1) = match e.row {
+                RowId::Top => (0usize, top_end),
+                RowId::Middle => (top_end, mid_end),
+                RowId::Bottom => (mid_end, h),
+            };
+
+            let age_ms = now
+                .saturating_duration_since(e.at)
+                .as_millis() as f32;
+
+            let (dur_ms, width_px, mix) = match e.kind {
+                NoteVisualKind::Strike => {
+                    let t = (age_ms / NOTE_STRIKE_VIS_MS as f32).clamp(0.0, 1.0);
+                    (NOTE_STRIKE_VIS_MS as f32, 14i32, (1.0 - t).powf(1.6))
+                }
+                NoteVisualKind::Strum => {
+                    let t = (age_ms / NOTE_STRUM_VIS_MS as f32).clamp(0.0, 1.0);
+                    let w0 = 12.0;
+                    let w1 = 1.0;
+                    let wcur = (w1 + (w0 - w1) * (1.0 - t)).round() as i32;
+                    (NOTE_STRUM_VIS_MS as f32, wcur.max(1), 0.9)
+                }
+            };
+            let _ = dur_ms; // (kept for readability/debugging)
+
+            let half = width_px / 2;
+            let x0 = (xi - half).max(0) as usize;
+            let x1 = (xi + half).min((w - 1) as i32) as usize;
+            for x in x0..=x1 {
+                for y in y0..y1 {
+                    let idx = y * w + x;
+                    pixels[idx] = blend_to_white(pixels[idx], mix);
+                }
             }
         }
     }

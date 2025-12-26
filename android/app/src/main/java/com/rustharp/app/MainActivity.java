@@ -97,6 +97,29 @@ public class MainActivity extends Activity {
 
     private GridLayout chordGrid;
 
+    private boolean noteVisualsRunning = false;
+    private final Runnable noteVisualsTick = new Runnable() {
+        @Override
+        public void run() {
+            if (rustHandle == 0 || iv == null) {
+                noteVisualsRunning = false;
+                return;
+            }
+            redraw();
+            if (rustHasActiveNoteVisuals(rustHandle)) {
+                iv.postOnAnimation(this);
+            } else {
+                noteVisualsRunning = false;
+            }
+        }
+    };
+
+    private void startNoteVisualsTick() {
+        if (noteVisualsRunning || iv == null) return;
+        noteVisualsRunning = true;
+        iv.postOnAnimation(noteVisualsTick);
+    }
+
     public static native int rustInit();
     public static native long rustCreateFrontend();
     public static native void rustDestroyFrontend(long handle);
@@ -122,6 +145,7 @@ public class MainActivity extends Activity {
     public static native void rustSetImpliedSevenths(long handle, boolean enabled);
     public static native void rustSetChordReleaseNoteOffDelayMs(long handle, int ms);
     public static native void rustFlushDeferredNoteOffs(long handle);
+    public static native boolean rustHasActiveNoteVisuals(long handle);
     public static native int rustApplyChordWheelChoice(long handle, int chordButtonId, int dir8);
     public static native int rustToggleChordWheelMinorMajor(long handle, int chordButtonId);
 
@@ -605,7 +629,10 @@ public class MainActivity extends Activity {
                     float p = e.getPressure(i);
                     int flags = rustHandleTouch(rustHandle, e.getPointerId(i), 1, (int) e.getX(i), (int) e.getY(i), w, h, p);
                     if ((flags & 1) != 0) redraw();
-                    if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
+                    if ((flags & 2) != 0) {
+                        Log.d("RustHarp", "touch play_notes");
+                        startNoteVisualsTick();
+                    }
                     if ((flags & 4) != 0) vibrateTick();
                 }
                 return true;
@@ -641,7 +668,10 @@ public class MainActivity extends Activity {
             Log.d("RustHarp", "touch " + (phase==0?"down":(phase==2?"up":"other")) + " p=" + p + " size=" + size + " major=" + major);
             int flags = rustHandleTouch(rustHandle, pid, phase, (int) e.getX(idx), (int) e.getY(idx), w, h, p);
             if ((flags & 1) != 0) redraw();
-            if ((flags & 2) != 0) Log.d("RustHarp", "touch play_notes");
+            if ((flags & 2) != 0) {
+                Log.d("RustHarp", "touch play_notes");
+                startNoteVisualsTick();
+            }
             if ((flags & 4) != 0) vibrateTick();
             return true;
         });

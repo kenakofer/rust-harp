@@ -16,6 +16,23 @@ pub enum AudioMsg {
     SetA4Tuning(u16),
 }
 
+pub const NOTE_STRIKE_VIS_MS: u64 = 220;
+pub const NOTE_STRUM_VIS_MS: u64 = 160;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoteVisualKind {
+    Strike,
+    Strum,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct NoteVisualEvent {
+    pub at: Instant,
+    pub row: crate::rows::RowId,
+    pub note: crate::notes::UnkeyedNote,
+    pub kind: NoteVisualKind,
+}
+
 struct DeferredStopNotes {
     due: Option<Instant>,
     notes: Vec<crate::notes::UnmidiNote>,
@@ -39,6 +56,8 @@ pub struct AndroidFrontend {
     chord_release_note_off_delay: Duration,
     deferred_stop_notes: Mutex<DeferredStopNotes>,
 
+    note_visuals: Mutex<Vec<NoteVisualEvent>>,
+
     show_note_names: bool,
     a4_tuning_hz: u16,
 }
@@ -57,6 +76,7 @@ impl AndroidFrontend {
                 due: None,
                 notes: Vec::new(),
             }),
+            note_visuals: Mutex::new(Vec::new()),
             show_note_names: false,
             a4_tuning_hz: 440,
         }
@@ -232,9 +252,58 @@ impl AndroidFrontend {
         out.fill(0);
     }
 
+    pub fn has_active_note_visuals(&self) -> bool {
+        let now = Instant::now();
+        let mut v = self.note_visuals.lock().unwrap();
+        v.retain(|e| {
+            let age = now.saturating_duration_since(e.at);
+            let max = match e.kind {
+                NoteVisualKind::Strike => Duration::from_millis(NOTE_STRIKE_VIS_MS),
+                NoteVisualKind::Strum => Duration::from_millis(NOTE_STRUM_VIS_MS),
+            };
+            age < max
+        });
+        !v.is_empty()
+    }
+
+    pub fn note_visuals_snapshot(&self) -> Vec<NoteVisualEvent> {
+        let now = Instant::now();
+        let mut v = self.note_visuals.lock().unwrap();
+        v.retain(|e| {
+            let age = now.saturating_duration_since(e.at);
+            let max = match e.kind {
+                NoteVisualKind::Strike => Duration::from_millis(NOTE_STRIKE_VIS_MS),
+                NoteVisualKind::Strum => Duration::from_millis(NOTE_STRUM_VIS_MS),
+            };
+            age < max
+        });
+        v.clone()
+    }
+
     pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> (AppEffects, bool) {
         let positions = layout::compute_note_positions_android(width_px);
         let out = self.ui.handle(UiEvent::Touch(event), &positions);
+
+        let kind = match event.phase {
+            crate::touch::TouchPhase::Down => Some(NoteVisualKind::Strike),
+            crate::touch::TouchPhase::Move => Some(NoteVisualKind::Strum),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            if !out.touch_notes.is_empty() {
+                let now = Instant::now();
+                let mut v = self.note_visuals.lock().unwrap();
+                for tn in &out.touch_notes {
+                    v.push(NoteVisualEvent {
+                        at: now,
+                        row: tn.row,
+                        note: tn.note,
+                        kind,
+                    });
+                }
+            }
+        }
+
         (out.effects, out.haptic)
     }
 }
