@@ -306,6 +306,18 @@ public class MainActivity extends Activity {
                             wheelOverlay.setWheelState((Button) v, isMajorDegree, wheelDir);
                         }
                     }
+                } else {
+                    // Back into the deadzone => clear modifiers.
+                    if (wheelDir != WHEEL_NONE) {
+                        wheelDir = WHEEL_NONE;
+                        int flags = rustApplyChordWheelChoice(rustHandle, chordBtnId, -1);
+                        if ((flags & 1) != 0) redraw();
+                        updateUiButtons();
+                        if (wheelOverlay != null) {
+                            boolean isMajorDegree = (chordBtnId == BTN_VIIB || chordBtnId == BTN_IV || chordBtnId == BTN_I || chordBtnId == BTN_V);
+                            wheelOverlay.setWheelState((Button) v, isMajorDegree, wheelDir);
+                        }
+                    }
                 }
                 return true;
             }
@@ -380,19 +392,26 @@ public class MainActivity extends Activity {
         private final android.graphics.Paint pFill = new android.graphics.Paint();
         private final android.graphics.Paint pStroke = new android.graphics.Paint();
         private final android.graphics.Paint pText = new android.graphics.Paint();
+        private final android.graphics.Paint pClear = new android.graphics.Paint();
 
         WheelOverlayView(android.content.Context ctx) {
             super(ctx);
             setWillNotDraw(false);
+
+            // Needed so we can punch a transparent hole with PorterDuff CLEAR.
+            setLayerType(LAYER_TYPE_SOFTWARE, null);
+
             pFill.setAntiAlias(true);
             pStroke.setAntiAlias(true);
             pStroke.setStyle(android.graphics.Paint.Style.STROKE);
             pStroke.setStrokeWidth(2);
-            pStroke.setColor(0x66FFFFFF);
+            pStroke.setColor(0xFFFFFFFF);
 
             pText.setAntiAlias(true);
             pText.setColor(0xFFFFFFFF);
             pText.setTextAlign(android.graphics.Paint.Align.CENTER);
+
+            pClear.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR));
         }
 
         void setWheelState(Button anchor, boolean anchorIsMajorDegree, int dir) {
@@ -498,10 +517,15 @@ public class MainActivity extends Activity {
             for (int i = 0; i < 8; i++) {
                 boolean sel = (i == dir);
                 pFill.setStyle(android.graphics.Paint.Style.FILL);
-                pFill.setColor(sel ? 0x66FFFFFF : 0x22000000);
+                // Fully opaque background; selected wedge is light.
+                pFill.setColor(sel ? 0xFFFFFFFF : 0xFF000000);
                 c.drawArc(oval, startDeg + i * 45, 45, true, pFill);
                 c.drawArc(oval, startDeg + i * 45, 45, true, pStroke);
             }
+
+            // Punch a hole for the deadzone / "no modifier" center.
+            float holeR = r * 0.32f;
+            c.drawCircle(cx, cy, holeR, pClear);
 
             // Labels.
             String base = anchor.getText().toString();
