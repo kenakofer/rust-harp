@@ -820,11 +820,21 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
 
         let now = std::time::Instant::now();
         for e in visuals {
-            let ni = e.note.wrap_to_octave() as usize;
+            // Note positions are indexed by absolute UnkeyedNote (including ANDROID_LOWEST_NOTE offset).
+            // Using wrap_to_octave() would point into the "dummy" (-inf) region and hide visuals.
+            let ni_i16 = e.note.as_i16();
+            if ni_i16 < 0 {
+                continue;
+            }
+            let ni = ni_i16 as usize;
             if ni >= positions.len() {
                 continue;
             }
-            let xi = positions[ni].round() as i32;
+            let x = positions[ni];
+            if !x.is_finite() {
+                continue;
+            }
+            let xi = x.round() as i32;
             if xi < 0 || xi >= w as i32 {
                 continue;
             }
