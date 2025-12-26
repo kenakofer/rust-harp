@@ -389,6 +389,10 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustApplyChordWheelCho
 
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
 
+    // The Java chord-wheel UI drives chord presses via this JNI call (it does not call rustHandleUiButton(true)).
+    // Mark the chord as held so chord-change note-offs can be deferred until release + double-tap timeout.
+    frontend.set_chord_hold_active(true);
+
     let mods = if dir8 < 0 {
         crate::chord::Modifiers::empty()
     } else {
@@ -444,6 +448,10 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustToggleChordWheelMi
     };
 
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+
+    // Same as rustApplyChordWheelChoice: Java chord-wheel toggles happen while the button is logically held.
+    frontend.set_chord_hold_active(true);
+
     frontend.engine_mut().toggle_wheel_minor_major();
 
     let mut effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button {
