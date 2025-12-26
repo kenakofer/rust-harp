@@ -120,6 +120,8 @@ public class MainActivity extends Activity {
 
     // App-only chord-wheel behavior knobs.
     public static native void rustSetImpliedSevenths(long handle, boolean enabled);
+    public static native void rustSetChordReleaseNoteOffDelayMs(long handle, int ms);
+    public static native void rustFlushDeferredNoteOffs(long handle);
     public static native int rustApplyChordWheelChoice(long handle, int chordButtonId, int dir8);
     public static native int rustToggleChordWheelMinorMajor(long handle, int chordButtonId);
 
@@ -329,6 +331,13 @@ public class MainActivity extends Activity {
 
                 // Always release at the end (double-tap toggle simulates a press in Rust).
                 rustHandleUiButton(rustHandle, chordBtnId, false);
+
+                // Flush deferred note-offs once the double-tap window has expired.
+                v.postDelayed(() -> {
+                    if (rustHandle != 0) {
+                        rustFlushDeferredNoteOffs(rustHandle);
+                    }
+                }, DOUBLE_TAP_MS);
 
                 redraw();
                 updateUiButtons();
@@ -554,6 +563,8 @@ public class MainActivity extends Activity {
         rustSetKeyIndex(rustHandle, keyIndex);
         // App chord buttons should not auto-generate implied sevenths when multi-pressed.
         rustSetImpliedSevenths(rustHandle, false);
+        // Defer chord-change note-offs until chord release + double-tap window.
+        rustSetChordReleaseNoteOffDelayMs(rustHandle, DOUBLE_TAP_MS);
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
         w = dm.widthPixels;

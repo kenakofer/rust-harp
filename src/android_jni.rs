@@ -127,6 +127,33 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetImpliedSevenths
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetChordReleaseNoteOffDelayMs(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    ms: jint,
+) {
+    if handle == 0 {
+        return;
+    }
+    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    frontend.set_chord_release_note_off_delay_ms(ms.max(0) as u32);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFlushDeferredNoteOffs(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if handle == 0 {
+        return;
+    }
+    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    frontend.flush_deferred_stop_notes();
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetA4TuningHz(
     _env: JNIEnv,
     _class: JClass,
@@ -269,7 +296,26 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
     };
 
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
-    let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button { state, button });
+    let is_chord_button = chord_button_from_ui_button(button).is_some();
+
+    if is_chord_button && state == KeyState::Pressed {
+        frontend.set_chord_hold_active(true);
+    }
+
+    let mut effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button { state, button });
+
+    if is_chord_button {
+        // Suppress chord-change stop-notes while selecting a chord; we'll release them once the
+        // chord button is released and the double-tap window has expired.
+        if frontend.chord_hold_active() || state == KeyState::Released {
+            frontend.defer_stop_notes(std::mem::take(&mut effects.stop_notes));
+        }
+
+        if state == KeyState::Released {
+            frontend.set_chord_hold_active(false);
+            frontend.arm_deferred_stop_notes();
+        }
+    }
 
     let redraw = effects.redraw;
     let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
@@ -339,13 +385,19 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustApplyChordWheelCho
     frontend.engine_mut().set_wheel_modifiers(mods);
 
     // Trigger a recompute immediately (while the chord button is still held).
-    let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button {
+    let mut effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button {
         state: KeyState::Pressed,
         button,
     });
 
     let redraw = effects.redraw;
     let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+
+    // Defer chord-change note-offs while the chord wheel is active.
+    if frontend.chord_hold_active() {
+        frontend.defer_stop_notes(std::mem::take(&mut effects.stop_notes));
+    }
+
     frontend.push_effects(effects);
 
     (if redraw { 1 } else { 0 }) | (if has_play { 2 } else { 0 })
@@ -377,13 +429,19 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustToggleChordWheelMi
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     frontend.engine_mut().toggle_wheel_minor_major();
 
-    let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button {
+    let mut effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Button {
         state: KeyState::Pressed,
         button,
     });
 
     let redraw = effects.redraw;
     let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+
+    // Defer chord-change note-offs while the chord wheel is active.
+    if frontend.chord_hold_active() {
+        frontend.defer_stop_notes(std::mem::take(&mut effects.stop_notes));
+    }
+
     frontend.push_effects(effects);
 
     (if redraw { 1 } else { 0 }) | (if has_play { 2 } else { 0 })

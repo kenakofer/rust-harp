@@ -4,14 +4,21 @@ use crate::layout;
 use crate::touch::TouchEvent;
 use crate::ui_events::{UiEvent, UiSession};
 
+use std::collections::HashSet;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 pub enum AudioMsg {
     NoteOn(NoteOn),
     NoteOff(crate::notes::UnmidiNote),
     SetSampleRate(u32),
     SetA4Tuning(u16),
+}
+
+struct DeferredStopNotes {
+    due: Option<Instant>,
+    notes: Vec<crate::notes::UnmidiNote>,
 }
 
 /// Android-facing wrapper that owns the core Engine + touch tracker.
@@ -27,6 +34,11 @@ pub struct AndroidFrontend {
     // Legacy fallback path (RustAudio/AudioTrack) renders from a Java thread, so a Mutex is OK.
     legacy_synth: Mutex<SquareSynth>,
 
+    // While true, we suppress chord-change note-offs so chord selection doesn't "chatter".
+    chord_wheel_hold_active: bool,
+    chord_release_note_off_delay: Duration,
+    deferred_stop_notes: Mutex<DeferredStopNotes>,
+
     show_note_names: bool,
     a4_tuning_hz: u16,
 }
@@ -39,6 +51,12 @@ impl AndroidFrontend {
             audio_tx: tx,
             audio_rx: Mutex::new(Some(rx)),
             legacy_synth: Mutex::new(SquareSynth::new(48_000)),
+            chord_wheel_hold_active: false,
+            chord_release_note_off_delay: Duration::from_millis(350),
+            deferred_stop_notes: Mutex::new(DeferredStopNotes {
+                due: None,
+                notes: Vec::new(),
+            }),
             show_note_names: false,
             a4_tuning_hz: 440,
         }
@@ -56,6 +74,68 @@ impl AndroidFrontend {
         self.ui.set_play_on_tap(enabled);
     }
 
+    pub fn set_chord_hold_active(&mut self, active: bool) {
+        self.chord_wheel_hold_active = active;
+    }
+
+    pub fn chord_hold_active(&self) -> bool {
+        self.chord_wheel_hold_active
+    }
+
+    pub fn set_chord_release_note_off_delay_ms(&mut self, ms: u32) {
+        self.chord_release_note_off_delay = Duration::from_millis(ms as u64);
+    }
+
+    pub fn defer_stop_notes(&self, notes: Vec<crate::notes::UnmidiNote>) {
+        if notes.is_empty() {
+            return;
+        }
+        let mut d = self.deferred_stop_notes.lock().unwrap();
+        d.notes.extend(notes);
+    }
+
+    pub fn arm_deferred_stop_notes(&self) {
+        let due = Instant::now() + self.chord_release_note_off_delay;
+        let mut d = self.deferred_stop_notes.lock().unwrap();
+        d.due = Some(match d.due {
+            Some(old) => old.max(due),
+            None => due,
+        });
+    }
+
+    pub fn flush_deferred_stop_notes(&self) {
+        let mut notes: Vec<crate::notes::UnmidiNote> = Vec::new();
+        {
+            let mut d = self.deferred_stop_notes.lock().unwrap();
+            if let Some(due) = d.due {
+                if Instant::now() < due {
+                    return;
+                }
+            } else {
+                return;
+            }
+            d.due = None;
+            notes.append(&mut d.notes);
+        }
+
+        if notes.is_empty() {
+            return;
+        }
+
+        // Avoid sending a late NoteOff for a note that has since been retriggered.
+        let active: HashSet<crate::notes::UnmidiNote> = self.engine().active_notes().collect();
+
+        let mut seen = HashSet::new();
+        for un in notes {
+            if active.contains(&un) {
+                continue;
+            }
+            if seen.insert(un) {
+                let _ = self.audio_tx.send(AudioMsg::NoteOff(un));
+            }
+        }
+    }
+
     pub fn handle_ui_event(&mut self, event: UiEvent) -> AppEffects {
         self.ui.handle(event, &[]).effects
     }
@@ -69,6 +149,8 @@ impl AndroidFrontend {
     }
 
     pub fn push_effects(&self, effects: AppEffects) {
+        self.flush_deferred_stop_notes();
+
         // Stop before play so retriggering works correctly.
         for un in effects.stop_notes {
             let _ = self.audio_tx.send(AudioMsg::NoteOff(un));
@@ -112,6 +194,8 @@ impl AndroidFrontend {
 
     /// Legacy fallback (AudioTrack) fill: drain any queued messages then render mono i16.
     pub fn render_audio_i16_mono(&self, out: &mut [i16]) {
+        self.flush_deferred_stop_notes();
+
         // Match desktop's MIDI_BASE_TRANSPOSE (C2)
         use crate::notes::{MidiNote, NoteVolume, Transpose};
         const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
