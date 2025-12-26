@@ -135,8 +135,6 @@ impl UiSession {
                 let mut effects = empty_effects();
                 let mut touch_notes = Vec::new();
 
-                let active_chord = self.engine.active_chord_for_row(row);
-
                 if let Some(note) = out.strike {
                     touch_notes.push(TouchNote { row, note });
                     merge_effects(
@@ -146,18 +144,6 @@ impl UiSession {
                 }
                 for crossing in out.crossings {
                     for note in crossing.notes {
-                        // Chromatic "in-between" strings are normally only active when in-chord,
-                        // but the Bottom row is explicitly chromatic (all notes enabled).
-                        if row != RowId::Bottom && crate::notes::is_black_key(note) {
-                            if let Some(ch) = active_chord {
-                                if !ch.contains(note) {
-                                    continue;
-                                }
-                            } else {
-                                continue;
-                            }
-                        }
-
                         touch_notes.push(TouchNote { row, note });
                         merge_effects(
                             &mut effects,

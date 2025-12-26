@@ -96,7 +96,8 @@ impl UnkeyedNote {
 
 // Position above the root of the chord
 // "The fifth in the chord" would be 7 for example
-//#[derive(Copy, Clone, Debug, PartialEq)]
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, PartialOrd)]
 pub struct UnrootedNote(pub u8);
 impl UnrootedNote {
     pub fn new(i: Interval) -> Self {

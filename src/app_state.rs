@@ -267,9 +267,7 @@ impl AppState {
         match row {
             crate::rows::RowId::Top => self.active_chord,
             crate::rows::RowId::Middle => Some(self.bottom_chord),
-            // Bottom row is chromatic: all 12 notes are enabled.
-            // Represent this as None so filtering allows everything.
-            crate::rows::RowId::Bottom => None,
+            crate::rows::RowId::Bottom => Some(self.bottom_chord.invert()),
         }
     }
 
@@ -290,7 +288,7 @@ impl AppState {
             let chord = match row {
                 crate::rows::RowId::Top => self.active_chord,
                 crate::rows::RowId::Middle => Some(self.bottom_chord),
-                crate::rows::RowId::Bottom => None,
+                crate::rows::RowId::Bottom => Some(self.bottom_chord.invert()),
             };
             if chord.map_or(true, |c| c.contains(note)) {
                 let un = self.transpose + note;

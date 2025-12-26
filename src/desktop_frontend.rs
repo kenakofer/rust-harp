@@ -571,7 +571,6 @@ fn draw_strings(
 
     fn fold_best(
         chord: Option<Chord>,
-        chromatic_all: bool,
         width: u32,
         positions: &[f32],
         transpose_pc: i16,
@@ -583,13 +582,13 @@ fn draw_strings(
         for (i, x) in positions.iter().enumerate() {
             let uknote = UnkeyedNote(i as i16);
 
-            if !chromatic_all {
-                let Some(chord) = chord else {
-                    continue;
-                };
-                if !chord.contains(uknote) {
-                    continue;
-                }
+            {
+            let Some(chord) = chord else {
+                continue;
+            };
+            if !chord.contains(uknote) {
+                continue;
+            }
             }
 
             let xi = x.round() as i32;
@@ -598,9 +597,7 @@ fn draw_strings(
             }
             let xi = xi as usize;
 
-            let (prio, color) = if chromatic_all {
-                (1, 0x00FFFFFF)
-            } else if chord.map_or(false, |c| c.has_root(uknote)) {
+            let (prio, color) = if chord.map_or(false, |c| c.has_root(uknote)) {
                 (2, 0x00FF0000)
             } else {
                 (1, 0x00FFFFFF)
@@ -616,9 +613,9 @@ fn draw_strings(
         (best_prio, best_color, best_pc)
     }
 
-    let (top_prio, top_color, top_pc) = fold_best(top_chord, false, width, positions, transpose_pc);
-    let (mid_prio, mid_color, mid_pc) = fold_best(Some(bottom_chord), false, width, positions, transpose_pc);
-    let (bot_prio, bot_color, _bot_pc) = fold_best(None, true, width, positions, transpose_pc);
+    let (top_prio, top_color, top_pc) = fold_best(top_chord, width, positions, transpose_pc);
+    let (mid_prio, mid_color, mid_pc) = fold_best(Some(bottom_chord), width, positions, transpose_pc);
+    let (bot_prio, bot_color, _bot_pc) = fold_best(Some(bottom_chord.invert()), width, positions, transpose_pc);
 
     for xi in 0..width as usize {
         if top_prio[xi] != 0 {
@@ -664,8 +661,7 @@ fn draw_strings(
             );
         }
 
-        // Bottom row is chromatic; never draw note-name labels there.
-
+        // Bottom row: never draw note-name labels there.
         let y_mid = top_end as i32 + 2;
         for (xi, prio) in mid_prio.iter().enumerate() {
             if *prio == 0 {

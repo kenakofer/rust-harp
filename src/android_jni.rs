@@ -711,7 +711,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         w: usize,
         positions: &[f32],
         chord: Option<crate::chord::Chord>,
-        chromatic_all: bool,
         transpose_pc: i16,
         label_pitch_class: fn(crate::notes::UnkeyedNote, i16) -> i16,
     ) -> (Vec<u8>, Vec<i32>, Vec<u8>) {
@@ -727,30 +726,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                 continue;
             }
             let xi = xi as usize;
-
-            if chromatic_all {
-                // Bottom row: every note is enabled and visible.
-                let prio = 2;
-                let color = 0xFFFFFFFFu32 as i32;
-                if prio > best_prio_per_x[xi] {
-                    best_prio_per_x[xi] = prio;
-                    best_color_per_x[xi] = color;
-                    best_pc_per_x[xi] = label_pitch_class(uknote, transpose_pc) as u8;
-                }
-                continue;
-            }
-
-            // Chromatic "in-between" strings should only be visible when active.
-            if crate::notes::is_black_key(uknote) {
-                match chord {
-                    Some(ch) => {
-                        if !ch.contains(uknote) {
-                            continue;
-                        }
-                    }
-                    None => continue,
-                }
-            }
 
             let (prio, color) = if let Some(ch) = chord {
                 if ch.has_root(uknote) {
@@ -775,17 +750,16 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
     }
 
     let (top_prio, top_color, top_pc) =
-        compute_best(w, &positions, top_chord, false, transpose_pc, label_pitch_class);
+        compute_best(w, &positions, top_chord, transpose_pc, label_pitch_class);
     let (mid_prio, mid_color, mid_pc) = compute_best(
         w,
         &positions,
         Some(middle_chord),
-        false,
         transpose_pc,
         label_pitch_class,
     );
     let (bot_prio, bot_color, bot_pc) =
-        compute_best(w, &positions, None, true, transpose_pc, label_pitch_class);
+        compute_best(w, &positions, None, transpose_pc, label_pitch_class);
 
     // Base strings.
     for xi in 0..w {
@@ -925,8 +899,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
             draw_text(&mut pixels, w, h, xi as i32 + 4, 2, label, top_color[xi]);
         }
-
-        // Bottom row is chromatic; never draw note-name labels there.
 
         // Middle row labels.
         let y_mid = top_end as i32 + 2;

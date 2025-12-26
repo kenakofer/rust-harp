@@ -18,6 +18,7 @@ bitflags! {
         const SwitchMinorMajor = 1 << 10;
         const Add4 = 1 << 9;
         const No3 = 1 << 11;
+        const Invert = 1 << 12;
 
         const Sus4 = Modifiers::Add4.bits() | Modifiers::No3.bits();
     }
@@ -38,7 +39,7 @@ impl Chord {
     const MINOR_ROOTS: [i16; 3] = [2, 4, 9];
     const DIMIN_ROOTS: [i16; 1] = [11];
 
-    const ORDERED_MOD_APPLICATIONS: [(Modifiers, ModifierFn); 13] = [
+    const ORDERED_MOD_APPLICATIONS: [(Modifiers, ModifierFn); 14] = [
         // Destructive, initializer modifiers, should be first
         (Modifiers::MajorTri, |m| *m = PitchClassSet::MAJOR_TRI),
         (Modifiers::MinorTri, |m| *m = PitchClassSet::MINOR_TRI),
@@ -79,6 +80,17 @@ impl Chord {
             m.remove(UnrootedNote(3));
             m.remove(UnrootedNote(4));
         }),
+        (Modifiers::Invert, |m| {
+            // Binary ! every note
+            for pc in 0..12 {
+                let unrooted = UnrootedNote(pc);
+                if m.contains(unrooted) {
+                    m.remove(unrooted);
+                } else {
+                    m.insert(unrooted);
+                }
+            }
+        }),
     ];
 
     pub fn new(rt: UnkeyedNote, mods: Modifiers) -> Self {
@@ -99,6 +111,14 @@ impl Chord {
 
     pub fn get_root(&self) -> UnkeyedNote {
         self.root
+    }
+
+    pub fn invert(&self) -> Self {
+        if self.mods.contains(Modifiers::Invert) {
+            return Self::new(self.root, self.mods & !Modifiers::Invert);
+        }
+        Self::new(self.root, self.mods | Modifiers::Invert)
+
     }
 
     pub fn add_mods_now(&mut self, mods: Modifiers) {
