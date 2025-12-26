@@ -1,9 +1,9 @@
 use crate::chord::Chord;
 use crate::notes::{MidiNote, NoteVolume, Transpose, UnkeyedNote, UnmidiNote};
 use crate::output_midir::MidiBackend;
+use crate::rows::RowId;
 use crate::strum;
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
-use crate::rows::RowId;
 use crate::ui_adapter::{self, AppAdapter};
 use crate::ui_events::{UiEvent, UiSession};
 use crate::ui_settings::UiAudioBackend;
@@ -34,7 +34,6 @@ const MAIN_PROGRAM: u8 = 25; // Steel String Guitar (zero-based)
 const MAIN_CHANNEL: u8 = 0;
 const BASS_PROGRAM: u8 = 26;
 const BASS_CHANNEL: u8 = 2;
-
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -169,7 +168,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
                         // Gear icon + settings panel (desktop only).
                         if pressed {
-                            let (gear, panel, rows) = settings_layout(window.inner_size().width, window.inner_size().height);
+                            let (gear, panel, rows) = settings_layout(
+                                window.inner_size().width,
+                                window.inner_size().height,
+                            );
                             if hit_rect(x, y, gear) {
                                 show_settings = !show_settings;
                                 window.request_redraw();
@@ -182,38 +184,57 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                             SettingsAction::TogglePlayOnTap => {
                                                 settings.play_on_tap = !settings.play_on_tap;
                                                 ui.set_play_on_tap(settings.play_on_tap);
-                                                crate::ui_settings::save_desktop_settings(&settings);
+                                                crate::ui_settings::save_desktop_settings(
+                                                    &settings,
+                                                );
                                             }
                                             SettingsAction::ToggleShowNoteNames => {
-                                                settings.show_note_names = !settings.show_note_names;
-                                                crate::ui_settings::save_desktop_settings(&settings);
+                                                settings.show_note_names =
+                                                    !settings.show_note_names;
+                                                crate::ui_settings::save_desktop_settings(
+                                                    &settings,
+                                                );
                                             }
                                             SettingsAction::ToggleShowRomanChords => {
-                                                settings.show_roman_chords = !settings.show_roman_chords;
-                                                crate::ui_settings::save_desktop_settings(&settings);
+                                                settings.show_roman_chords =
+                                                    !settings.show_roman_chords;
+                                                crate::ui_settings::save_desktop_settings(
+                                                    &settings,
+                                                );
                                             }
                                             SettingsAction::CycleAudioBackend => {
                                                 // Stop currently playing notes on the *current* backend so we don't leave
                                                 // hanging notes behind when switching.
-                                                let notes: Vec<UnmidiNote> = ui.engine().active_notes().collect();
+                                                let notes: Vec<UnmidiNote> =
+                                                    ui.engine().active_notes().collect();
                                                 for n in notes {
-                                                    audio.stop_note(settings.audio_backend, MIDI_BASE_TRANSPOSE + n);
+                                                    audio.stop_note(
+                                                        settings.audio_backend,
+                                                        MIDI_BASE_TRANSPOSE + n,
+                                                    );
                                                 }
 
-                                                settings.audio_backend = settings.audio_backend.cycle_desktop();
+                                                settings.audio_backend =
+                                                    settings.audio_backend.cycle_desktop();
 
                                                 #[cfg(feature = "synth")]
-                                                if settings.audio_backend == UiAudioBackend::Synth && audio.synth.is_none() {
+                                                if settings.audio_backend == UiAudioBackend::Synth
+                                                    && audio.synth.is_none()
+                                                {
                                                     settings.audio_backend = UiAudioBackend::Midi;
                                                 }
 
                                                 audio.set_a4_tuning_hz(settings.a4_tuning_hz);
-                                                crate::ui_settings::save_desktop_settings(&settings);
+                                                crate::ui_settings::save_desktop_settings(
+                                                    &settings,
+                                                );
                                             }
                                             SettingsAction::SetA4Tuning(hz) => {
                                                 settings.a4_tuning_hz = hz.clamp(430, 450);
                                                 audio.set_a4_tuning_hz(settings.a4_tuning_hz);
-                                                crate::ui_settings::save_desktop_settings(&settings);
+                                                crate::ui_settings::save_desktop_settings(
+                                                    &settings,
+                                                );
                                             }
                                         }
                                     }
@@ -228,7 +249,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
                         is_mouse_down = pressed;
 
-                        let phase = if pressed { TouchPhase::Down } else { TouchPhase::Up };
+                        let phase = if pressed {
+                            TouchPhase::Down
+                        } else {
+                            TouchPhase::Up
+                        };
                         let h = window.inner_size().height.max(1) as f32;
                         let out = ui.handle(
                             UiEvent::Touch(TouchEvent {
@@ -449,7 +474,6 @@ fn check_pluck(
     }
 }
 
-
 #[derive(Clone, Copy)]
 struct RectI32 {
     x: i32,
@@ -583,12 +607,12 @@ fn draw_strings(
             let uknote = UnkeyedNote(i as i16);
 
             {
-            let Some(chord) = chord else {
-                continue;
-            };
-            if !chord.contains(uknote) {
-                continue;
-            }
+                let Some(chord) = chord else {
+                    continue;
+                };
+                if !chord.contains(uknote) {
+                    continue;
+                }
             }
 
             let xi = x.round() as i32;
@@ -614,8 +638,10 @@ fn draw_strings(
     }
 
     let (top_prio, top_color, top_pc) = fold_best(top_chord, width, positions, transpose_pc);
-    let (mid_prio, mid_color, mid_pc) = fold_best(Some(bottom_chord), width, positions, transpose_pc);
-    let (bot_prio, bot_color, _bot_pc) = fold_best(Some(bottom_chord.invert()), width, positions, transpose_pc);
+    let (mid_prio, mid_color, mid_pc) =
+        fold_best(Some(bottom_chord), width, positions, transpose_pc);
+    let (bot_prio, bot_color, _bot_pc) =
+        fold_best(Some(bottom_chord.invert()), width, positions, transpose_pc);
 
     for xi in 0..width as usize {
         if top_prio[xi] != 0 {
@@ -689,12 +715,40 @@ fn draw_strings(
     // Settings overlay.
     let (gear, panel, rows) = settings_layout(width, height);
     // Gear button
-    fill_rect(&mut buffer, width as usize, height as usize, gear, 0x00222222);
-    crate::pixel_font::draw_text_u32(&mut buffer, width as usize, height as usize, gear.x + 4, gear.y + 4, "SET", 0x00FFFFFF, 13, 5);
+    fill_rect(
+        &mut buffer,
+        width as usize,
+        height as usize,
+        gear,
+        0x00222222,
+    );
+    crate::pixel_font::draw_text_u32(
+        &mut buffer,
+        width as usize,
+        height as usize,
+        gear.x + 4,
+        gear.y + 4,
+        "SET",
+        0x00FFFFFF,
+        13,
+        5,
+    );
 
     if show_settings {
-        fill_rect(&mut buffer, width as usize, height as usize, panel, 0x00111111);
-        stroke_rect(&mut buffer, width as usize, height as usize, panel, 0x00333333);
+        fill_rect(
+            &mut buffer,
+            width as usize,
+            height as usize,
+            panel,
+            0x00111111,
+        );
+        stroke_rect(
+            &mut buffer,
+            width as usize,
+            height as usize,
+            panel,
+            0x00333333,
+        );
 
         // Row 1: TAP
         draw_checkbox_row(
@@ -766,10 +820,54 @@ fn fill_rect(buf: &mut [u32], w: usize, h: usize, r: RectI32, color: u32) {
 }
 
 fn stroke_rect(buf: &mut [u32], w: usize, h: usize, r: RectI32, color: u32) {
-    fill_rect(buf, w, h, RectI32 { x: r.x, y: r.y, w: r.w, h: 1 }, color);
-    fill_rect(buf, w, h, RectI32 { x: r.x, y: r.y + r.h - 1, w: r.w, h: 1 }, color);
-    fill_rect(buf, w, h, RectI32 { x: r.x, y: r.y, w: 1, h: r.h }, color);
-    fill_rect(buf, w, h, RectI32 { x: r.x + r.w - 1, y: r.y, w: 1, h: r.h }, color);
+    fill_rect(
+        buf,
+        w,
+        h,
+        RectI32 {
+            x: r.x,
+            y: r.y,
+            w: r.w,
+            h: 1,
+        },
+        color,
+    );
+    fill_rect(
+        buf,
+        w,
+        h,
+        RectI32 {
+            x: r.x,
+            y: r.y + r.h - 1,
+            w: r.w,
+            h: 1,
+        },
+        color,
+    );
+    fill_rect(
+        buf,
+        w,
+        h,
+        RectI32 {
+            x: r.x,
+            y: r.y,
+            w: 1,
+            h: r.h,
+        },
+        color,
+    );
+    fill_rect(
+        buf,
+        w,
+        h,
+        RectI32 {
+            x: r.x + r.w - 1,
+            y: r.y,
+            w: 1,
+            h: r.h,
+        },
+        color,
+    );
 }
 
 fn draw_checkbox_row(buf: &mut [u32], w: usize, h: usize, row: RectI32, value: bool, label: &str) {
@@ -817,7 +915,17 @@ fn draw_slider_row(
     crate::pixel_font::draw_text_u32(buf, w, h, row.x + 6, row.y + 3, label, 0x00FFFFFF, 13, 5);
 
     let value_str = value.to_string();
-    crate::pixel_font::draw_text_u32(buf, w, h, row.x + 28, row.y + 3, &value_str, 0x00FFFFFF, 13, 5);
+    crate::pixel_font::draw_text_u32(
+        buf,
+        w,
+        h,
+        row.x + 28,
+        row.y + 3,
+        &value_str,
+        0x00FFFFFF,
+        13,
+        5,
+    );
 
     let bar = RectI32 {
         x: row.x + 60,

@@ -71,11 +71,7 @@ impl TouchTracker {
 
         for (i, &nx) in note_positions.iter().enumerate() {
             let note = crate::notes::UnkeyedNote(i as i16);
-            if self
-                .struck_by_pointer
-                .values()
-                .any(|&(_r, n)| n == note)
-            {
+            if self.struck_by_pointer.values().any(|&(_r, n)| n == note) {
                 continue;
             }
             if !allowed(row, note) {
@@ -120,7 +116,8 @@ impl TouchTracker {
                 }
             }
             TouchPhase::Move => {
-                let Some((prev_row, prev_x)) = self.last_pos.insert(event.id, (row, event.x)) else {
+                let Some((prev_row, prev_x)) = self.last_pos.insert(event.id, (row, event.x))
+                else {
                     // No prior state; treat like Down.
                     return TouchOutput {
                         strike: None,
@@ -206,7 +203,7 @@ mod tests {
                     x: 5.0,
                     y_norm: Y,
                     pressure: 1.0,
-},
+                },
                 &positions,
                 |_, _| true,
             ),
@@ -223,7 +220,7 @@ mod tests {
                 x: 25.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -248,7 +245,7 @@ mod tests {
                 x: 25.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -262,7 +259,7 @@ mod tests {
                     x: 30.0,
                     y_norm: Y,
                     pressure: 1.0,
-},
+                },
                 &positions,
                 |_, _| true,
             ),
@@ -286,7 +283,7 @@ mod tests {
                 x: 0.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -297,7 +294,7 @@ mod tests {
                 x: 100.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -309,7 +306,7 @@ mod tests {
                 x: 15.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -328,7 +325,7 @@ mod tests {
                 x: 5.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -364,7 +361,7 @@ mod tests {
                 x: 11.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -377,7 +374,7 @@ mod tests {
                 x: 9.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -391,7 +388,7 @@ mod tests {
                 x: 25.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -411,7 +408,7 @@ mod tests {
                 x: 25.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -422,7 +419,7 @@ mod tests {
                 x: 10.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -442,7 +439,7 @@ mod tests {
                 x: 1.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, n| n == UnkeyedNote(2),
         );
@@ -461,7 +458,7 @@ mod tests {
                 x: 11.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -475,7 +472,7 @@ mod tests {
                 x: 0.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -489,7 +486,7 @@ mod tests {
                 x: 30.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );
@@ -509,7 +506,7 @@ mod tests {
                 x: 0.0,
                 y_norm: Y,
                 pressure: 1.0,
-},
+            },
             &positions,
             |_, _| true,
         );

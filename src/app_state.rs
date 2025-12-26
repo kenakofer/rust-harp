@@ -399,7 +399,9 @@ impl AppState {
                 effects.stop_notes = (0..128)
                     .map(|i| UnmidiNote(i))
                     .filter(|un| !chord.contains(*un - self.transpose))
-                    .filter(|un| self.active_notes_by_row[crate::rows::RowId::Top.index()].contains(un))
+                    .filter(|un| {
+                        self.active_notes_by_row[crate::rows::RowId::Top.index()].contains(un)
+                    })
                     .collect();
 
                 for un in effects.stop_notes.iter() {
@@ -525,7 +527,7 @@ fn choose_heptatonic_for_active_chord(active: &Chord) -> Chord {
 
         let root_pc = offset.rem_euclid(12);
         let root = UnkeyedNote(root_pc);
-        let hept_search_order = if [10,0,5,7].contains(&root_pc) {
+        let hept_search_order = if [10, 0, 5, 7].contains(&root_pc) {
             [
                 heptatonic_major_chord_root(root),
                 harmonic_minor_chord_root(root),
@@ -629,11 +631,7 @@ mod tests {
     fn modifier_applies_to_next_chord() {
         let mut state = AppState::new();
 
-        press_modifier(
-            &mut state,
-            ModButton::Minor7,
-            Modifiers::AddMinor7,
-        );
+        press_modifier(&mut state, ModButton::Minor7, Modifiers::AddMinor7);
         press_chord(&mut state, ChordButton::I);
 
         let chord = state.active_chord.unwrap();
@@ -795,4 +793,3 @@ mod tests {
         assert!(!state.active_notes.contains(&UnmidiNote(4)));
     }
 }
-

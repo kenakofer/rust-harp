@@ -33,13 +33,12 @@ pub struct AppAdapter {
 
 impl AppAdapter {
     pub fn new() -> Self {
-        Self { ui: UiSession::new() }
+        Self {
+            ui: UiSession::new(),
+        }
     }
 
-    pub fn handle_winit_key_event(
-        &mut self,
-        event: &winit::event::KeyEvent,
-    ) -> Option<AppEffects> {
+    pub fn handle_winit_key_event(&mut self, event: &winit::event::KeyEvent) -> Option<AppEffects> {
         let ui_event = ui_event_from_winit(event)?;
         Some(self.ui.handle(ui_event, &[]).effects)
     }

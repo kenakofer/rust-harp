@@ -76,7 +76,9 @@ fn decode_settings(input: &str) -> UiSettings {
     let mut s = UiSettings::default();
 
     for line in input.lines() {
-        let Some((k, v)) = line.split_once('=') else { continue };
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
         match k.trim() {
             "show_note_names" => s.show_note_names = v.trim() == "true",
             "play_on_tap" => s.play_on_tap = v.trim() != "false",
@@ -105,7 +107,11 @@ fn desktop_settings_path() -> Option<std::path::PathBuf> {
 
     #[cfg(windows)]
     if let Ok(appdata) = std::env::var("APPDATA") {
-        return Some(PathBuf::from(appdata).join("rust-harp").join("settings.txt"));
+        return Some(
+            PathBuf::from(appdata)
+                .join("rust-harp")
+                .join("settings.txt"),
+        );
     }
 
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
@@ -113,7 +119,12 @@ fn desktop_settings_path() -> Option<std::path::PathBuf> {
     }
 
     if let Ok(home) = std::env::var("HOME") {
-        return Some(PathBuf::from(home).join(".config").join("rust-harp").join("settings.txt"));
+        return Some(
+            PathBuf::from(home)
+                .join(".config")
+                .join("rust-harp")
+                .join("settings.txt"),
+        );
     }
 
     None
@@ -162,8 +173,14 @@ mod tests {
 
     #[test]
     fn cycle_android_audio_backend() {
-        assert_eq!(UiAudioBackend::AAudio.cycle_android(), UiAudioBackend::AudioTrack);
-        assert_eq!(UiAudioBackend::AudioTrack.cycle_android(), UiAudioBackend::AAudio);
+        assert_eq!(
+            UiAudioBackend::AAudio.cycle_android(),
+            UiAudioBackend::AudioTrack
+        );
+        assert_eq!(
+            UiAudioBackend::AudioTrack.cycle_android(),
+            UiAudioBackend::AAudio
+        );
         // Non-android values fall back to a sensible default.
         assert_eq!(UiAudioBackend::Midi.cycle_android(), UiAudioBackend::AAudio);
     }

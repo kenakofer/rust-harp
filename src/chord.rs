@@ -119,7 +119,6 @@ impl Chord {
             return Self::new(self.root, self.mods & !Modifiers::Invert);
         }
         Self::new(self.root, self.mods | Modifiers::Invert)
-
     }
 
     pub fn add_mods_now(&mut self, mods: Modifiers) {

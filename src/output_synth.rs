@@ -1,5 +1,5 @@
-use crate::synth::SquareSynth;
 use crate::notes::{MidiNote, NoteVolume};
+use crate::synth::SquareSynth;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
@@ -37,12 +37,18 @@ impl SynthBackend {
             cpal::SampleFormat::F32 => {
                 let config: cpal::StreamConfig = supported.into();
                 let stream = build_stream_f32(&device, &config, rx, sample_rate, channels)?;
-                Ok(Self { tx, _stream: stream })
+                Ok(Self {
+                    tx,
+                    _stream: stream,
+                })
             }
             cpal::SampleFormat::I16 => {
                 let config: cpal::StreamConfig = supported.into();
                 let stream = build_stream_i16(&device, &config, rx, sample_rate, channels)?;
-                Ok(Self { tx, _stream: stream })
+                Ok(Self {
+                    tx,
+                    _stream: stream,
+                })
             }
             other => Err(format!("unsupported sample format: {other:?}")),
         }
@@ -94,9 +100,7 @@ fn build_stream_f32(
         )
         .map_err(|e| format!("build_output_stream(f32): {e}"))?;
 
-    stream
-        .play()
-        .map_err(|e| format!("stream.play: {e}"))?;
+    stream.play().map_err(|e| format!("stream.play: {e}"))?;
 
     Ok(stream)
 }
@@ -124,9 +128,7 @@ fn build_stream_i16(
         )
         .map_err(|e| format!("build_output_stream(i16): {e}"))?;
 
-    stream
-        .play()
-        .map_err(|e| format!("stream.play: {e}"))?;
+    stream.play().map_err(|e| format!("stream.play: {e}"))?;
 
     Ok(stream)
 }

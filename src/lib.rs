@@ -14,10 +14,10 @@ pub mod output_synth;
 
 pub mod pixel_font;
 pub mod rows;
-pub mod ui_settings;
 pub mod strum;
 pub mod touch;
 pub mod ui_events;
+pub mod ui_settings;
 
 pub mod synth;
 

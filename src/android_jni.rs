@@ -10,7 +10,7 @@ use crate::chord_wheel::{self, WheelDir8};
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
 
 use jni::objects::{JClass, JIntArray, JShortArray};
-use jni::sys::{jboolean, jint, jlong, jshort, jfloat};
+use jni::sys::{jboolean, jfloat, jint, jlong, jshort};
 use jni::JNIEnv;
 
 /// Simple JNI hook so an Android Activity can verify the Rust library loads.
@@ -123,7 +123,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetImpliedSevenths
         return;
     }
     let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
-    frontend.engine_mut().set_allow_implied_sevenths(enabled != 0);
+    frontend
+        .engine_mut()
+        .set_allow_implied_sevenths(enabled != 0);
 }
 
 #[no_mangle]
@@ -248,7 +250,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
     } else {
         // Key codes from android.view.KeyEvent
         match key_code {
-            61 => UiKey::Tab,          // KEYCODE_TAB
+            61 => UiKey::Tab,            // KEYCODE_TAB
             113 | 114 => UiKey::Control, // KEYCODE_CTRL_LEFT / KEYCODE_CTRL_RIGHT
             _ => return 0,
         }
@@ -538,7 +540,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonsMask(
         mask |= 1 << 13;
     }
 
-
     mask as jint
 }
 
@@ -693,7 +694,15 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         (uknote.wrap_to_octave() + transpose_pc).rem_euclid(12)
     }
 
-    fn draw_text(pixels: &mut [i32], w: usize, h: usize, x_left: i32, y_top: i32, text: &str, color: i32) {
+    fn draw_text(
+        pixels: &mut [i32],
+        w: usize,
+        h: usize,
+        x_left: i32,
+        y_top: i32,
+        text: &str,
+        color: i32,
+    ) {
         // +30% over the old 2x scale => 2.6x.
         crate::pixel_font::draw_text_i32(pixels, w, h, x_left, y_top, text, color, 13, 5)
     }
@@ -758,8 +767,13 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         transpose_pc,
         label_pitch_class,
     );
-    let (bot_prio, bot_color, bot_pc) =
-        compute_best(w, &positions, Some(middle_chord.invert()), transpose_pc, label_pitch_class);
+    let (bot_prio, bot_color, bot_pc) = compute_best(
+        w,
+        &positions,
+        Some(middle_chord.invert()),
+        transpose_pc,
+        label_pitch_class,
+    );
 
     // Base strings.
     for xi in 0..w {
@@ -855,9 +869,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
             }
             let highlight_color = blend_to_white(base_color, 0.75);
 
-            let age_ms = now
-                .saturating_duration_since(e.at)
-                .as_millis() as f32;
+            let age_ms = now.saturating_duration_since(e.at).as_millis() as f32;
 
             let (dur_ms, width_px, mix) = match e.kind {
                 NoteVisualKind::Strike => {
@@ -911,7 +923,15 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
                 continue;
             }
             let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            draw_text(&mut pixels, w, h, xi as i32 + 4, y_mid, label, mid_color[xi]);
+            draw_text(
+                &mut pixels,
+                w,
+                h,
+                xi as i32 + 4,
+                y_mid,
+                label,
+                mid_color[xi],
+            );
         }
     }
 
@@ -940,8 +960,14 @@ mod render_tests {
     #[test]
     fn label_pitch_class_applies_transpose() {
         use crate::notes::{Transpose, UnkeyedNote};
-        assert_eq!(super::label_pitch_class(UnkeyedNote(0), Transpose(2).wrap_to_octave()), 2); // C -> D
-        assert_eq!(super::label_pitch_class(UnkeyedNote(11), Transpose(2).wrap_to_octave()), 1); // B -> C#
+        assert_eq!(
+            super::label_pitch_class(UnkeyedNote(0), Transpose(2).wrap_to_octave()),
+            2
+        ); // C -> D
+        assert_eq!(
+            super::label_pitch_class(UnkeyedNote(11), Transpose(2).wrap_to_octave()),
+            1
+        ); // B -> C#
     }
 
     #[test]
@@ -1070,7 +1096,9 @@ mod render_tests {
         // This matches the current draw_text() behavior in rustRenderStrings.
         fn glyph_5x7(ch: char) -> [u8; 7] {
             match ch {
-                'C' => [0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110],
+                'C' => [
+                    0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110,
+                ],
                 _ => [0; 7],
             }
         }

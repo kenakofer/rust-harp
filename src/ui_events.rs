@@ -208,7 +208,7 @@ mod tests {
             x: 1.2,
             y_norm: 0.25,
             pressure: 1.0,
-});
+        });
         log.record(e2.clone());
         let out2 = s1.handle(e2, &positions);
         assert_eq!(out2.touch_notes.len(), 1);
@@ -245,7 +245,7 @@ mod tests {
                 x: -1.0,
                 y_norm: 0.25,
                 pressure: 1.0,
-}),
+            }),
             &positions,
         );
 
@@ -256,7 +256,7 @@ mod tests {
                 x: 2.2,
                 y_norm: 0.25,
                 pressure: 1.0,
-}),
+            }),
             &positions,
         );
 
@@ -300,7 +300,7 @@ mod tests {
             x: 0.1,
             y_norm: 0.25,
             pressure: 1.0,
-});
+        });
         log.record(e3.clone());
         let out3 = s1.handle(e3, &positions);
         assert_eq!(out3.touch_notes, Vec::<TouchNote>::new());
@@ -316,7 +316,7 @@ mod tests {
             x: 0.1,
             y_norm: 0.25,
             pressure: 1.0,
-});
+        });
         log.record(e5.clone());
         let out5 = s1.handle(e5, &positions);
         assert_eq!(

@@ -4,13 +4,13 @@
 
 #![cfg(all(target_os = "android", feature = "android"))]
 
-use crate::synth::SquareSynth;
 use crate::android_frontend::{AndroidFrontend, AudioMsg};
 use crate::notes::{MidiNote, NoteVolume, Transpose};
+use crate::synth::SquareSynth;
 
 use std::ffi::{c_char, c_void};
-use std::sync::{mpsc::Receiver, Mutex, OnceLock};
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
+use std::sync::{mpsc::Receiver, Mutex, OnceLock};
 
 #[repr(C)]
 pub struct AAudioStream {
@@ -41,18 +41,17 @@ const AAUDIO_SHARING_MODE_EXCLUSIVE: i32 = 0;
 
 const AAUDIO_CALLBACK_RESULT_CONTINUE: i32 = 0;
 
-type AAudioDataCallback = Option<unsafe extern "C" fn(
-    stream: *mut AAudioStream,
-    user_data: *mut c_void,
-    audio_data: *mut c_void,
-    num_frames: i32,
-) -> i32>;
+type AAudioDataCallback = Option<
+    unsafe extern "C" fn(
+        stream: *mut AAudioStream,
+        user_data: *mut c_void,
+        audio_data: *mut c_void,
+        num_frames: i32,
+    ) -> i32,
+>;
 
-type AAudioErrorCallback = Option<unsafe extern "C" fn(
-    stream: *mut AAudioStream,
-    user_data: *mut c_void,
-    error: i32,
-)>;
+type AAudioErrorCallback =
+    Option<unsafe extern "C" fn(stream: *mut AAudioStream, user_data: *mut c_void, error: i32)>;
 
 #[link(name = "aaudio")]
 extern "C" {
@@ -107,14 +106,22 @@ fn android_log(prio: i32, msg: &str) {
     let mut buf = msg.as_bytes().to_vec();
     buf.push(0);
     unsafe {
-        let _ = __android_log_write(prio, tag.as_ptr() as *const c_char, buf.as_ptr() as *const c_char);
+        let _ = __android_log_write(
+            prio,
+            tag.as_ptr() as *const c_char,
+            buf.as_ptr() as *const c_char,
+        );
     }
 }
 
 fn android_log_static(prio: i32, msg: &'static [u8]) {
     let tag = b"RustHarp\0";
     unsafe {
-        let _ = __android_log_write(prio, tag.as_ptr() as *const c_char, msg.as_ptr() as *const c_char);
+        let _ = __android_log_write(
+            prio,
+            tag.as_ptr() as *const c_char,
+            msg.as_ptr() as *const c_char,
+        );
     }
 }
 
@@ -219,11 +226,7 @@ unsafe extern "C" fn data_cb(
     AAUDIO_CALLBACK_RESULT_CONTINUE
 }
 
-unsafe extern "C" fn error_cb(
-    _stream: *mut AAudioStream,
-    _user_data: *mut c_void,
-    _error: i32,
-) {
+unsafe extern "C" fn error_cb(_stream: *mut AAudioStream, _user_data: *mut c_void, _error: i32) {
     // For MVP, ignore; if we see stream death we can implement restart.
 }
 
@@ -328,7 +331,10 @@ pub fn start(frontend: &mut AndroidFrontend) -> bool {
 
                 AAudioStreamBuilder_delete(builder);
 
-                *guard = Some(AAudioOut { stream, ctx: ctx_ptr });
+                *guard = Some(AAudioOut {
+                    stream,
+                    ctx: ctx_ptr,
+                });
                 return true;
             }
         }

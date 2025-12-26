@@ -71,7 +71,9 @@ fn required_string_indices(pc: i32) -> Option<&'static [usize]> {
 }
 
 pub fn compute_string_positions(width: f32) -> impl Iterator<Item = f32> {
-    UNSCALED_RELATIVE_X_POSITIONS.iter().map(move |rel| rel * width)
+    UNSCALED_RELATIVE_X_POSITIONS
+        .iter()
+        .map(move |rel| rel * width)
 }
 
 /// Positions for each chromatic note (UnkeyedNote 0..N).
@@ -88,10 +90,7 @@ pub fn compute_note_positions(width: f32) -> Vec<f32> {
             };
 
             let base = octave * 7;
-            if req
-                .iter()
-                .any(|&s| base + s >= NUM_STRINGS)
-            {
+            if req.iter().any(|&s| base + s >= NUM_STRINGS) {
                 return positions;
             }
 

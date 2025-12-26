@@ -1,6 +1,4 @@
-use crate::app_state::{
-    ActionButton, Actions, ChordButton, KeyEvent, KeyState, ModButton,
-};
+use crate::app_state::{ActionButton, Actions, ChordButton, KeyEvent, KeyState, ModButton};
 use crate::chord::Modifiers;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

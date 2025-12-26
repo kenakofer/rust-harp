@@ -245,7 +245,10 @@ mod tests {
         s.render_f32_mono(&mut buf);
 
         let tail_max = buf[5500..].iter().fold(0.0f32, |m, &x| m.max(x.abs()));
-        assert!(tail_max < 1.0e-3, "expected near-silence, got tail_max={tail_max}");
+        assert!(
+            tail_max < 1.0e-3,
+            "expected near-silence, got tail_max={tail_max}"
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
-use crate::synth::SquareSynth;
 use crate::app_state::{AppEffects, NoteOn};
 use crate::layout;
+use crate::synth::SquareSynth;
 use crate::touch::TouchEvent;
 use crate::ui_events::{UiEvent, UiSession};
 
@@ -319,9 +319,11 @@ mod tests {
         let mut f = AndroidFrontend::new();
         let rx = f.take_audio_rx().expect("expected audio rx");
 
-        let effects = f
-            .engine_mut()
-            .handle_strum_crossing(RowId::Top, UnkeyedNote(0), crate::app_state::DEFAULT_STRUM_VOLUME);
+        let effects = f.engine_mut().handle_strum_crossing(
+            RowId::Top,
+            UnkeyedNote(0),
+            crate::app_state::DEFAULT_STRUM_VOLUME,
+        );
         assert_eq!(effects.play_notes.len(), 1);
 
         f.push_effects(effects);
@@ -337,22 +339,18 @@ mod tests {
         let mut f = AndroidFrontend::new();
         let rx = f.take_audio_rx().expect("expected audio rx");
 
-        f.push_effects(
-            f.engine_mut().handle_strum_crossing(
-                RowId::Top,
-                UnkeyedNote(0),
-                crate::app_state::DEFAULT_STRUM_VOLUME,
-            ),
-        );
+        f.push_effects(f.engine_mut().handle_strum_crossing(
+            RowId::Top,
+            UnkeyedNote(0),
+            crate::app_state::DEFAULT_STRUM_VOLUME,
+        ));
         let _ = rx.try_recv();
 
-        f.push_effects(
-            f.engine_mut().handle_strum_crossing(
-                RowId::Top,
-                UnkeyedNote(0),
-                crate::app_state::DEFAULT_STRUM_VOLUME,
-            ),
-        );
+        f.push_effects(f.engine_mut().handle_strum_crossing(
+            RowId::Top,
+            UnkeyedNote(0),
+            crate::app_state::DEFAULT_STRUM_VOLUME,
+        ));
 
         match rx.try_recv() {
             Ok(AudioMsg::NoteOff(_)) => {}

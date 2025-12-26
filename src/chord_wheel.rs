@@ -63,7 +63,7 @@ pub fn modifiers_for(button: ChordButton, dir: WheelDir8) -> Modifiers {
             } // iv^9
             WheelDir8::S => Modifiers::SwitchMinorMajor | Modifiers::AddMinor7, // iv^7
             WheelDir8::SW => Modifiers::SwitchMinorMajor | Modifiers::AddMajor7, // iv^M7
-            WheelDir8::W => Modifiers::Sus4, // sus
+            WheelDir8::W => Modifiers::Sus4,      // sus
             WheelDir8::NW => Modifiers::AddMajor7, // ^M7
         }
     } else {
@@ -72,11 +72,11 @@ pub fn modifiers_for(button: ChordButton, dir: WheelDir8) -> Modifiers {
             WheelDir8::NE => {
                 Modifiers::SwitchMinorMajor | Modifiers::AddMinor7 | Modifiers::AddMajor2
             } // III^9
-            WheelDir8::E => Modifiers::AddMajor2, // iii+2
-            WheelDir8::SE => Modifiers::AddMinor7 | Modifiers::AddMajor2, // iii^9
-            WheelDir8::S => Modifiers::AddMinor7, // iii^7
-            WheelDir8::SW => Modifiers::AddMajor7, // iii^M7
-            WheelDir8::W => Modifiers::Sus4, // iiisus
+            WheelDir8::E => Modifiers::AddMajor2,                               // iii+2
+            WheelDir8::SE => Modifiers::AddMinor7 | Modifiers::AddMajor2,       // iii^9
+            WheelDir8::S => Modifiers::AddMinor7,                               // iii^7
+            WheelDir8::SW => Modifiers::AddMajor7,                              // iii^M7
+            WheelDir8::W => Modifiers::Sus4,                                    // iiisus
             WheelDir8::NW => Modifiers::SwitchMinorMajor | Modifiers::AddMajor7, // III^M7
         }
     }
