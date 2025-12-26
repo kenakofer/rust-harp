@@ -10,7 +10,7 @@ impl RowId {
         // 40% top, 40% middle, 20% bottom
         if y < 0.4 {
             RowId::Top
-        } else if y < 0.8 {
+        } else if y < 0.75 {
             RowId::Middle
         } else {
             RowId::Bottom
