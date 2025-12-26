@@ -527,9 +527,20 @@ fn choose_heptatonic_for_active_chord(active: &Chord) -> Chord {
 
         let root_pc = offset.rem_euclid(12);
         let root = UnkeyedNote(root_pc);
+        let hept_search_order = if [10,0,5,7].contains(&root_pc) {
+            [
+                heptatonic_major_chord_root(root),
+                harmonic_minor_chord_root(root),
+            ]
+        } else {
+            [
+                harmonic_minor_chord_root(root),
+                heptatonic_major_chord_root(root),
+            ]
+        };
 
         // Prefer harmonic minor for this candidate root, then fall back to major.
-        for hept in [harmonic_minor_chord_root(root), heptatonic_major_chord_root(root)] {
+        for hept in hept_search_order {
             let mut ok = true;
             for pc in 0..12 {
                 if needed[pc] && !hept.contains(UnkeyedNote(pc as i16)) {

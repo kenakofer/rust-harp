@@ -27,6 +27,7 @@ Desktop app:
 
 Audio backend selection (Android + Desktop)
 
+<<<<<<< Updated upstream
 ---
 
 ## App chord controls rework (tap + directional swipe wheel)
@@ -89,3 +90,53 @@ Goal: remove modifier buttons and replace with a press-and-swipe radial chooser 
 ### 6) Desktop parity (later)
 - Decide whether to also support wheel-on-click in desktop, or keep existing keyboard-driven modifiers only.
   - If we want parity: implement same wheel overlay + mouse-drag selection.
+=======
+
+Very nice! Lets do a more sizeable control rework for the app. The goal is for the app to not have modifier buttons, and instead use a tap + directional swipe to indicate modifiers:
+1. The row of modifier buttons in the app goes away.
+2. On the app: Simultaneously pressing neighboring chord buttons no longer makes it a major-minor 7 chord.
+3. Now, when pressing down on a chord button, a wheel of choices shows around the button. Swiping in one of the eight directions makes that the active chord with modifiers. In the following list, "^" indicates superscript.
+  - From the top, in clockwise order for major chords e.g. the IV chord
+    - Major +m7 "IV^7"
+    - Major +m7 +M2 "IV^9"
+    - Add 2 "IV+2"
+    - Minor +m7 +M2 "iv^9"
+    - Minor +m7 "iv^7"
+    - Minor +M7 "iv^M7"
+    - sus4 -3 +4 "IVsus"
+    - Major +M7 "IV^M7"
+  - From the top, in clockwise order for minor/diminished chords e.g. the iii chord
+    - Major +m7 "III^7"
+    - Major +m7 +M2 "III^9"
+    - Add 2 "iii+2"
+    - Minor +m7 +M2 "iii^9"
+    - Minor +m7 "iii^7"
+    - Minor +M7 "iii^M7"
+    - sus4 -3 +4 "iiisus"
+    - Major +M7 "III^M7"
+- We'll add a double-tap gesture too. If the user presses, doesn't swipe, releases, then presses again, apply the M/m switch. This can be visually indicated by changing the button label for a short period after a press/release.
+- We'll want nice visual indicators that highlight sectors of the circle as the user holds to select.
+- Make a plan for implementation, and write it to the TODO.md file.
+
+
+Wow, that works really well! Some style tweaks after the first test:
+  1. The wheel is drawing below the chord buttons, but should go on top.
+  2. The wheel needs to be rotated half a button counter-clockwise; currently the +m7 is up and bit right, but it should be cardinally straight up.
+  3. The chord buttons should all have a left and bottom margin (perhaps 30px) to allow for down and left swipes.
+  4. After a tap, we're currently setting the label to "M/m", but it would be better to set it to the correct roman numeral/chord name: "Am" -> "A", "ii" -> "II", "VIIb" -> "viib", etc.
+
+
+I'm not sure if this is an android issue, or something in our code, but when I double tap a chord button and it does the m/M (which is correct), the button then stays "highlighted" as if it's still being pressed (not correct). Then, while that chord button is thus hightlighted, single taps on a different chord button fail to change the chord. Do you know what's going on with that?
+
+
+That works well! Next, I'd like to adjust the app's note-off events to only fire when a chord-button press has been released and the double tap window has expired, whichever is later. That way we don't fire several undesired note-offs while getting to the desired chord.
+
+
+Cool! Next, I'd like to add some addtional syth sounds. Triangle and sawtooth would be cool. It would be nice to add some
+
+Perfect! Next, I want to add better visuals in the app for when a note is actively playing. To keep it simple, how about for note strikes we flash and fade a white rectangle on the note strike region. For strummed notes, lets draw the string with a wider rectangle then decrease the width back to the original.
+
+Neat! Next, I want to add a harmonic_minor() chord builder to use in the second row. Currently we're checking if the major scale on each root contains the root. Lets update to, for each root, check the harmonic minor (0, 2, 3, 5, 7, 8, 11) first, then the major.
+
+
+>>>>>>> Stashed changes
