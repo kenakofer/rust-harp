@@ -10,17 +10,18 @@ bitflags! {
         const DiminTri = 1 << 2;
         const AddMajor2 = 1 << 3;
         const AddMajor6 = 1 << 4;
-        const AddMinor6 = 1 << 12;
-        const AddMinor7 = 1 << 5;
-        const AddMajor7 = 1 << 6;
-        const Minor3ToMajor = 1 << 7;
-        const RestorePerfect5 = 1 << 8;
+        const AddMinor6 = 1 << 5;
+        const AddMinor7 = 1 << 6;
+        const AddMajor7 = 1 << 7;
+        const Minor3ToMajor = 1 << 8;
+        const RestorePerfect5 = 1 << 9;
         const SwitchMinorMajor = 1 << 10;
-        const Add4 = 1 << 9;
-        const No3 = 1 << 11;
-        const Invert = 1 << 12;
+        const Add4 = 1 << 11;
+        const No3 = 1 << 12;
+        const Invert = 1 << 13;
 
         const Sus4 = Modifiers::Add4.bits() | Modifiers::No3.bits();
+
     }
 }
 
