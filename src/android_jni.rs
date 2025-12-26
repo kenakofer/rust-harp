@@ -759,7 +759,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
         label_pitch_class,
     );
     let (bot_prio, bot_color, bot_pc) =
-        compute_best(w, &positions, None, transpose_pc, label_pitch_class);
+        compute_best(w, &positions, Some(middle_chord.invert()), transpose_pc, label_pitch_class);
 
     // Base strings.
     for xi in 0..w {
