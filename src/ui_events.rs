@@ -126,14 +126,18 @@ impl UiSession {
                 let vol = touch_volume(te.pressure);
 
                 let out = self.touch.handle_event(te, note_positions, |r, n| {
+                    // Tap-strike should only pick a chord tone when a chord is active.
+                    // If no chord is active, suppress chromatic (black-key) notes.
                     match self.engine.active_chord_for_row(r) {
                         Some(c) => c.contains(n),
-                        None => true,
+                        None => !crate::notes::is_black_key(n),
                     }
                 });
 
                 let mut effects = empty_effects();
                 let mut touch_notes = Vec::new();
+
+                let chord = self.engine.active_chord_for_row(row);
 
                 if let Some(note) = out.strike {
                     touch_notes.push(TouchNote { row, note });
@@ -144,6 +148,14 @@ impl UiSession {
                 }
                 for crossing in out.crossings {
                     for note in crossing.notes {
+                        let allow_strum = match chord {
+                            Some(c) => !crate::notes::is_black_key(note) || c.contains(note),
+                            None => !crate::notes::is_black_key(note),
+                        };
+                        if !allow_strum {
+                            continue;
+                        }
+
                         touch_notes.push(TouchNote { row, note });
                         merge_effects(
                             &mut effects,
