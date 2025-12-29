@@ -13,6 +13,24 @@ use jni::objects::{JClass, JIntArray, JShortArray};
 use jni::sys::{jboolean, jfloat, jint, jlong, jshort};
 use jni::JNIEnv;
 
+macro_rules! frontend_mut_or_return {
+    ($handle:expr, $ret:expr) => {{
+        if $handle == 0 {
+            return $ret;
+        }
+        unsafe { &mut *($handle as *mut AndroidFrontend) }
+    }};
+}
+
+macro_rules! frontend_or_return {
+    ($handle:expr, $ret:expr) => {{
+        if $handle == 0 {
+            return $ret;
+        }
+        unsafe { &*($handle as *const AndroidFrontend) }
+    }};
+}
+
 /// Simple JNI hook so an Android Activity can verify the Rust library loads.
 #[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustInit(
@@ -28,10 +46,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustStartAAudio(
     _class: JClass,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let frontend = frontend_mut_or_return!(handle, 0);
     if android_aaudio::start(frontend) {
         1
     } else {
@@ -54,10 +69,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustResetAudioChannel(
     _class: JClass,
     handle: jlong,
 ) {
-    if handle == 0 {
-        return;
-    }
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let frontend = frontend_mut_or_return!(handle, ());
     frontend.reset_audio_channel();
 }
 
@@ -91,10 +103,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetShowNoteNames(
     handle: jlong,
     show: jboolean,
 ) {
-    if handle == 0 {
-        return;
-    }
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let frontend = frontend_mut_or_return!(handle, ());
     frontend.set_show_note_names(show != 0);
 }
 
@@ -105,10 +114,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetPlayOnTap(
     handle: jlong,
     enabled: jboolean,
 ) {
-    if handle == 0 {
-        return;
-    }
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let frontend = frontend_mut_or_return!(handle, ());
     frontend.set_play_on_tap(enabled != 0);
 }
 
@@ -119,10 +125,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetImpliedSevenths
     handle: jlong,
     enabled: jboolean,
 ) {
-    if handle == 0 {
-        return;
-    }
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let frontend = frontend_mut_or_return!(handle, ());
     frontend
         .engine_mut()
         .set_allow_implied_sevenths(enabled != 0);
@@ -135,10 +138,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetChordReleaseNot
     handle: jlong,
     ms: jint,
 ) {
-    if handle == 0 {
-        return;
-    }
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
+    let frontend = frontend_mut_or_return!(handle, ());
     frontend.set_chord_release_note_off_delay_ms(ms.max(0) as u32);
 }
 
@@ -148,10 +148,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFlushDeferredNoteO
     _class: JClass,
     handle: jlong,
 ) {
-    if handle == 0 {
-        return;
-    }
-    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    let frontend = frontend_or_return!(handle, ());
     frontend.flush_deferred_stop_notes();
 }
 
@@ -161,10 +158,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHasActiveNoteVisua
     _class: JClass,
     handle: jlong,
 ) -> jboolean {
-    if handle == 0 {
-        return 0;
-    }
-    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    let frontend = frontend_or_return!(handle, 0);
     if frontend.has_active_note_visuals() {
         1
     } else {
@@ -179,11 +173,8 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetA4TuningHz(
     handle: jlong,
     a4_tuning_hz: jint,
 ) {
-    if handle == 0 {
-        return;
-    }
+    let frontend = frontend_mut_or_return!(handle, ());
     let hz = (a4_tuning_hz as i32).clamp(430, 450) as u16;
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     frontend.set_a4_tuning_hz(hz);
 }
 
@@ -194,12 +185,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetKeyIndex(
     handle: jlong,
     key_index: jint,
 ) -> jint {
-    if handle == 0 {
-        return 0;
-    }
+    let frontend = frontend_mut_or_return!(handle, 0);
 
     let idx = (key_index as i16).rem_euclid(12);
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::SetTranspose(
         crate::notes::Transpose(idx),
     ));
@@ -217,11 +205,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetKeyIndex(
     _class: JClass,
     handle: jlong,
 ) -> jint {
-    if handle == 0 {
-        return 0;
-    }
-
-    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    let frontend = frontend_or_return!(handle, 0);
     frontend.engine().transpose().wrap_to_octave() as jint
 }
 
@@ -234,9 +218,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
     unicode_char: jint,
     is_down: jboolean,
 ) -> jint {
-    if handle == 0 {
-        return 0;
-    }
+    let frontend = frontend_mut_or_return!(handle, 0);
 
     let state = if is_down != 0 {
         KeyState::Pressed
@@ -256,7 +238,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
         }
     };
 
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Key { state, key });
     let redraw = effects.redraw;
     let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
@@ -285,9 +266,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
     button_id: jint,
     is_down: jboolean,
 ) -> jint {
-    if handle == 0 {
-        return 0;
-    }
+    let frontend = frontend_mut_or_return!(handle, 0);
 
     let state = if is_down != 0 {
         KeyState::Pressed
@@ -314,7 +293,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
         _ => return 0,
     };
 
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let is_chord_button = chord_button_from_ui_button(button).is_some();
 
     if is_chord_button && state == KeyState::Pressed {
@@ -367,9 +345,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustApplyChordWheelCho
     chord_button_id: jint,
     dir8: jint,
 ) -> jint {
-    if handle == 0 {
-        return 0;
-    }
+    let frontend = frontend_mut_or_return!(handle, 0);
 
     // Only degree chord buttons participate in the wheel.
     let button = match chord_button_id {
@@ -389,7 +365,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustApplyChordWheelCho
         None => return 0,
     };
 
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
 
     // The Java chord-wheel UI drives chord presses via this JNI call (it does not call rustHandleUiButton(true)).
     // Mark the chord as held so chord-change note-offs can be deferred until release + double-tap timeout.
@@ -433,9 +408,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustToggleChordWheelMi
     handle: jlong,
     chord_button_id: jint,
 ) -> jint {
-    if handle == 0 {
-        return 0;
-    }
+    let frontend = frontend_mut_or_return!(handle, 0);
 
     let button = match chord_button_id {
         0 => UiButton::VIIB,
@@ -449,7 +422,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustToggleChordWheelMi
         _ => return 0,
     };
 
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
 
     // Same as rustApplyChordWheelChoice: Java chord-wheel toggles happen while the button is logically held.
     frontend.set_chord_hold_active(true);
@@ -480,13 +452,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonsMask(
     _class: JClass,
     handle: jlong,
 ) -> jint {
-    if handle == 0 {
-        return 0;
-    }
+    let frontend = frontend_or_return!(handle, 0);
 
     use crate::app_state::{ChordButton, ModButton};
-
-    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
     let eng = frontend.engine();
 
     let mut mask: u32 = 0;
@@ -556,9 +524,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
     height: jint,
     pressure: jfloat,
 ) -> jint {
-    if handle == 0 {
-        return 0;
-    }
+    let frontend = frontend_mut_or_return!(handle, 0);
 
     let phase = match phase {
         0 => TouchPhase::Down,
@@ -576,7 +542,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
         pressure: pressure as f32,
     };
 
-    let frontend = unsafe { &mut *(handle as *mut AndroidFrontend) };
     let (effects, haptic) = frontend.handle_touch(event, width.max(1) as f32);
     let redraw = effects.redraw;
     let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
@@ -598,10 +563,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetAudioSampleRate
     handle: jlong,
     sample_rate_hz: jint,
 ) {
-    if handle == 0 {
-        return;
-    }
-    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+    let frontend = frontend_or_return!(handle, ());
     frontend.set_sample_rate(sample_rate_hz.max(1) as u32);
 }
 
@@ -613,16 +575,12 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFillAudio(
     frames: jint,
     out_pcm: JShortArray,
 ) -> jint {
-    if handle == 0 {
-        return 0;
-    }
+    let frontend = frontend_or_return!(handle, 0);
 
     let n = frames.max(0) as usize;
     if n == 0 {
         return 0;
     }
-
-    let frontend = unsafe { &*(handle as *const AndroidFrontend) };
 
     let mut buf: Vec<i16> = vec![0; n];
     frontend.render_audio_i16_mono(&mut buf);

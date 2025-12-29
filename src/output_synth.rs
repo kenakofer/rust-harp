@@ -68,13 +68,11 @@ impl SynthBackend {
 }
 
 fn drain_msgs(rx: &Receiver<Msg>, synth: &mut SquareSynth) {
-    while let Ok(m) = rx.try_recv() {
-        match m {
-            Msg::NoteOn(note, vol) => synth.note_on(note, vol.0),
-            Msg::NoteOff(note) => synth.note_off(note),
-            Msg::SetA4Tuning(a4) => synth.set_a4_tuning_hz(a4),
-        }
-    }
+    crate::synth::drain_messages(|| rx.try_recv().ok(), |m| match m {
+        Msg::NoteOn(note, vol) => synth.note_on(note, vol.0),
+        Msg::NoteOff(note) => synth.note_off(note),
+        Msg::SetA4Tuning(a4) => synth.set_a4_tuning_hz(a4),
+    });
 }
 
 fn build_stream_f32(

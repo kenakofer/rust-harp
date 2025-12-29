@@ -18,6 +18,12 @@ pub struct SquareSynth {
     voices: Vec<Voice>,
 }
 
+pub fn drain_messages<T>(mut try_recv: impl FnMut() -> Option<T>, mut handle: impl FnMut(T)) {
+    while let Some(m) = try_recv() {
+        handle(m);
+    }
+}
+
 impl SquareSynth {
     pub fn new(sample_rate_hz: u32) -> Self {
         Self::with_tuning(sample_rate_hz, 440)

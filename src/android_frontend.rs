@@ -5,10 +5,11 @@ use crate::touch::TouchEvent;
 use crate::ui_events::{UiEvent, UiSession};
 
 use std::collections::HashSet;
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+#[derive(Debug)]
 pub enum AudioMsg {
     NoteOn(NoteOn),
     NoteOff(crate::notes::UnmidiNote),
@@ -171,13 +172,16 @@ impl AndroidFrontend {
     pub fn push_effects(&self, effects: AppEffects) {
         self.flush_deferred_stop_notes();
 
-        // Stop before play so retriggering works correctly.
-        for un in effects.stop_notes {
-            let _ = self.audio_tx.send(AudioMsg::NoteOff(un));
-        }
-        for pn in effects.play_notes {
-            let _ = self.audio_tx.send(AudioMsg::NoteOn(pn));
-        }
+        let mut tx = &self.audio_tx;
+        effects.apply_stop_then_play(
+            &mut tx,
+            |tx, un| {
+                let _ = (*tx).send(AudioMsg::NoteOff(un));
+            },
+            |tx, pn| {
+                let _ = (*tx).send(AudioMsg::NoteOn(pn));
+            },
+        );
     }
 
     pub fn set_sample_rate(&self, sample_rate_hz: u32) {
@@ -222,28 +226,24 @@ impl AndroidFrontend {
 
         if let Some(rx) = self.audio_rx.lock().unwrap().as_ref() {
             let mut s = self.legacy_synth.lock().unwrap();
-            loop {
-                match rx.try_recv() {
-                    Ok(AudioMsg::NoteOn(pn)) => {
-                        let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
-                        let NoteVolume(v) = pn.volume;
-                        s.note_on(MidiNote(m), v);
-                    }
-                    Ok(AudioMsg::NoteOff(un)) => {
-                        let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
-                        s.note_off(MidiNote(m));
-                    }
-                    Ok(AudioMsg::SetSampleRate(sr)) => {
-                        let a4 = s.a4_tuning_hz();
-                        *s = SquareSynth::with_tuning(sr, a4);
-                    }
-                    Ok(AudioMsg::SetA4Tuning(a4)) => {
-                        s.set_a4_tuning_hz(a4);
-                    }
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => break,
+            crate::synth::drain_messages(|| rx.try_recv().ok(), |msg| match msg {
+                AudioMsg::NoteOn(pn) => {
+                    let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
+                    let NoteVolume(v) = pn.volume;
+                    s.note_on(MidiNote(m), v);
                 }
-            }
+                AudioMsg::NoteOff(un) => {
+                    let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
+                    s.note_off(MidiNote(m));
+                }
+                AudioMsg::SetSampleRate(sr) => {
+                    let a4 = s.a4_tuning_hz();
+                    *s = SquareSynth::with_tuning(sr, a4);
+                }
+                AudioMsg::SetA4Tuning(a4) => {
+                    s.set_a4_tuning_hz(a4);
+                }
+            });
 
             s.render_i16_mono(out);
             return;
@@ -339,18 +339,20 @@ mod tests {
         let mut f = AndroidFrontend::new();
         let rx = f.take_audio_rx().expect("expected audio rx");
 
-        f.push_effects(f.engine_mut().handle_strum_crossing(
+        let e1 = f.engine_mut().handle_strum_crossing(
             RowId::Top,
             UnkeyedNote(0),
             crate::app_state::DEFAULT_STRUM_VOLUME,
-        ));
+        );
+        f.push_effects(e1);
         let _ = rx.try_recv();
 
-        f.push_effects(f.engine_mut().handle_strum_crossing(
+        let e2 = f.engine_mut().handle_strum_crossing(
             RowId::Top,
             UnkeyedNote(0),
             crate::app_state::DEFAULT_STRUM_VOLUME,
-        ));
+        );
+        f.push_effects(e2);
 
         match rx.try_recv() {
             Ok(AudioMsg::NoteOff(_)) => {}

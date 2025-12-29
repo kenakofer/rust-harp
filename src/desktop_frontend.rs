@@ -416,8 +416,6 @@ fn process_app_effects(
     audio_backend: UiAudioBackend,
     window: Option<&Window>,
 ) -> bool {
-    let played = !effects.play_notes.is_empty();
-
     if effects.redraw {
         if let Some(w) = window {
             w.request_redraw();
@@ -427,16 +425,11 @@ fn process_app_effects(
         log::info!("Changed key: {:?}", transpose);
     }
 
-    // IMPORTANT: stop before play so retriggering the same note doesn't immediately stop
-    // the newly started note.
-    for un in effects.stop_notes {
-        audio.stop_note(audio_backend, MIDI_BASE_TRANSPOSE + un);
-    }
-    for pn in effects.play_notes {
-        audio.play_note(audio_backend, MIDI_BASE_TRANSPOSE + pn.note, pn.volume);
-    }
-
-    played
+    effects.apply_stop_then_play(
+        audio,
+        |a, un| a.stop_note(audio_backend, MIDI_BASE_TRANSPOSE + un),
+        |a, pn| a.play_note(audio_backend, MIDI_BASE_TRANSPOSE + pn.note, pn.volume),
+    )
 }
 
 #[allow(dead_code)]

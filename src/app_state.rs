@@ -97,6 +97,25 @@ pub struct AppEffects {
     pub change_key: Option<Transpose>,
 }
 
+impl AppEffects {
+    /// Apply note-offs before note-ons so re-triggering the same note doesn't immediately stop it.
+    pub fn apply_stop_then_play<Ctx>(
+        self,
+        ctx: &mut Ctx,
+        mut stop: impl FnMut(&mut Ctx, UnmidiNote),
+        mut play: impl FnMut(&mut Ctx, NoteOn),
+    ) -> bool {
+        let played = !self.play_notes.is_empty();
+        for un in self.stop_notes {
+            stop(ctx, un);
+        }
+        for pn in self.play_notes {
+            play(ctx, pn);
+        }
+        played
+    }
+}
+
 pub struct AppState {
     pub active_chord: Option<Chord>, // Top row chord. TODO privatize
     pub active_notes: HashSet<UnmidiNote>,
