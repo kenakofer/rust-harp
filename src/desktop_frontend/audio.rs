@@ -178,3 +178,72 @@ pub(crate) fn check_pluck(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app_state::{AppEffects, NoteOn};
+    use crate::notes::{NoteVolume, UnmidiNote};
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum Call {
+        Stop(MidiNote),
+        Play(MidiNote, NoteVolume),
+    }
+
+    #[derive(Default)]
+    struct MockAudio {
+        calls: Vec<Call>,
+    }
+
+    impl BackendAudio for MockAudio {
+        fn stop_note(&mut self, _backend: UiAudioBackend, midi_note: MidiNote) {
+            self.calls.push(Call::Stop(midi_note));
+        }
+
+        fn play_note(&mut self, _backend: UiAudioBackend, midi_note: MidiNote, volume: NoteVolume) {
+            self.calls.push(Call::Play(midi_note, volume));
+        }
+    }
+
+    #[test]
+    fn process_app_effects_applies_stop_before_play_and_returns_played() {
+        let effects = AppEffects {
+            stop_notes: vec![UnmidiNote(1), UnmidiNote(2)],
+            play_notes: vec![NoteOn {
+                note: UnmidiNote(2),
+                volume: NoteVolume(70),
+            }],
+            redraw: false,
+            change_key: None,
+        };
+
+        let mut audio = MockAudio::default();
+        let played = process_app_effects(effects, &mut audio, UiAudioBackend::Midi, None);
+        assert!(played);
+
+        assert_eq!(
+            audio.calls,
+            vec![
+                Call::Stop(MIDI_BASE_TRANSPOSE + UnmidiNote(1)),
+                Call::Stop(MIDI_BASE_TRANSPOSE + UnmidiNote(2)),
+                Call::Play(MIDI_BASE_TRANSPOSE + UnmidiNote(2), NoteVolume(70)),
+            ]
+        );
+    }
+
+    #[test]
+    fn process_app_effects_returns_false_when_no_play_notes() {
+        let effects = AppEffects {
+            stop_notes: vec![UnmidiNote(1)],
+            play_notes: vec![],
+            redraw: false,
+            change_key: None,
+        };
+
+        let mut audio = MockAudio::default();
+        let played = process_app_effects(effects, &mut audio, UiAudioBackend::Midi, None);
+        assert!(!played);
+        assert_eq!(audio.calls, vec![Call::Stop(MIDI_BASE_TRANSPOSE + UnmidiNote(1))]);
+    }
+}
