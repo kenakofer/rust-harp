@@ -1,10 +1,15 @@
+mod events;
+mod effects;
+
+pub use effects::{AppEffects, NoteOn};
+pub use events::{
+    ActionButton, Actions, ChordButton, KeyEvent, KeyState, ModButton, DEFAULT_STRUM_VOLUME,
+};
+
 use crate::chord::{Chord, Modifiers};
 use crate::notes::{NoteVolume, Transpose, UnkeyedNote, UnmidiNote};
 use std::collections::HashSet;
 
-use bitflags::bitflags;
-
-pub const DEFAULT_STRUM_VOLUME: NoteVolume = NoteVolume(70);
 const PULSE_VOLUME: NoteVolume = NoteVolume(50);
 
 const ROOT_VIIB: UnkeyedNote = UnkeyedNote(10);
@@ -15,106 +20,6 @@ const ROOT_II: UnkeyedNote = UnkeyedNote(2);
 const ROOT_VI: UnkeyedNote = UnkeyedNote(9);
 const ROOT_III: UnkeyedNote = UnkeyedNote(4);
 const ROOT_VII: UnkeyedNote = UnkeyedNote(11);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyState {
-    Pressed,
-    Released,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyEvent {
-    Chord {
-        state: KeyState,
-        button: ChordButton,
-    },
-    Modifier {
-        state: KeyState,
-        button: ModButton,
-        modifiers: Modifiers,
-    },
-    Action {
-        state: KeyState,
-        button: ActionButton,
-        action: Actions,
-    },
-    StrumCrossing {
-        row: crate::rows::RowId,
-        note: UnkeyedNote,
-        /// Touch/strum intensity snapshot at note-on.
-        volume: NoteVolume,
-    },
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ChordButton {
-    VIIB,
-    IV,
-    I,
-    V,
-    II,
-    VI,
-    III,
-    VII,
-    HeptatonicMajor,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ModButton {
-    Major2,
-    Minor7,
-    Major7,
-    Sus4,
-    MinorMajor,
-    No3,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum ActionButton {
-    ChangeKey,
-    Pulse,
-}
-
-bitflags! {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub struct Actions: u16 {
-        const Pulse = 1 << 0;
-        const ChangeKey = 1 << 1;
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NoteOn {
-    pub note: UnmidiNote,
-    pub volume: NoteVolume,
-}
-
-#[derive(Debug)]
-pub struct AppEffects {
-    pub play_notes: Vec<NoteOn>,
-    pub stop_notes: Vec<UnmidiNote>,
-    pub redraw: bool,
-    pub change_key: Option<Transpose>,
-}
-
-impl AppEffects {
-    /// Apply note-offs before note-ons so re-triggering the same note doesn't immediately stop it.
-    pub fn apply_stop_then_play<Ctx>(
-        self,
-        ctx: &mut Ctx,
-        mut stop: impl FnMut(&mut Ctx, UnmidiNote),
-        mut play: impl FnMut(&mut Ctx, NoteOn),
-    ) -> bool {
-        let played = !self.play_notes.is_empty();
-        for un in self.stop_notes {
-            stop(ctx, un);
-        }
-        for pn in self.play_notes {
-            play(ctx, pn);
-        }
-        played
-    }
-}
 
 pub struct AppState {
     pub active_chord: Option<Chord>, // Top row chord. TODO privatize
