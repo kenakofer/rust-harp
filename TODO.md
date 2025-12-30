@@ -24,6 +24,9 @@ Desktop app:
 - Add state to display
 * Find large multi-touch trackpad
 
+Both:
+Make it so chord is not Option<>. We should never have a none chord
+
 Refactor flow prompts:
 * Introduction:
 * DRY:

@@ -120,8 +120,8 @@ pub fn compute_note_positions(width: f32) -> Vec<f32> {
 /// wider-spaced strings for reliable touch.
 pub const ANDROID_NUM_STRINGS: usize = 22;
 
-/// Controls how much horizontal space chromatic (black-key) semitone steps consume
-/// relative to the two diatonic semitone steps (E→F and B→C).
+/// Controls how much horizontal space non-diatonic semitone steps (e.g. Fa-Fi) consume
+/// relative to the two diatonic semitone steps (Mi-Fa and Ti-Do).
 ///
 /// - 1.0: all 12 semitones per octave are evenly spaced.
 /// - 0.5: matches our prior Android behavior (chromatic steps are half as wide as the
