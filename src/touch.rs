@@ -44,6 +44,9 @@ pub struct TouchTracker {
 
     /// Which note (if any) each pointer has claimed via a strike.
     struck_by_pointer: HashMap<PointerId, (crate::rows::RowId, crate::notes::UnkeyedNote)>,
+
+    /// Per-pointer last played note; used to suppress immediate re-triggering of the same note.
+    last_played_by_pointer: HashMap<PointerId, crate::notes::UnkeyedNote>,
 }
 
 impl TouchTracker {
@@ -52,6 +55,7 @@ impl TouchTracker {
             last_pos: HashMap::new(),
             play_on_tap: true,
             struck_by_pointer: HashMap::new(),
+            last_played_by_pointer: HashMap::new(),
         }
     }
 
@@ -104,6 +108,7 @@ impl TouchTracker {
                     let s = self.nearest_unstruck_note(row, event.x, note_positions, &allowed);
                     if let Some(n) = s {
                         self.struck_by_pointer.insert(event.id, (row, n));
+                        self.last_played_by_pointer.insert(event.id, n);
                     }
                     s
                 } else {
@@ -134,12 +139,13 @@ impl TouchTracker {
                     };
                 }
 
-                // If a note is currently struck in this row, suppress re-strumming that note,
-                // but still allow strumming other notes.
+                // If this pointer has a note currently struck in this row, suppress re-strumming
+                // that note, but still allow strumming other notes.
                 let struck: Vec<crate::notes::UnkeyedNote> = self
                     .struck_by_pointer
-                    .values()
-                    .filter_map(|&(r, n)| if r == row { Some(n) } else { None })
+                    .get(&event.id)
+                    .and_then(|&(r, n)| if r == row { Some(n) } else { None })
+                    .into_iter()
                     .collect();
 
                 let mut crossings = strum::detect_crossings(prev_x, event.x, note_positions);
@@ -165,6 +171,26 @@ impl TouchTracker {
                     });
                 }
 
+                // Suppress immediate re-triggering of the last played note for this pointer.
+                let mut last_played = self.last_played_by_pointer.get(&event.id).copied();
+
+                crossings.retain_mut(|c| {
+                    let mut out_notes = Vec::with_capacity(c.notes.len());
+                    for n in c.notes.iter().copied() {
+                        if last_played == Some(n) {
+                            continue;
+                        }
+                        last_played = Some(n);
+                        out_notes.push(n);
+                    }
+                    c.notes = out_notes;
+                    !c.notes.is_empty()
+                });
+
+                if let Some(n) = last_played {
+                    self.last_played_by_pointer.insert(event.id, n);
+                }
+
                 TouchOutput {
                     strike: None,
                     crossings,
@@ -173,6 +199,7 @@ impl TouchTracker {
             TouchPhase::Up | TouchPhase::Cancel => {
                 self.last_pos.remove(&event.id);
                 self.struck_by_pointer.remove(&event.id);
+                self.last_played_by_pointer.remove(&event.id);
                 TouchOutput {
                     strike: None,
                     crossings: Vec::new(),
@@ -498,7 +525,107 @@ mod tests {
             }]
         );
 
-        // Crossing back should now include note 0 again.
+        // Crossing back: last played was note 1; due to ascending-x processing we will allow
+        // note 0 then allow note 1 (because the last-played state updates as crossings are emitted).
+        let out4 = t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: 0.0,
+                y_norm: Y,
+                pressure: 1.0,
+            },
+            &positions,
+            |_, _| true,
+        );
+        assert_eq!(
+            out4.crossings,
+            vec![
+                StrumCrossing {
+                    x: 10.0,
+                    notes: vec![UnkeyedNote(0)],
+                },
+                StrumCrossing {
+                    x: 20.0,
+                    notes: vec![UnkeyedNote(1)],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn strum_does_not_retrigger_same_note_until_different_note_strummed() {
+        let positions = [10.0, 20.0];
+        let mut t = TouchTracker::new();
+        t.set_play_on_tap(false);
+
+        t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Down,
+                x: 0.0,
+                y_norm: Y,
+                pressure: 1.0,
+            },
+            &positions,
+            |_, _| true,
+        );
+
+        // First strum plays note 0.
+        let out1 = t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: 15.0,
+                y_norm: Y,
+                pressure: 1.0,
+            },
+            &positions,
+            |_, _| true,
+        );
+        assert_eq!(
+            out1.crossings,
+            vec![StrumCrossing {
+                x: 10.0,
+                notes: vec![UnkeyedNote(0)],
+            }]
+        );
+
+        // Crossing back over note 0 without playing any other note should be suppressed.
+        let out2 = t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: 0.0,
+                y_norm: Y,
+                pressure: 1.0,
+            },
+            &positions,
+            |_, _| true,
+        );
+        assert_eq!(out2.crossings, Vec::<StrumCrossing>::new());
+
+        // Now strum note 1.
+        let out3 = t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: 30.0,
+                y_norm: Y,
+                pressure: 1.0,
+            },
+            &positions,
+            |_, _| true,
+        );
+        assert_eq!(
+            out3.crossings,
+            vec![StrumCrossing {
+                x: 20.0,
+                notes: vec![UnkeyedNote(1)],
+            }]
+        );
+
+        // Crossing back now can play both boundaries (the last-played state updates as notes emit).
         let out4 = t.handle_event(
             TouchEvent {
                 id: PointerId(1),
