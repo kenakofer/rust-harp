@@ -22,7 +22,7 @@ const ROOT_III: UnkeyedNote = UnkeyedNote(4);
 const ROOT_VII: UnkeyedNote = UnkeyedNote(11);
 
 pub struct AppState {
-    pub active_chord: Option<Chord>, // Top row chord. TODO privatize
+    pub active_chord: Chord, // Top row chord. TODO privatize
     pub active_notes: HashSet<UnmidiNote>,
     active_notes_by_row: [HashSet<UnmidiNote>; 3],
 
@@ -123,7 +123,7 @@ const MOD_BUTTON_TABLE: [ModButtonTableEntry; 6] = [
 impl AppState {
     pub fn new() -> Self {
         Self {
-            active_chord: Some(Chord::new_triad(ROOT_I)),
+            active_chord: Chord::new_triad(ROOT_I),
             active_notes: HashSet::new(),
             active_notes_by_row: std::array::from_fn(|_| HashSet::new()),
 
@@ -187,11 +187,11 @@ impl AppState {
         self.chord_keys_down.contains(&button)
     }
 
-    pub fn active_chord_for_row(&self, row: crate::rows::RowId) -> Option<Chord> {
+    pub fn active_chord_for_row(&self, row: crate::rows::RowId) -> Chord {
         match row {
             crate::rows::RowId::Top => self.active_chord,
-            crate::rows::RowId::Middle => Some(self.bottom_chord),
-            crate::rows::RowId::Bottom => Some(self.bottom_chord.invert()),
+            crate::rows::RowId::Middle => self.bottom_chord,
+            crate::rows::RowId::Bottom => self.bottom_chord.invert(),
         }
     }
 
@@ -209,12 +209,8 @@ impl AppState {
 
         if let KeyEvent::StrumCrossing { row, note, volume } = event {
             effects.redraw = false;
-            let chord = match row {
-                crate::rows::RowId::Top => self.active_chord,
-                crate::rows::RowId::Middle => Some(self.bottom_chord),
-                crate::rows::RowId::Bottom => Some(self.bottom_chord.invert()),
-            };
-            if chord.map_or(true, |c| c.contains(note)) {
+            let chord = self.active_chord_for_row(row);
+            if chord.contains(note) {
                 let un = self.transpose + note;
 
                 // If this note is already active, stop it first so we only ever have one
@@ -286,7 +282,7 @@ impl AppState {
         let venerated_old_chord = if chord_was_pressed || self.wheel_modifiers_dirty {
             None
         } else {
-            self.active_chord
+            Some(self.active_chord)
         };
         let mut new_chord = decide_chord_base(
             venerated_old_chord.as_ref(),
@@ -307,58 +303,54 @@ impl AppState {
             self.modifier_stage.insert(self.wheel_modifiers);
         }
 
-        if let Some(ref mut chord) = new_chord {
-            if !self.modifier_stage.is_empty() {
-                chord.add_mods_now(self.modifier_stage);
-            }
+        if !self.modifier_stage.is_empty() {
+            new_chord.add_mods_now(self.modifier_stage);
         }
 
-        if venerated_old_chord != new_chord {
+        let chord_changed = venerated_old_chord.map_or(true, |old| old != new_chord);
+        if chord_changed {
             effects.redraw = true;
             self.active_chord = new_chord;
 
-            if let Some(chord) = new_chord {
-                self.bottom_chord = dynamic_heptatonic_for_active_chord(&chord);
+            self.bottom_chord = dynamic_heptatonic_for_active_chord(&self.active_chord);
 
-                effects.stop_notes = (0..128)
-                    .map(|i| UnmidiNote(i))
-                    .filter(|un| !chord.contains(*un - self.transpose))
-                    .filter(|un| {
-                        self.active_notes_by_row[crate::rows::RowId::Top.index()].contains(un)
-                    })
-                    .collect();
+            effects.stop_notes = (0..128)
+                .map(|i| UnmidiNote(i))
+                .filter(|un| !self.active_chord.contains(*un - self.transpose))
+                .filter(|un| {
+                    self.active_notes_by_row[crate::rows::RowId::Top.index()].contains(un)
+                })
+                .collect();
 
-                for un in effects.stop_notes.iter() {
-                    self.active_notes.remove(un);
-                    self.active_notes_by_row[crate::rows::RowId::Top.index()].remove(un);
-                }
+            for un in effects.stop_notes.iter() {
+                self.active_notes.remove(un);
+                self.active_notes_by_row[crate::rows::RowId::Top.index()].remove(un);
             }
         }
 
-        if let Some(ref mut chord) = self.active_chord {
-            if self.action_stage.contains(Actions::ChangeKey) {
-                self.transpose = Transpose(chord.get_root().as_i16()).center_octave();
-                effects.change_key = Some(self.transpose);
-            }
-            if self.action_stage.contains(Actions::Pulse) {
-                (-12..70)
-                    .map(|i| UnmidiNote(i))
-                    .filter(|un| chord.contains(*un - self.transpose))
-                    .for_each(|un| {
-                        if self.active_notes.remove(&un) {
-                            effects.stop_notes.push(un);
-                            for s in self.active_notes_by_row.iter_mut() {
-                                s.remove(&un);
-                            }
+        let chord = &mut self.active_chord;
+        if self.action_stage.contains(Actions::ChangeKey) {
+            self.transpose = Transpose(chord.get_root().as_i16()).center_octave();
+            effects.change_key = Some(self.transpose);
+        }
+        if self.action_stage.contains(Actions::Pulse) {
+            (-12..70)
+                .map(|i| UnmidiNote(i))
+                .filter(|un| chord.contains(*un - self.transpose))
+                .for_each(|un| {
+                    if self.active_notes.remove(&un) {
+                        effects.stop_notes.push(un);
+                        for s in self.active_notes_by_row.iter_mut() {
+                            s.remove(&un);
                         }
-                        self.active_notes.insert(un);
-                        self.active_notes_by_row[crate::rows::RowId::Top.index()].insert(un);
-                        effects.play_notes.push(NoteOn {
-                            note: un,
-                            volume: PULSE_VOLUME,
-                        });
+                    }
+                    self.active_notes.insert(un);
+                    self.active_notes_by_row[crate::rows::RowId::Top.index()].insert(un);
+                    effects.play_notes.push(NoteOn {
+                        note: un,
+                        volume: PULSE_VOLUME,
                     });
-            }
+                });
         }
 
         self.modifier_stage = Modifiers::empty();
@@ -490,15 +482,15 @@ fn decide_chord_base(
     venerated_old_chord: Option<&Chord>,
     chord_keys_down: &HashSet<ChordButton>,
     allow_implied_sevenths: bool,
-) -> Option<Chord> {
+) -> Chord {
     if chord_keys_down.contains(&ChordButton::HeptatonicMajor) {
-        return Some(heptatonic_major_chord());
+        return heptatonic_major_chord();
     }
 
     // Check/apply double-held-chord sevenths
     if allow_implied_sevenths {
         if let Some(root) = detect_implied_minor7_root(chord_keys_down) {
-            return Some(Chord::new(root, Modifiers::MajorTri | Modifiers::AddMinor7));
+            return Chord::new(root, Modifiers::MajorTri | Modifiers::AddMinor7);
         }
     }
 
@@ -506,19 +498,19 @@ fn decide_chord_base(
         if chord_keys_down.contains(&entry.button) {
             if let Some(old) = venerated_old_chord {
                 if old.get_root() == entry.root {
-                    return venerated_old_chord.copied();
+                    return *old;
                 }
             }
-            return Some(Chord::new_triad(entry.root));
+            return Chord::new_triad(entry.root);
         }
     }
 
-    // No keys down: preserve chord if we just went from 1 -> 0
-    if let Some(_) = venerated_old_chord {
-        return venerated_old_chord.copied();
+    // Should be unreachable (we return early when no chord keys are down), but keep a safe fallback.
+    if let Some(old) = venerated_old_chord {
+        return *old;
     }
 
-    None
+    Chord::chromatic(ROOT_I)
 }
 
 #[cfg(test)]
@@ -547,7 +539,7 @@ mod tests {
 
         press_chord(&mut state, ChordButton::V);
 
-        let chord = state.active_chord.unwrap();
+        let chord = state.active_chord;
         assert_eq!(chord.get_root(), ROOT_V);
     }
 
@@ -558,7 +550,7 @@ mod tests {
         press_modifier(&mut state, ModButton::Minor7, Modifiers::AddMinor7);
         press_chord(&mut state, ChordButton::I);
 
-        let chord = state.active_chord.unwrap();
+        let chord = state.active_chord;
         assert!(chord.contains(UnkeyedNote(10))); // minor 7
     }
 

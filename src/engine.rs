@@ -38,11 +38,11 @@ impl Engine {
             .handle_key_event(KeyEvent::StrumCrossing { row, note, volume })
     }
 
-    pub fn active_chord(&self) -> &Option<Chord> {
+    pub fn active_chord(&self) -> &Chord {
         &self.state.active_chord
     }
 
-    pub fn active_chord_for_row(&self, row: RowId) -> Option<Chord> {
+    pub fn active_chord_for_row(&self, row: RowId) -> Chord {
         self.state.active_chord_for_row(row)
     }
 

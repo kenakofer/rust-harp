@@ -1,7 +1,7 @@
 mod audio;
 mod render;
 
-use crate::notes::{UnkeyedNote, UnmidiNote};
+use crate::notes::UnmidiNote;
 use crate::output_midir::MidiBackend;
 use crate::rows::RowId;
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
@@ -150,9 +150,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         physical_size.width,
                         physical_size.height,
                         *ui.engine().active_chord(),
-                        ui.engine()
-                            .active_chord_for_row(RowId::Middle)
-                            .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
+                        ui.engine().active_chord_for_row(RowId::Middle),
                         positions,
                         settings.show_note_names,
                         ui.engine().transpose().wrap_to_octave(),
@@ -316,9 +314,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         size.width,
                         size.height,
                         *ui.engine().active_chord(),
-                        ui.engine()
-                            .active_chord_for_row(RowId::Middle)
-                            .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
+                        ui.engine().active_chord_for_row(RowId::Middle),
                         positions,
                         settings.show_note_names,
                         ui.engine().transpose().wrap_to_octave(),

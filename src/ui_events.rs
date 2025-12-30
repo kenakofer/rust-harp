@@ -126,10 +126,7 @@ impl UiSession {
                 let vol = touch_volume(te.pressure);
 
                 let out = self.touch.handle_event(te, note_positions, |r, n| {
-                    match self.engine.active_chord_for_row(r) {
-                        Some(c) => c.contains(n),
-                        None => true,
-                    }
+                    self.engine.active_chord_for_row(r).contains(n)
                 });
 
                 let mut effects = empty_effects();

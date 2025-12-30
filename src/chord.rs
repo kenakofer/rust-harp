@@ -19,6 +19,8 @@ bitflags! {
         const Add4 = 1 << 11;
         const No3 = 1 << 12;
         const Invert = 1 << 13;
+        /// Special-case: treat as "all notes are in the chord" (chromatic scale).
+        const Chromatic = 1 << 14;
 
         const Sus4 = Modifiers::Add4.bits() | Modifiers::No3.bits();
 
@@ -110,6 +112,10 @@ impl Chord {
         Self::new(rt, mods)
     }
 
+    pub fn chromatic(rt: UnkeyedNote) -> Self {
+        Self::new(rt, Modifiers::Chromatic)
+    }
+
     pub fn get_root(&self) -> UnkeyedNote {
         self.root
     }
@@ -135,6 +141,10 @@ impl Chord {
 
     // Crucial to call this immediately after every change to self.mods
     fn get_mask(&self) -> PitchClassSet {
+        if self.mods.contains(Modifiers::Chromatic) {
+            return PitchClassSet(0b111111111111);
+        }
+
         let mut mask = PitchClassSet::ROOT_ONLY;
         for (modifier, func) in Self::ORDERED_MOD_APPLICATIONS {
             if self.mods.contains(modifier) {
@@ -248,6 +258,14 @@ mod tests {
 
         assert!(!c.contains(UnkeyedNote(6))); // perfect fifth
         assert!(!c.contains(UnkeyedNote(4))); // major third
+    }
+
+    #[test]
+    fn chromatic_contains_all_notes() {
+        let c = Chord::chromatic(UnkeyedNote(0));
+        for pc in 0..12 {
+            assert!(c.contains(UnkeyedNote(pc)));
+        }
     }
 
     #[test]

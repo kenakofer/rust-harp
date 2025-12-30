@@ -14,7 +14,7 @@ pub(crate) struct BestStyle<C: Copy> {
 pub(crate) fn compute_best_per_x<C: Copy>(
     width: usize,
     positions: &[f32],
-    chord: Option<Chord>,
+    chord: Chord,
     transpose_pc: i16,
     style: BestStyle<C>,
     include_inactive: bool,
@@ -31,16 +31,10 @@ pub(crate) fn compute_best_per_x<C: Copy>(
         }
         let xi = xi as usize;
 
-        let (prio, color) = if let Some(ch) = chord {
-            if ch.has_root(uknote) {
-                (style.root_prio, style.root_color)
-            } else if ch.contains(uknote) {
-                (style.chord_prio, style.chord_color)
-            } else if include_inactive {
-                (style.inactive_prio, style.inactive_color)
-            } else {
-                continue;
-            }
+        let (prio, color) = if chord.has_root(uknote) {
+            (style.root_prio, style.root_color)
+        } else if chord.contains(uknote) {
+            (style.chord_prio, style.chord_color)
         } else if include_inactive {
             (style.inactive_prio, style.inactive_color)
         } else {
@@ -79,13 +73,13 @@ mod tests {
 
         let chord = crate::chord::Chord::new_triad(UnkeyedNote(0));
 
-        let (prio0, color0, pc0) = compute_best_per_x(10, &positions, Some(chord), 0, style, false);
+        let (prio0, color0, pc0) = compute_best_per_x(10, &positions, chord, 0, style, false);
         assert_eq!(prio0[1], 2);
         assert_eq!(color0[1], 10);
         assert_eq!(pc0[1], 0);
 
         let (_prio2, _color2, pc2) =
-            compute_best_per_x(10, &positions, Some(chord), 2, style, false);
+            compute_best_per_x(10, &positions, chord, 2, style, false);
         assert_eq!(pc2[1], 2);
     }
 
@@ -105,7 +99,7 @@ mod tests {
         };
 
         let chord = crate::chord::Chord::new_triad(UnkeyedNote(0));
-        let (prio, _color, _pc) = compute_best_per_x(10, &positions, Some(chord), 0, style, false);
+        let (prio, _color, _pc) = compute_best_per_x(10, &positions, chord, 0, style, false);
         assert_eq!(prio[2], 0);
     }
 
@@ -125,7 +119,7 @@ mod tests {
         };
 
         let chord = crate::chord::Chord::new_triad(UnkeyedNote(0));
-        let (prio, color, pc) = compute_best_per_x(10, &positions, Some(chord), 0, style, true);
+        let (prio, color, pc) = compute_best_per_x(10, &positions, chord, 0, style, true);
         assert_eq!(prio[2], 1);
         assert_eq!(color[2], 7);
         assert_eq!(pc[2], 1);

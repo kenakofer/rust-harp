@@ -51,7 +51,7 @@ impl AppAdapter {
         )
     }
 
-    pub fn active_chord(&self) -> &Option<Chord> {
+    pub fn active_chord(&self) -> &Chord {
         self.ui.engine().active_chord()
     }
 

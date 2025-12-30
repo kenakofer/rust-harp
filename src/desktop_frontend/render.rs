@@ -109,7 +109,7 @@ pub(crate) fn draw_strings(
     surface: &mut Surface<Rc<Window>, Rc<Window>>,
     width: u32,
     height: u32,
-    top_chord: Option<Chord>,
+    top_chord: Chord,
     bottom_chord: Chord,
     positions: &[f32],
     show_note_names: bool,
@@ -142,7 +142,7 @@ pub(crate) fn draw_strings(
     let (mid_prio, mid_color, mid_pc) = crate::render_best::compute_best_per_x(
         width as usize,
         positions,
-        Some(bottom_chord),
+        bottom_chord,
         transpose_pc,
         style,
         false,
@@ -150,7 +150,7 @@ pub(crate) fn draw_strings(
     let (bot_prio, bot_color, _bot_pc) = crate::render_best::compute_best_per_x(
         width as usize,
         positions,
-        Some(bottom_chord.invert()),
+        bottom_chord.invert(),
         transpose_pc,
         style,
         false,

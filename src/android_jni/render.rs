@@ -23,15 +23,14 @@ pub(crate) fn render_strings(
         let eng = frontend.engine();
         (
             eng.active_chord_for_row(crate::rows::RowId::Top),
-            eng.active_chord_for_row(crate::rows::RowId::Middle)
-                .unwrap_or_else(|| crate::chord::Chord::new_triad(crate::notes::UnkeyedNote(0))),
+            eng.active_chord_for_row(crate::rows::RowId::Middle),
             frontend.show_note_names(),
             eng.transpose().wrap_to_octave(),
             frontend.note_visuals_snapshot(),
         )
     } else {
         (
-            None,
+            crate::chord::Chord::chromatic(crate::notes::UnkeyedNote(0)),
             crate::chord::Chord::new_triad(crate::notes::UnkeyedNote(0)),
             false,
             0,
@@ -83,7 +82,7 @@ pub(crate) fn render_strings(
     let (mid_prio, mid_color, mid_pc) = crate::render_best::compute_best_per_x(
         w,
         positions,
-        Some(middle_chord),
+        middle_chord,
         transpose_pc,
         style,
         true,
@@ -91,7 +90,7 @@ pub(crate) fn render_strings(
     let (bot_prio, bot_color, bot_pc) = crate::render_best::compute_best_per_x(
         w,
         positions,
-        Some(middle_chord.invert()),
+        middle_chord.invert(),
         transpose_pc,
         style,
         true,
