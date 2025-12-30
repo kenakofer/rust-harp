@@ -24,13 +24,27 @@ Desktop app:
 - Add state to display
 * Find large multi-touch trackpad
 
----
+Refactor flow prompts:
+* Introduction:
+* DRY:
+Here's a rust crate providing a musical instument desktop and android app. We can't build the android app locally (no gradle), but we build that with github actions later.
+Please investigate and identify a few key areas that could be refactored to reduce repetition in the codebase.
+* Modularity:
+Here's a rust crate providing a musical instument desktop and mobile app. We can't build the android app locally (no gradle), but we build that with github actions later. The system python version is python2.
+Please investigate and identify a few key areas that could be refactored to improve modularity of the codebase.
+* Idiomatic
+Here's a rust crate providing a musical instument desktop and mobile app.
+After taking a look around the codebase, does anything stand out to you as a missed opportunity for me to write more idiomatic rust?
+* Comments
+Here's a rust crate providing a musical instument desktop and mobile app.
+Take a look around the codebase to identify and fix any comments that appear be incorrect, out of date, or unnecessary. We'd prefer to let the code be self-documenting as much as possible, so find opportunities to improve naming if that can increase clariy and reduce the need for comments.
+* Unit tests
+After taking a look at the code and tests, does it seem that tests are missing for any key functionality?
+* Obviously missing features?
 
-Codebase modularity refactors:
-* Split `desktop_frontend.rs` into focused modules (window/event loop, audio routing, rendering, settings UI).
-* Split `android_jni.rs` into focused modules (JNI exports thin layer + audio/render/input/settings helpers).
-* Extract a shared strings renderer (used by both desktop + Android) and keep platform pixel-buffer plumbing separate.
-* Split `app_state.rs` into smaller core modules (events/state/effects) and privatize internal fields currently marked TODO.
-* Introduce an audio/output abstraction (trait) so `AppEffects` application is shared across platforms.
-* Clean up module boundaries: remove/rename `adapter.rs` indirection; make `ui_adapter.rs` clearly platform-specific.
+* Afterward:
+  * Was it a good suggestion? Take it.
+  * Repeatedly mid suggestions? Abort.
+  * Run rustfmt and commit.
 
+copilot --allow-tool "write" --allow-tool "shell(cargo check:*)" --allow-tool "shell(cargo test:*)" 

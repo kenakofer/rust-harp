@@ -37,6 +37,3 @@ pub mod desktop_frontend;
 
 #[cfg(feature = "desktop")]
 pub mod ui_adapter;
-
-#[cfg(feature = "desktop")]
-pub mod adapter;
