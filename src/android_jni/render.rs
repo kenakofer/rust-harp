@@ -41,11 +41,18 @@ pub(crate) fn render_strings(env: JNIEnv, handle: jlong, width: jint, height: ji
     let len = w * h;
     let mut pixels = vec![0xFF000000u32 as i32; len];
 
-    let positions = layout::compute_note_positions_android(w as f32);
+    let mut positions_storage: Vec<f32> = Vec::new();
+    let mut cache_guard: Option<std::sync::MutexGuard<'_, crate::layout::NotePositionsCache>> = None;
+    let positions: &[f32] = if handle != 0 {
+        let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+        cache_guard = Some(frontend.layout_cache.lock().unwrap());
+        cache_guard.as_mut().unwrap().android(w as f32)
+    } else {
+        positions_storage = layout::compute_note_positions_android(w as f32);
+        &positions_storage
+    };
 
-    // 40% top, 40% middle, 20% bottom
-    let top_end = h * 2 / 5;
-    let mid_end = h * 4 / 5;
+    let (top_end, mid_end) = crate::render_shared::row_band_bounds(h);
 
     let style = crate::render_best::BestStyle {
         root_prio: 3,
@@ -58,7 +65,7 @@ pub(crate) fn render_strings(env: JNIEnv, handle: jlong, width: jint, height: ji
 
     let (top_prio, top_color, top_pc) = crate::render_best::compute_best_per_x(
         w,
-        &positions,
+        positions,
         top_chord,
         transpose_pc,
         style,
@@ -66,7 +73,7 @@ pub(crate) fn render_strings(env: JNIEnv, handle: jlong, width: jint, height: ji
     );
     let (mid_prio, mid_color, mid_pc) = crate::render_best::compute_best_per_x(
         w,
-        &positions,
+        positions,
         Some(middle_chord),
         transpose_pc,
         style,
@@ -74,34 +81,26 @@ pub(crate) fn render_strings(env: JNIEnv, handle: jlong, width: jint, height: ji
     );
     let (bot_prio, bot_color, bot_pc) = crate::render_best::compute_best_per_x(
         w,
-        &positions,
+        positions,
         Some(middle_chord.invert()),
         transpose_pc,
         style,
         true,
     );
 
-    // Base strings.
-    for xi in 0..w {
-        if top_prio[xi] != 0 {
-            let color = top_color[xi];
-            for y in 0..top_end {
-                pixels[y * w + xi] = color;
-            }
-        }
-        if mid_prio[xi] != 0 {
-            let color = mid_color[xi];
-            for y in top_end..mid_end {
-                pixels[y * w + xi] = color;
-            }
-        }
-        if bot_prio[xi] != 0 {
-            let color = bot_color[xi];
-            for y in mid_end..h {
-                pixels[y * w + xi] = color;
-            }
-        }
-    }
+    crate::render_shared::fill_string_bands(
+        &mut pixels,
+        w,
+        h,
+        top_end,
+        mid_end,
+        &top_prio,
+        &top_color,
+        &mid_prio,
+        &mid_color,
+        &bot_prio,
+        &bot_color,
+    );
 
     // Note-on visuals: strike = flash+fade; strum = widen then shrink.
     if !visuals.is_empty() {
@@ -205,32 +204,29 @@ pub(crate) fn render_strings(env: JNIEnv, handle: jlong, width: jint, height: ji
     }
 
     if show_note_names {
-        // Top row labels.
-        for (xi, prio) in top_prio.iter().enumerate() {
-            if *prio < 2 {
-                continue;
-            }
-            let pc = top_pc[xi];
-            if pc == 255 {
-                continue;
-            }
-            let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            draw_text(&mut pixels, w, h, xi as i32 + 4, 2, label, top_color[xi]);
-        }
+        crate::render_shared::draw_note_name_labels(
+            &top_prio,
+            &top_pc,
+            &top_color,
+            2,
+            transpose_pc,
+            4,
+            2,
+            |x, y, text, color| draw_text(&mut pixels, w, h, x, y, text, color),
+        );
 
         // Middle row labels.
         let y_mid = top_end as i32 + 2;
-        for (xi, prio) in mid_prio.iter().enumerate() {
-            if *prio < 2 {
-                continue;
-            }
-            let pc = mid_pc[xi];
-            if pc == 255 {
-                continue;
-            }
-            let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            draw_text(&mut pixels, w, h, xi as i32 + 4, y_mid, label, mid_color[xi]);
-        }
+        crate::render_shared::draw_note_name_labels(
+            &mid_prio,
+            &mid_pc,
+            &mid_color,
+            2,
+            transpose_pc,
+            4,
+            y_mid,
+            |x, y, text, color| draw_text(&mut pixels, w, h, x, y, text, color),
+        );
     }
 
     let _ = bot_pc; // (kept for future labels)

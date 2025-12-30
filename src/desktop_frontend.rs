@@ -97,7 +97,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let mut surface = Surface::new(&context, window.clone()).expect("Failed to create surface");
     let mut prev_pos: Option<(f32, f32)> = None;
     let mut is_mouse_down = false;
-    let mut note_positions: Vec<f32> = Vec::new();
+    let mut positions_cache = crate::layout::NotePositionsCache::default();
 
     // App State
     let mut ui = UiSession::new();
@@ -105,6 +105,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     ui.set_play_on_tap(settings.play_on_tap);
     audio.set_a4_tuning_hz(settings.a4_tuning_hz);
     let mut show_settings = false;
+
+    // Precompute once so non-resize events (e.g. key presses) still have positions.
+    let _ = positions_cache.desktop(window.inner_size().width as f32);
 
     // 4. Run Event Loop
     event_loop.run(move |event, elwt| {
@@ -119,7 +122,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
                 WindowEvent::KeyboardInput { event, .. } => {
                     if let Some(ue) = ui_adapter::ui_event_from_winit(&event) {
-                        let out = ui.handle(ue, &note_positions);
+                        let positions =
+                            positions_cache.desktop(window.inner_size().width.max(1) as f32);
+                        let out = ui.handle(ue, positions);
                         let _ = process_app_effects(
                             out.effects,
                             &mut audio,
@@ -138,7 +143,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         .unwrap();
 
                     let window_width = physical_size.width as f32;
-                    recompute_note_positions(&mut note_positions, window_width);
+                    let positions = positions_cache.desktop(window_width.max(1.0));
 
                     draw_strings(
                         &mut surface,
@@ -148,7 +153,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         ui.engine()
                             .active_chord_for_row(RowId::Middle)
                             .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
-                        &note_positions,
+                        positions,
                         settings.show_note_names,
                         ui.engine().transpose().wrap_to_octave(),
                         show_settings,
@@ -253,6 +258,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                             TouchPhase::Up
                         };
                         let h = window.inner_size().height.max(1) as f32;
+                        let positions =
+                            positions_cache.desktop(window.inner_size().width.max(1) as f32);
                         let out = ui.handle(
                             UiEvent::Touch(TouchEvent {
                                 id: PointerId(0),
@@ -261,7 +268,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                 y_norm: (y / h).clamp(0.0, 1.0),
                                 pressure: 1.0,
                             }),
-                            &note_positions,
+                            positions,
                         );
                         let _ = process_app_effects(
                             out.effects,
@@ -278,6 +285,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
                     if is_mouse_down {
                         let h = window.inner_size().height.max(1) as f32;
+                        let positions =
+                            positions_cache.desktop(window.inner_size().width.max(1) as f32);
                         let out = ui.handle(
                             UiEvent::Touch(TouchEvent {
                                 id: PointerId(0),
@@ -286,7 +295,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                 y_norm: (curr_y / h).clamp(0.0, 1.0),
                                 pressure: 1.0,
                             }),
-                            &note_positions,
+                            positions,
                         );
                         let _ = process_app_effects(
                             out.effects,
@@ -301,6 +310,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
                 WindowEvent::RedrawRequested => {
                     let size = window.inner_size();
+                    let positions = positions_cache.desktop(size.width.max(1) as f32);
                     draw_strings(
                         &mut surface,
                         size.width,
@@ -309,7 +319,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         ui.engine()
                             .active_chord_for_row(RowId::Middle)
                             .unwrap_or_else(|| crate::chord::Chord::new_triad(UnkeyedNote(0))),
-                        &note_positions,
+                        positions,
                         settings.show_note_names,
                         ui.engine().transpose().wrap_to_octave(),
                         show_settings,
@@ -326,7 +336,4 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn recompute_note_positions(positions: &mut Vec<f32>, width: f32) {
-    *positions = crate::layout::compute_note_positions(width);
-}
 

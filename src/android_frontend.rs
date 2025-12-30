@@ -46,6 +46,8 @@ struct DeferredStopNotes {
 pub struct AndroidFrontend {
     ui: UiSession,
 
+    pub(crate) layout_cache: Mutex<layout::NotePositionsCache>,
+
     audio_tx: Sender<AudioMsg>,
     audio_rx: Mutex<Option<Receiver<AudioMsg>>>,
 
@@ -68,6 +70,7 @@ impl AndroidFrontend {
         let (tx, rx) = mpsc::channel();
         Self {
             ui: UiSession::new(),
+            layout_cache: Mutex::new(layout::NotePositionsCache::default()),
             audio_tx: tx,
             audio_rx: Mutex::new(Some(rx)),
             legacy_synth: Mutex::new(SquareSynth::new(48_000)),
@@ -281,8 +284,9 @@ impl AndroidFrontend {
     }
 
     pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> (AppEffects, bool) {
-        let positions = layout::compute_note_positions_android(width_px);
-        let out = self.ui.handle(UiEvent::Touch(event), &positions);
+        let mut cache = self.layout_cache.lock().unwrap();
+        let positions = cache.android(width_px);
+        let out = self.ui.handle(UiEvent::Touch(event), positions);
 
         let kind = match event.phase {
             crate::touch::TouchPhase::Down => Some(NoteVisualKind::Strike),

@@ -14,6 +14,7 @@ pub mod output_synth;
 
 pub mod pixel_font;
 pub(crate) mod render_best;
+pub(crate) mod render_shared;
 pub mod rows;
 pub mod strum;
 pub mod touch;

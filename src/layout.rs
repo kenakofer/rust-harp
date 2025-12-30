@@ -206,6 +206,33 @@ pub fn compute_note_positions_android_with_lowest(width: f32, lowest_note: i16) 
     positions
 }
 
+#[derive(Default, Debug)]
+pub struct NotePositionsCache {
+    last_width: Option<f32>,
+    positions: Vec<f32>,
+}
+
+impl NotePositionsCache {
+    fn get_or_compute(&mut self, width: f32, compute: impl FnOnce(f32) -> Vec<f32>) -> &[f32] {
+        if self
+            .last_width
+            .map_or(true, |w| (w - width).abs() > f32::EPSILON)
+        {
+            self.positions = compute(width);
+            self.last_width = Some(width);
+        }
+        &self.positions
+    }
+
+    pub fn desktop(&mut self, width: f32) -> &[f32] {
+        self.get_or_compute(width, compute_note_positions)
+    }
+
+    pub fn android(&mut self, width: f32) -> &[f32] {
+        self.get_or_compute(width, compute_note_positions_android)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

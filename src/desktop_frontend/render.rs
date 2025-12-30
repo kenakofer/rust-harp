@@ -120,9 +120,7 @@ pub(crate) fn draw_strings(
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0);
 
-    // 40% top, 40% middle, 20% bottom
-    let top_end = height * 2 / 5;
-    let mid_end = height * 4 / 5;
+    let (top_end, mid_end) = crate::render_shared::row_band_bounds(height as usize);
 
     let style = crate::render_best::BestStyle {
         root_prio: 2,
@@ -158,73 +156,68 @@ pub(crate) fn draw_strings(
         false,
     );
 
-    for xi in 0..width as usize {
-        if top_prio[xi] != 0 {
-            for y in 0..top_end {
-                let index = (y * width + xi as u32) as usize;
-                buffer[index] = top_color[xi];
-            }
-        }
-        if mid_prio[xi] != 0 {
-            for y in top_end..mid_end {
-                let index = (y * width + xi as u32) as usize;
-                buffer[index] = mid_color[xi];
-            }
-        }
-        if bot_prio[xi] != 0 {
-            for y in mid_end..height {
-                let index = (y * width + xi as u32) as usize;
-                buffer[index] = bot_color[xi];
-            }
-        }
-    }
+    crate::render_shared::fill_string_bands(
+        &mut buffer,
+        width as usize,
+        height as usize,
+        top_end,
+        mid_end,
+        &top_prio,
+        &top_color,
+        &mid_prio,
+        &mid_color,
+        &bot_prio,
+        &bot_color,
+    );
 
     if show_note_names {
-        for (xi, prio) in top_prio.iter().enumerate() {
-            if *prio == 0 {
-                continue;
-            }
-            let pc = top_pc[xi];
-            if pc == 255 {
-                continue;
-            }
-            let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            crate::pixel_font::draw_text_u32(
-                &mut buffer,
-                width as usize,
-                height as usize,
-                xi as i32 + 4,
-                2,
-                label,
-                top_color[xi],
-                13,
-                5,
-            );
-        }
+        crate::render_shared::draw_note_name_labels(
+            &top_prio,
+            &top_pc,
+            &top_color,
+            1,
+            transpose_pc,
+            4,
+            2,
+            |x, y, text, color| {
+                crate::pixel_font::draw_text_u32(
+                    &mut buffer,
+                    width as usize,
+                    height as usize,
+                    x,
+                    y,
+                    text,
+                    color,
+                    13,
+                    5,
+                )
+            },
+        );
 
         // Bottom row: never draw note-name labels there.
         let y_mid = top_end as i32 + 2;
-        for (xi, prio) in mid_prio.iter().enumerate() {
-            if *prio == 0 {
-                continue;
-            }
-            let pc = mid_pc[xi];
-            if pc == 255 {
-                continue;
-            }
-            let label = crate::notes::pitch_class_label(pc as i16, transpose_pc);
-            crate::pixel_font::draw_text_u32(
-                &mut buffer,
-                width as usize,
-                height as usize,
-                xi as i32 + 4,
-                y_mid,
-                label,
-                mid_color[xi],
-                13,
-                5,
-            );
-        }
+        crate::render_shared::draw_note_name_labels(
+            &mid_prio,
+            &mid_pc,
+            &mid_color,
+            1,
+            transpose_pc,
+            4,
+            y_mid,
+            |x, y, text, color| {
+                crate::pixel_font::draw_text_u32(
+                    &mut buffer,
+                    width as usize,
+                    height as usize,
+                    x,
+                    y,
+                    text,
+                    color,
+                    13,
+                    5,
+                )
+            },
+        );
     }
 
     // Settings overlay.

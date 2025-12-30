@@ -23,3 +23,14 @@ Desktop app:
 * Currently the top note is Ti when the bottom is Do. Can we fit one more?
 - Add state to display
 * Find large multi-touch trackpad
+
+---
+
+Codebase modularity refactors:
+* Split `desktop_frontend.rs` into focused modules (window/event loop, audio routing, rendering, settings UI).
+* Split `android_jni.rs` into focused modules (JNI exports thin layer + audio/render/input/settings helpers).
+* Extract a shared strings renderer (used by both desktop + Android) and keep platform pixel-buffer plumbing separate.
+* Split `app_state.rs` into smaller core modules (events/state/effects) and privatize internal fields currently marked TODO.
+* Introduce an audio/output abstraction (trait) so `AppEffects` application is shared across platforms.
+* Clean up module boundaries: remove/rename `adapter.rs` indirection; make `ui_adapter.rs` clearly platform-specific.
+
