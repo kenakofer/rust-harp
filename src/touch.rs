@@ -171,6 +171,12 @@ impl TouchTracker {
                     });
                 }
 
+                // Discard disallowed notes so we don't "play" or inhibit them.
+                crossings.retain_mut(|c| {
+                    c.notes.retain(|&n| allowed(row, n));
+                    !c.notes.is_empty()
+                });
+
                 // Suppress immediate re-triggering of the last played note for this pointer.
                 let mut last_played = self.last_played_by_pointer.get(&event.id).copied();
 
@@ -650,5 +656,58 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn disallowed_crossings_do_not_update_last_played() {
+        let positions = [10.0, 20.0];
+        let mut t = TouchTracker::new();
+        t.set_play_on_tap(false);
+
+        t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Down,
+                x: 0.0,
+                y_norm: Y,
+                pressure: 1.0,
+            },
+            &positions,
+            |_, _| true,
+        );
+
+        // Allow only note 0.
+        let out1 = t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: 30.0,
+                y_norm: Y,
+                pressure: 1.0,
+            },
+            &positions,
+            |_, n| n == UnkeyedNote(0),
+        );
+        assert_eq!(
+            out1.crossings,
+            vec![StrumCrossing {
+                x: 10.0,
+                notes: vec![UnkeyedNote(0)],
+            }]
+        );
+
+        // Crossing back over note 0 should be suppressed (note 1 was crossed physically but disallowed).
+        let out2 = t.handle_event(
+            TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: 0.0,
+                y_norm: Y,
+                pressure: 1.0,
+            },
+            &positions,
+            |_, n| n == UnkeyedNote(0),
+        );
+        assert_eq!(out2.crossings, Vec::<StrumCrossing>::new());
     }
 }
