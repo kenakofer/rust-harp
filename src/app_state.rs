@@ -1,5 +1,5 @@
-mod events;
 mod effects;
+mod events;
 
 pub use effects::{AppEffects, NoteOn};
 pub use events::{

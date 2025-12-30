@@ -74,7 +74,12 @@ impl DesktopAudio {
         }
     }
 
-    pub(crate) fn play_note(&mut self, backend: UiAudioBackend, midi_note: MidiNote, volume: NoteVolume) {
+    pub(crate) fn play_note(
+        &mut self,
+        backend: UiAudioBackend,
+        midi_note: MidiNote,
+        volume: NoteVolume,
+    ) {
         match backend {
             UiAudioBackend::Midi => self.midi.play_note(midi_note, volume),
             UiAudioBackend::Synth => {
@@ -244,6 +249,9 @@ mod tests {
         let mut audio = MockAudio::default();
         let played = process_app_effects(effects, &mut audio, UiAudioBackend::Midi, None);
         assert!(!played);
-        assert_eq!(audio.calls, vec![Call::Stop(MIDI_BASE_TRANSPOSE + UnmidiNote(1))]);
+        assert_eq!(
+            audio.calls,
+            vec![Call::Stop(MIDI_BASE_TRANSPOSE + UnmidiNote(1))]
+        );
     }
 }

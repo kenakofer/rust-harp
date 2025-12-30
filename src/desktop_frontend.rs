@@ -24,7 +24,7 @@ use winit::{
 };
 
 use self::audio::{
-    process_app_effects, DesktopAudio, MIDI_BASE_TRANSPOSE, MICRO_CHANNEL, MICRO_PROGRAM,
+    process_app_effects, DesktopAudio, MICRO_CHANNEL, MICRO_PROGRAM, MIDI_BASE_TRANSPOSE,
 };
 use self::render::{draw_strings, hit_rect, hit_settings_rows, settings_layout, SettingsAction};
 
@@ -335,5 +335,3 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-
-

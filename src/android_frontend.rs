@@ -229,24 +229,27 @@ impl AndroidFrontend {
 
         if let Some(rx) = self.audio_rx.lock().unwrap().as_ref() {
             let mut s = self.legacy_synth.lock().unwrap();
-            crate::synth::drain_messages(|| rx.try_recv().ok(), |msg| match msg {
-                AudioMsg::NoteOn(pn) => {
-                    let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
-                    let NoteVolume(v) = pn.volume;
-                    s.note_on(MidiNote(m), v);
-                }
-                AudioMsg::NoteOff(un) => {
-                    let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
-                    s.note_off(MidiNote(m));
-                }
-                AudioMsg::SetSampleRate(sr) => {
-                    let a4 = s.a4_tuning_hz();
-                    *s = SquareSynth::with_tuning(sr, a4);
-                }
-                AudioMsg::SetA4Tuning(a4) => {
-                    s.set_a4_tuning_hz(a4);
-                }
-            });
+            crate::synth::drain_messages(
+                || rx.try_recv().ok(),
+                |msg| match msg {
+                    AudioMsg::NoteOn(pn) => {
+                        let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
+                        let NoteVolume(v) = pn.volume;
+                        s.note_on(MidiNote(m), v);
+                    }
+                    AudioMsg::NoteOff(un) => {
+                        let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
+                        s.note_off(MidiNote(m));
+                    }
+                    AudioMsg::SetSampleRate(sr) => {
+                        let a4 = s.a4_tuning_hz();
+                        *s = SquareSynth::with_tuning(sr, a4);
+                    }
+                    AudioMsg::SetA4Tuning(a4) => {
+                        s.set_a4_tuning_hz(a4);
+                    }
+                },
+            );
 
             s.render_i16_mono(out);
             return;

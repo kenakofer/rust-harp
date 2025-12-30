@@ -5,7 +5,13 @@ use jni::objects::JIntArray;
 use jni::sys::{jint, jlong};
 use jni::JNIEnv;
 
-pub(crate) fn render_strings(env: JNIEnv, handle: jlong, width: jint, height: jint, out_pixels: JIntArray) {
+pub(crate) fn render_strings(
+    env: JNIEnv,
+    handle: jlong,
+    width: jint,
+    height: jint,
+    out_pixels: JIntArray,
+) {
     let w = width.max(0) as usize;
     let h = height.max(0) as usize;
     if w == 0 || h == 0 {
@@ -33,7 +39,15 @@ pub(crate) fn render_strings(env: JNIEnv, handle: jlong, width: jint, height: ji
         )
     };
 
-    fn draw_text(pixels: &mut [i32], w: usize, h: usize, x_left: i32, y_top: i32, text: &str, color: i32) {
+    fn draw_text(
+        pixels: &mut [i32],
+        w: usize,
+        h: usize,
+        x_left: i32,
+        y_top: i32,
+        text: &str,
+        color: i32,
+    ) {
         // +30% over the old 2x scale => 2.6x.
         crate::pixel_font::draw_text_i32(pixels, w, h, x_left, y_top, text, color, 13, 5)
     }
@@ -42,7 +56,8 @@ pub(crate) fn render_strings(env: JNIEnv, handle: jlong, width: jint, height: ji
     let mut pixels = vec![0xFF000000u32 as i32; len];
 
     let mut positions_storage: Vec<f32> = Vec::new();
-    let mut cache_guard: Option<std::sync::MutexGuard<'_, crate::layout::NotePositionsCache>> = None;
+    let mut cache_guard: Option<std::sync::MutexGuard<'_, crate::layout::NotePositionsCache>> =
+        None;
     let positions: &[f32] = if handle != 0 {
         let frontend = unsafe { &*(handle as *const AndroidFrontend) };
         cache_guard = Some(frontend.layout_cache.lock().unwrap());
@@ -63,14 +78,8 @@ pub(crate) fn render_strings(env: JNIEnv, handle: jlong, width: jint, height: ji
         inactive_color: 0xFF333333u32 as i32,
     };
 
-    let (top_prio, top_color, top_pc) = crate::render_best::compute_best_per_x(
-        w,
-        positions,
-        top_chord,
-        transpose_pc,
-        style,
-        true,
-    );
+    let (top_prio, top_color, top_pc) =
+        crate::render_best::compute_best_per_x(w, positions, top_chord, transpose_pc, style, true);
     let (mid_prio, mid_color, mid_pc) = crate::render_best::compute_best_per_x(
         w,
         positions,

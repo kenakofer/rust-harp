@@ -368,7 +368,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustApplyChordWheelCho
         None => return 0,
     };
 
-
     // The Java chord-wheel UI drives chord presses via this JNI call (it does not call rustHandleUiButton(true)).
     // Mark the chord as held so chord-change note-offs can be deferred until release + double-tap timeout.
     frontend.set_chord_hold_active(true);
@@ -424,7 +423,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustToggleChordWheelMi
         7 => UiButton::VIIDim,
         _ => return 0,
     };
-
 
     // Same as rustApplyChordWheelChoice: Java chord-wheel toggles happen while the button is logically held.
     frontend.set_chord_hold_active(true);

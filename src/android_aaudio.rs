@@ -152,24 +152,27 @@ unsafe extern "C" fn data_cb(
     const MIDI_BASE_TRANSPOSE: Transpose = Transpose(36);
 
     // Drain control messages (no locks/allocations in steady state).
-    crate::synth::drain_messages(|| ctx.rx.try_recv().ok(), |msg| match msg {
-        AudioMsg::NoteOn(pn) => {
-            let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
-            let NoteVolume(v) = pn.volume;
-            ctx.synth.note_on(MidiNote(m), v);
-        }
-        AudioMsg::NoteOff(un) => {
-            let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
-            ctx.synth.note_off(MidiNote(m));
-        }
-        AudioMsg::SetSampleRate(sr) => {
-            let a4 = ctx.synth.a4_tuning_hz();
-            ctx.synth = SquareSynth::with_tuning(sr.max(1), a4);
-        }
-        AudioMsg::SetA4Tuning(a4) => {
-            ctx.synth.set_a4_tuning_hz(a4);
-        }
-    });
+    crate::synth::drain_messages(
+        || ctx.rx.try_recv().ok(),
+        |msg| match msg {
+            AudioMsg::NoteOn(pn) => {
+                let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
+                let NoteVolume(v) = pn.volume;
+                ctx.synth.note_on(MidiNote(m), v);
+            }
+            AudioMsg::NoteOff(un) => {
+                let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
+                ctx.synth.note_off(MidiNote(m));
+            }
+            AudioMsg::SetSampleRate(sr) => {
+                let a4 = ctx.synth.a4_tuning_hz();
+                ctx.synth = SquareSynth::with_tuning(sr.max(1), a4);
+            }
+            AudioMsg::SetA4Tuning(a4) => {
+                ctx.synth.set_a4_tuning_hz(a4);
+            }
+        },
+    );
 
     // Underrun detection: query xRun count periodically and log when it changes.
     // IMPORTANT: avoid allocations/log spam inside the realtime callback.

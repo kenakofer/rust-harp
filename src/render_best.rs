@@ -84,7 +84,8 @@ mod tests {
         assert_eq!(color0[1], 10);
         assert_eq!(pc0[1], 0);
 
-        let (_prio2, _color2, pc2) = compute_best_per_x(10, &positions, Some(chord), 2, style, false);
+        let (_prio2, _color2, pc2) =
+            compute_best_per_x(10, &positions, Some(chord), 2, style, false);
         assert_eq!(pc2[1], 2);
     }
 
