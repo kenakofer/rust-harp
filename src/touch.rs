@@ -171,22 +171,19 @@ impl TouchTracker {
                     });
                 }
 
-                // Discard disallowed notes so we don't "play" or inhibit them.
-                crossings.retain_mut(|c| {
-                    c.notes.retain(|&n| allowed(row, n));
-                    !c.notes.is_empty()
-                });
-
-                // Suppress immediate re-triggering of the last played note for this pointer.
+                // Suppress immediate re-triggering of the last played *allowed* note for this pointer.
+                // Disallowed notes are still emitted (for haptics/visuals), but do not affect inhibition.
                 let mut last_played = self.last_played_by_pointer.get(&event.id).copied();
 
                 crossings.retain_mut(|c| {
                     let mut out_notes = Vec::with_capacity(c.notes.len());
                     for n in c.notes.iter().copied() {
-                        if last_played == Some(n) {
-                            continue;
+                        if allowed(row, n) {
+                            if last_played == Some(n) {
+                                continue;
+                            }
+                            last_played = Some(n);
                         }
-                        last_played = Some(n);
                         out_notes.push(n);
                     }
                     c.notes = out_notes;
@@ -676,7 +673,7 @@ mod tests {
             |_, _| true,
         );
 
-        // Allow only note 0.
+        // Allow only note 0 (note 1 is "inactive"). Both crossings should still be emitted.
         let out1 = t.handle_event(
             TouchEvent {
                 id: PointerId(1),
@@ -690,13 +687,19 @@ mod tests {
         );
         assert_eq!(
             out1.crossings,
-            vec![StrumCrossing {
-                x: 10.0,
-                notes: vec![UnkeyedNote(0)],
-            }]
+            vec![
+                StrumCrossing {
+                    x: 10.0,
+                    notes: vec![UnkeyedNote(0)],
+                },
+                StrumCrossing {
+                    x: 20.0,
+                    notes: vec![UnkeyedNote(1)],
+                },
+            ]
         );
 
-        // Crossing back over note 0 should be suppressed (note 1 was crossed physically but disallowed).
+        // Crossing back: note 0 is suppressed (last played allowed note), but note 1 still emits.
         let out2 = t.handle_event(
             TouchEvent {
                 id: PointerId(1),
@@ -708,6 +711,12 @@ mod tests {
             &positions,
             |_, n| n == UnkeyedNote(0),
         );
-        assert_eq!(out2.crossings, Vec::<StrumCrossing>::new());
+        assert_eq!(
+            out2.crossings,
+            vec![StrumCrossing {
+                x: 20.0,
+                notes: vec![UnkeyedNote(1)],
+            }]
+        );
     }
 }
