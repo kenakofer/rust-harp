@@ -34,6 +34,105 @@ pub const UNSCALED_RELATIVE_X_POSITIONS: &[f32] = &[
 
 pub const NUM_STRINGS: usize = UNSCALED_RELATIVE_X_POSITIONS.len();
 
+#[derive(Clone, Debug)]
+pub enum RowChordSpec {
+    ActiveChord,
+    MajorScale,
+    ComplementOf(usize),
+    Chromatic,
+    Fixed(crate::chord::Chord),
+}
+
+#[derive(Clone, Debug)]
+pub struct RowSpec {
+    pub height_frac: f32,
+    pub chord: RowChordSpec,
+    pub show_note_names: bool,
+    pub label_min_prio: u8,
+}
+
+pub fn default_row_specs() -> Vec<RowSpec> {
+    vec![
+        RowSpec {
+            height_frac: 0.40,
+            chord: RowChordSpec::ActiveChord,
+            show_note_names: true,
+            label_min_prio: 1,
+        },
+        RowSpec {
+            height_frac: 0.25,
+            chord: RowChordSpec::MajorScale,
+            show_note_names: true,
+            label_min_prio: 1,
+        },
+        RowSpec {
+            height_frac: 0.25,
+            chord: RowChordSpec::ComplementOf(1),
+            show_note_names: false,
+            label_min_prio: 1,
+        },
+        RowSpec {
+            height_frac: 0.10,
+            chord: RowChordSpec::Chromatic,
+            show_note_names: false,
+            label_min_prio: 1,
+        },
+    ]
+}
+
+pub fn row_index_from_y_norm(y_norm: f32, row_specs: &[RowSpec]) -> usize {
+    if row_specs.is_empty() {
+        return 0;
+    }
+
+    let y = y_norm.clamp(0.0, 1.0);
+    let mut acc = 0.0f32;
+    for (i, spec) in row_specs.iter().enumerate() {
+        acc += spec.height_frac.max(0.0);
+        if y < acc {
+            return i;
+        }
+    }
+    row_specs.len() - 1
+}
+
+/// Returns y pixel edges for each row: `[0, y1, y2, .., height]`.
+pub fn row_y_edges(height: usize, row_specs: &[RowSpec]) -> Vec<usize> {
+    let h = height.max(1) as f32;
+    let n = row_specs.len().max(1);
+
+    let mut out: Vec<usize> = Vec::with_capacity(n + 1);
+    out.push(0);
+
+    let mut acc = 0.0f32;
+    for spec in row_specs.iter().take(n - 1) {
+        acc += spec.height_frac.max(0.0);
+        let y = (h * acc).round() as isize;
+        out.push(y.clamp(0, height as isize) as usize);
+    }
+
+    out.push(height);
+    out
+}
+
+pub fn chord_for_row(row_specs: &[RowSpec], row: usize, active_chord: crate::chord::Chord) -> crate::chord::Chord {
+    use crate::chord::Chord;
+    use crate::notes::UnkeyedNote;
+
+    let root = UnkeyedNote(0);
+    let Some(spec) = row_specs.get(row) else {
+        return active_chord;
+    };
+
+    match spec.chord {
+        RowChordSpec::ActiveChord => active_chord,
+        RowChordSpec::MajorScale => Chord::major_scale(root),
+        RowChordSpec::ComplementOf(i) => chord_for_row(row_specs, i, active_chord).invert(),
+        RowChordSpec::Chromatic => Chord::chromatic(root),
+        RowChordSpec::Fixed(c) => c,
+    }
+}
+
 fn note_x_from_strings(pc: i32, string_x: &[f32; 7]) -> Option<f32> {
     Some(match pc {
         0 => string_x[0],

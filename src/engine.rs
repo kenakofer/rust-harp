@@ -1,7 +1,6 @@
 use crate::app_state::{AppEffects, AppState, KeyEvent};
 use crate::chord::Chord;
 use crate::notes::{UnkeyedNote, UnmidiNote};
-use crate::rows::RowId;
 
 /// Platform-agnostic wrapper around `AppState`.
 /// UI frontends translate their input into `KeyEvent` and feed it here.
@@ -30,7 +29,7 @@ impl Engine {
 
     pub fn handle_strum_crossing(
         &mut self,
-        row: RowId,
+        row: crate::rows::RowIndex,
         note: UnkeyedNote,
         volume: crate::notes::NoteVolume,
     ) -> AppEffects {
@@ -42,8 +41,16 @@ impl Engine {
         &self.state.active_chord
     }
 
-    pub fn active_chord_for_row(&self, row: RowId) -> Chord {
-        self.state.active_chord_for_row(row)
+    pub fn active_chord_for_row(&self, row: crate::rows::RowIndex) -> Chord {
+        self.state.chord_for_row(row)
+    }
+
+    pub fn row_specs(&self) -> &[crate::layout::RowSpec] {
+        self.state.row_specs()
+    }
+
+    pub fn row_chords(&self) -> Vec<Chord> {
+        self.state.row_chords()
     }
 
     pub fn chord_button_down(&self, button: crate::app_state::ChordButton) -> bool {

@@ -116,6 +116,18 @@ impl Chord {
         Self::new(rt, Modifiers::Chromatic)
     }
 
+    pub fn major_scale(rt: UnkeyedNote) -> Self {
+        // Major scale: 0,2,4,5,7,9,11
+        Self::new(
+            rt,
+            Modifiers::MajorTri
+                | Modifiers::AddMajor2
+                | Modifiers::Add4
+                | Modifiers::AddMajor6
+                | Modifiers::AddMajor7,
+        )
+    }
+
     pub fn get_root(&self) -> UnkeyedNote {
         self.root
     }
@@ -160,7 +172,7 @@ impl Chord {
     }
 
     pub fn has_root(&self, note: UnkeyedNote) -> bool {
-        note.wrap_to_octave() == self.root.wrap_to_octave()
+        note.wrap_to_octave() == self.root.wrap_to_octave() && self.contains(note)
     }
 }
 

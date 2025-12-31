@@ -2,7 +2,6 @@ use crate::app_state::{AppEffects, KeyState};
 use crate::engine::Engine;
 use crate::input_map::{self, UiButton, UiKey};
 use crate::notes::{NoteVolume, Transpose, UnkeyedNote};
-use crate::rows::RowId;
 use crate::touch::{TouchEvent, TouchTracker};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -16,7 +15,7 @@ pub enum UiEvent {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TouchNote {
-    pub row: RowId,
+    pub row: crate::rows::RowIndex,
     pub note: UnkeyedNote,
 }
 
@@ -122,10 +121,10 @@ impl UiSession {
                 }
             }
             UiEvent::Touch(te) => {
-                let row = RowId::from_y_norm(te.y_norm);
+                let row = crate::layout::row_index_from_y_norm(te.y_norm, self.engine.row_specs());
                 let vol = touch_volume(te.pressure);
 
-                let out = self.touch.handle_event(te, note_positions, |r, n| {
+                let out = self.touch.handle_event(te, row, note_positions, |r, n| {
                     self.engine.active_chord_for_row(r).contains(n)
                 });
 
@@ -212,7 +211,7 @@ mod tests {
         assert_eq!(
             out2.touch_notes[0],
             TouchNote {
-                row: RowId::Top,
+                row: 0,
                 note: UnkeyedNote(0)
             }
         );
@@ -262,15 +261,15 @@ mod tests {
             out.touch_notes,
             vec![
                 TouchNote {
-                    row: RowId::Top,
+                    row: 0,
                     note: UnkeyedNote(0)
                 },
                 TouchNote {
-                    row: RowId::Top,
+                    row: 0,
                     note: UnkeyedNote(1)
                 },
                 TouchNote {
-                    row: RowId::Top,
+                    row: 0,
                     note: UnkeyedNote(2)
                 },
             ]
@@ -322,7 +321,7 @@ mod tests {
         assert_eq!(
             out5.touch_notes,
             vec![TouchNote {
-                row: RowId::Top,
+                row: 0,
                 note: UnkeyedNote(0)
             }]
         );

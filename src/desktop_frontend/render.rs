@@ -109,8 +109,8 @@ pub(crate) fn draw_strings(
     surface: &mut Surface<Rc<Window>, Rc<Window>>,
     width: u32,
     height: u32,
-    top_chord: Chord,
-    bottom_chord: Chord,
+    row_specs: &[crate::layout::RowSpec],
+    row_chords: &[Chord],
     positions: &[f32],
     show_note_names: bool,
     transpose_pc: i16,
@@ -120,7 +120,7 @@ pub(crate) fn draw_strings(
     let mut buffer = surface.buffer_mut().unwrap();
     buffer.fill(0);
 
-    let (top_end, mid_end) = crate::render_shared::row_band_bounds(height as usize);
+    let y_edges = crate::layout::row_y_edges(height as usize, row_specs);
 
     let style = crate::render_best::BestStyle {
         root_prio: 2,
@@ -131,93 +131,75 @@ pub(crate) fn draw_strings(
         inactive_color: 0,
     };
 
-    let (top_prio, top_color, top_pc) = crate::render_best::compute_best_per_x(
-        width as usize,
-        positions,
-        top_chord,
-        transpose_pc,
-        style,
-        false,
-    );
-    let (mid_prio, mid_color, mid_pc) = crate::render_best::compute_best_per_x(
-        width as usize,
-        positions,
-        bottom_chord,
-        transpose_pc,
-        style,
-        false,
-    );
-    let (bot_prio, bot_color, _bot_pc) = crate::render_best::compute_best_per_x(
-        width as usize,
-        positions,
-        bottom_chord.invert(),
-        transpose_pc,
-        style,
-        false,
-    );
+    let mut prios: Vec<Vec<u8>> = Vec::with_capacity(row_chords.len());
+    let mut colors: Vec<Vec<u32>> = Vec::with_capacity(row_chords.len());
+    let mut pcs: Vec<Vec<u8>> = Vec::with_capacity(row_chords.len());
 
-    crate::render_shared::fill_string_bands(
+    for &ch in row_chords {
+        let (p, c, pc) = crate::render_best::compute_best_per_x(
+            width as usize,
+            positions,
+            ch,
+            transpose_pc,
+            style,
+            false,
+        );
+        prios.push(p);
+        colors.push(c);
+        pcs.push(pc);
+    }
+
+    let rows: Vec<(&[u8], &[u32])> = prios
+        .iter()
+        .zip(colors.iter())
+        .map(|(p, c)| (p.as_slice(), c.as_slice()))
+        .collect();
+
+    crate::render_shared::fill_string_bands_rows(
         &mut buffer,
         width as usize,
         height as usize,
-        top_end,
-        mid_end,
-        &top_prio,
-        &top_color,
-        &mid_prio,
-        &mid_color,
-        &bot_prio,
-        &bot_color,
+        &y_edges,
+        &rows,
     );
 
     if show_note_names {
-        crate::render_shared::draw_note_name_labels(
-            &top_prio,
-            &top_pc,
-            &top_color,
-            1,
-            transpose_pc,
-            4,
-            2,
-            |x, y, text, color| {
-                crate::pixel_font::draw_text_u32(
-                    &mut buffer,
-                    width as usize,
-                    height as usize,
-                    x,
-                    y,
-                    text,
-                    color,
-                    13,
-                    5,
-                )
-            },
-        );
+        for (ri, spec) in row_specs.iter().enumerate() {
+            if !spec.show_note_names {
+                continue;
+            }
+            let (Some(prio), Some(pc), Some(color)) = (
+                prios.get(ri),
+                pcs.get(ri),
+                colors.get(ri),
+            ) else {
+                continue;
+            };
 
-        // Bottom row: never draw note-name labels there.
-        let y_mid = top_end as i32 + 2;
-        crate::render_shared::draw_note_name_labels(
-            &mid_prio,
-            &mid_pc,
-            &mid_color,
-            1,
-            transpose_pc,
-            4,
-            y_mid,
-            |x, y, text, color| {
-                crate::pixel_font::draw_text_u32(
-                    &mut buffer,
-                    width as usize,
-                    height as usize,
-                    x,
-                    y,
-                    text,
-                    color,
-                    13,
-                    5,
-                )
-            },
-        );
+            let y_top = y_edges.get(ri).copied().unwrap_or(0) as i32 + 2;
+            crate::render_shared::draw_note_name_labels(
+                prio,
+                pc,
+                color,
+                spec.label_min_prio,
+                transpose_pc,
+                4,
+                y_top,
+                |x, y, text, color| {
+                    crate::pixel_font::draw_text_u32(
+                        &mut buffer,
+                        width as usize,
+                        height as usize,
+                        x,
+                        y,
+                        text,
+                        color,
+                        13,
+                        5,
+                    )
+                },
+            );
+        }
     }
 
     // Settings overlay.

@@ -3,7 +3,6 @@ mod render;
 
 use crate::notes::UnmidiNote;
 use crate::output_midir::MidiBackend;
-use crate::rows::RowId;
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
 use crate::ui_adapter::{self};
 use crate::ui_events::{UiEvent, UiSession};
@@ -145,12 +144,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     let window_width = physical_size.width as f32;
                     let positions = positions_cache.desktop(window_width.max(1.0));
 
+                    let row_chords = ui.engine().row_chords();
                     draw_strings(
                         &mut surface,
                         physical_size.width,
                         physical_size.height,
-                        *ui.engine().active_chord(),
-                        ui.engine().active_chord_for_row(RowId::Middle),
+                        ui.engine().row_specs(),
+                        &row_chords,
                         positions,
                         settings.show_note_names,
                         ui.engine().transpose().wrap_to_octave(),
@@ -309,12 +309,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 WindowEvent::RedrawRequested => {
                     let size = window.inner_size();
                     let positions = positions_cache.desktop(size.width.max(1) as f32);
+                    let row_chords = ui.engine().row_chords();
                     draw_strings(
                         &mut surface,
                         size.width,
                         size.height,
-                        *ui.engine().active_chord(),
-                        ui.engine().active_chord_for_row(RowId::Middle),
+                        ui.engine().row_specs(),
+                        &row_chords,
                         positions,
                         settings.show_note_names,
                         ui.engine().transpose().wrap_to_octave(),

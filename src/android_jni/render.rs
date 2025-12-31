@@ -18,25 +18,31 @@ pub(crate) fn render_strings(
         return;
     }
 
-    let (top_chord, middle_chord, show_note_names, transpose_pc, visuals) = if handle != 0 {
-        let frontend = unsafe { &*(handle as *const AndroidFrontend) };
-        let eng = frontend.engine();
-        (
-            eng.active_chord_for_row(crate::rows::RowId::Top),
-            eng.active_chord_for_row(crate::rows::RowId::Middle),
-            frontend.show_note_names(),
-            eng.transpose().wrap_to_octave(),
-            frontend.note_visuals_snapshot(),
-        )
-    } else {
-        (
-            crate::chord::Chord::chromatic(crate::notes::UnkeyedNote(0)),
-            crate::chord::Chord::new_triad(crate::notes::UnkeyedNote(0)),
-            false,
-            0,
-            Vec::new(),
-        )
-    };
+    let (row0_chord, row1_chord, row2_chord, row3_chord, show_note_names, transpose_pc, visuals) =
+        if handle != 0 {
+            let frontend = unsafe { &*(handle as *const AndroidFrontend) };
+            let eng = frontend.engine();
+            (
+                eng.active_chord_for_row(0),
+                eng.active_chord_for_row(1),
+                eng.active_chord_for_row(2),
+                eng.active_chord_for_row(3),
+                frontend.show_note_names(),
+                eng.transpose().wrap_to_octave(),
+                frontend.note_visuals_snapshot(),
+            )
+        } else {
+            let root = crate::notes::UnkeyedNote(0);
+            (
+                crate::chord::Chord::chromatic(root),
+                crate::chord::Chord::major_scale(root),
+                crate::chord::Chord::major_scale(root).invert(),
+                crate::chord::Chord::chromatic(root),
+                false,
+                0,
+                Vec::new(),
+            )
+        };
 
     fn draw_text(
         pixels: &mut [i32],
@@ -66,7 +72,7 @@ pub(crate) fn render_strings(
         &positions_storage
     };
 
-    let (top_end, mid_end) = crate::render_shared::row_band_bounds(h);
+    let y_edges = layout::row_y_edges(h);
 
     let style = crate::render_best::BestStyle {
         root_prio: 3,
@@ -77,43 +83,50 @@ pub(crate) fn render_strings(
         inactive_color: 0xFF333333u32 as i32,
     };
 
-    let (top_prio, top_color, top_pc) =
-        crate::render_best::compute_best_per_x(w, positions, top_chord, transpose_pc, style, true);
-    let (mid_prio, mid_color, mid_pc) = crate::render_best::compute_best_per_x(
+    let (r0_prio, r0_color, r0_pc) = crate::render_best::compute_best_per_x(
         w,
         positions,
-        middle_chord,
+        row0_chord,
         transpose_pc,
         style,
         true,
     );
-    let (bot_prio, bot_color, bot_pc) = crate::render_best::compute_best_per_x(
+    let (r1_prio, r1_color, r1_pc) = crate::render_best::compute_best_per_x(
         w,
         positions,
-        middle_chord.invert(),
+        row1_chord,
+        transpose_pc,
+        style,
+        true,
+    );
+    let (r2_prio, r2_color, r2_pc) = crate::render_best::compute_best_per_x(
+        w,
+        positions,
+        row2_chord,
+        transpose_pc,
+        style,
+        true,
+    );
+    let (r3_prio, r3_color, r3_pc) = crate::render_best::compute_best_per_x(
+        w,
+        positions,
+        row3_chord,
         transpose_pc,
         style,
         true,
     );
 
-    crate::render_shared::fill_string_bands(
-        &mut pixels,
-        w,
-        h,
-        top_end,
-        mid_end,
-        &top_prio,
-        &top_color,
-        &mid_prio,
-        &mid_color,
-        &bot_prio,
-        &bot_color,
-    );
+    let rows = [
+        (&r0_prio[..], &r0_color[..]),
+        (&r1_prio[..], &r1_color[..]),
+        (&r2_prio[..], &r2_color[..]),
+        (&r3_prio[..], &r3_color[..]),
+    ];
+    crate::render_shared::fill_string_bands_rows(&mut pixels, w, h, &y_edges, &rows);
 
     // Note-on visuals: strike = flash+fade; strum = widen then shrink.
     if !visuals.is_empty() {
         use crate::android_frontend::{NoteVisualKind, NOTE_STRIKE_VIS_MS, NOTE_STRUM_VIS_MS};
-        use crate::rows::RowId;
 
         const INACTIVE_GRAY: i32 = 0xFF333333u32 as i32;
 
@@ -165,17 +178,18 @@ pub(crate) fn render_strings(
             if xi < 0 || xi >= w as i32 {
                 continue;
             }
-            let (y0, y1) = match e.row {
-                RowId::Top => (0usize, top_end),
-                RowId::Middle => (top_end, mid_end),
-                RowId::Bottom => (mid_end, h),
+            let row = e.row;
+            let Some((&y0, &y1)) = y_edges.get(row).zip(y_edges.get(row + 1)) else {
+                continue;
             };
 
             // Match the string's existing color; skip inactive (dim gray) strings.
-            let base_color = match e.row {
-                RowId::Top => top_color[xi as usize],
-                RowId::Middle => mid_color[xi as usize],
-                RowId::Bottom => bot_color[xi as usize],
+            let base_color = match row {
+                0 => r0_color[xi as usize],
+                1 => r1_color[xi as usize],
+                2 => r2_color[xi as usize],
+                3 => r3_color[xi as usize],
+                _ => continue,
             };
             if base_color == INACTIVE_GRAY {
                 continue;
@@ -213,9 +227,9 @@ pub(crate) fn render_strings(
 
     if show_note_names {
         crate::render_shared::draw_note_name_labels(
-            &top_prio,
-            &top_pc,
-            &top_color,
+            &r0_prio,
+            &r0_pc,
+            &r0_color,
             2,
             transpose_pc,
             4,
@@ -223,20 +237,20 @@ pub(crate) fn render_strings(
             |x, y, text, color| draw_text(&mut pixels, w, h, x, y, text, color),
         );
 
-        // Middle row labels.
-        let y_mid = top_end as i32 + 2;
+        let y_row1 = y_edges.get(1).copied().unwrap_or(0) as i32 + 2;
         crate::render_shared::draw_note_name_labels(
-            &mid_prio,
-            &mid_pc,
-            &mid_color,
+            &r1_prio,
+            &r1_pc,
+            &r1_color,
             2,
             transpose_pc,
             4,
-            y_mid,
+            y_row1,
             |x, y, text, color| draw_text(&mut pixels, w, h, x, y, text, color),
         );
     }
 
-    let _ = bot_pc; // (kept for future labels)
+    let _ = r2_pc;
+    let _ = r3_pc;
     let _ = env.set_int_array_region(out_pixels, 0, &pixels);
 }

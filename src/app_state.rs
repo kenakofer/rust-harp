@@ -21,12 +21,14 @@ const ROOT_VI: UnkeyedNote = UnkeyedNote(9);
 const ROOT_III: UnkeyedNote = UnkeyedNote(4);
 const ROOT_VII: UnkeyedNote = UnkeyedNote(11);
 
+const TOP_ROW: usize = 0;
+
 pub struct AppState {
+    row_specs: Vec<crate::layout::RowSpec>,
+
     pub active_chord: Chord, // Top row chord. TODO privatize
     pub active_notes: HashSet<UnmidiNote>,
-    active_notes_by_row: [HashSet<UnmidiNote>; 3],
-
-    bottom_chord: Chord,
+    active_notes_by_row: Vec<HashSet<UnmidiNote>>,
 
     chord_keys_down: HashSet<ChordButton>,
     mod_keys_down: HashSet<ModButton>,
@@ -122,12 +124,13 @@ const MOD_BUTTON_TABLE: [ModButtonTableEntry; 6] = [
 
 impl AppState {
     pub fn new() -> Self {
+        let row_specs = crate::layout::default_row_specs();
+        let nrows = row_specs.len();
         Self {
+            row_specs,
             active_chord: Chord::new_triad(ROOT_I),
             active_notes: HashSet::new(),
-            active_notes_by_row: std::array::from_fn(|_| HashSet::new()),
-
-            bottom_chord: heptatonic_major_chord(),
+            active_notes_by_row: (0..nrows).map(|_| HashSet::new()).collect(),
 
             chord_keys_down: HashSet::new(),
             mod_keys_down: HashSet::new(),
@@ -187,12 +190,18 @@ impl AppState {
         self.chord_keys_down.contains(&button)
     }
 
-    pub fn active_chord_for_row(&self, row: crate::rows::RowId) -> Chord {
-        match row {
-            crate::rows::RowId::Top => self.active_chord,
-            crate::rows::RowId::Middle => self.bottom_chord,
-            crate::rows::RowId::Bottom => self.bottom_chord.invert(),
-        }
+    pub fn row_specs(&self) -> &[crate::layout::RowSpec] {
+        &self.row_specs
+    }
+
+    pub fn chord_for_row(&self, row: crate::rows::RowIndex) -> Chord {
+        crate::layout::chord_for_row(&self.row_specs, row, self.active_chord)
+    }
+
+    pub fn row_chords(&self) -> Vec<Chord> {
+        (0..self.row_specs.len())
+            .map(|i| crate::layout::chord_for_row(&self.row_specs, i, self.active_chord))
+            .collect()
     }
 
     pub fn mod_button_down(&self, button: ModButton) -> bool {
@@ -209,7 +218,7 @@ impl AppState {
 
         if let KeyEvent::StrumCrossing { row, note, volume } = event {
             effects.redraw = false;
-            let chord = self.active_chord_for_row(row);
+            let chord = self.chord_for_row(row);
             if chord.contains(note) {
                 let un = self.transpose + note;
 
@@ -223,7 +232,9 @@ impl AppState {
                 }
 
                 self.active_notes.insert(un);
-                self.active_notes_by_row[row.index()].insert(un);
+                if let Some(s) = self.active_notes_by_row.get_mut(row) {
+                    s.insert(un);
+                }
                 effects.play_notes.push(NoteOn { note: un, volume });
             }
             return effects;
@@ -312,19 +323,20 @@ impl AppState {
             effects.redraw = true;
             self.active_chord = new_chord;
 
-            self.bottom_chord = dynamic_heptatonic_for_active_chord(&self.active_chord);
-
             effects.stop_notes = (0..128)
                 .map(|i| UnmidiNote(i))
                 .filter(|un| !self.active_chord.contains(*un - self.transpose))
-                .filter(|un| {
-                    self.active_notes_by_row[crate::rows::RowId::Top.index()].contains(un)
-                })
+                .filter(|un| self
+                    .active_notes_by_row
+                    .get(TOP_ROW)
+                    .map_or(false, |s| s.contains(un)))
                 .collect();
 
             for un in effects.stop_notes.iter() {
                 self.active_notes.remove(un);
-                self.active_notes_by_row[crate::rows::RowId::Top.index()].remove(un);
+                if let Some(s) = self.active_notes_by_row.get_mut(TOP_ROW) {
+                    s.remove(un);
+                }
             }
         }
 
@@ -345,7 +357,9 @@ impl AppState {
                         }
                     }
                     self.active_notes.insert(un);
-                    self.active_notes_by_row[crate::rows::RowId::Top.index()].insert(un);
+                    if let Some(s) = self.active_notes_by_row.get_mut(TOP_ROW) {
+                        s.insert(un);
+                    }
                     effects.play_notes.push(NoteOn {
                         note: un,
                         volume: PULSE_VOLUME,
@@ -400,81 +414,8 @@ fn heptatonic_major_chord_root(root: UnkeyedNote) -> Chord {
     )
 }
 
-fn harmonic_minor_chord_root(root: UnkeyedNote) -> Chord {
-    // Harmonic minor: 0,2,3,5,7,8,11
-    Chord::new(
-        root,
-        Modifiers::MinorTri
-            | Modifiers::AddMajor2
-            | Modifiers::Add4
-            | Modifiers::AddMinor6
-            | Modifiers::AddMajor7,
-    )
-}
-
 fn heptatonic_major_chord() -> Chord {
     heptatonic_major_chord_root(ROOT_I)
-}
-
-fn chord_pitch_classes(chord: &Chord) -> [bool; 12] {
-    let mut pcs = [false; 12];
-    for pc in 0..12 {
-        pcs[pc] = chord.contains(UnkeyedNote(pc as i16));
-    }
-    pcs
-}
-
-/// Choose a heptatonic scale (harmonic minor preferred, then major) such that the
-/// resulting scale contains all notes in the active chord.
-///
-/// We search outward in both directions around the circle of fifths from the
-/// current key (which is always `UnkeyedNote(0)` in our unkeyed coordinate space).
-fn choose_heptatonic_for_active_chord(active: &Chord) -> Chord {
-    let needed = chord_pitch_classes(active);
-
-    for k in 0..12 {
-        let offset = if k == 0 {
-            0
-        } else {
-            let n = ((k + 1) / 2) as i16;
-            let sign = if k % 2 == 1 { 1 } else { -1 };
-            sign * 7 * n
-        };
-
-        let root_pc = offset.rem_euclid(12);
-        let root = UnkeyedNote(root_pc);
-        let hept_search_order = if [10, 0, 5, 7].contains(&root_pc) {
-            [
-                heptatonic_major_chord_root(root),
-                harmonic_minor_chord_root(root),
-            ]
-        } else {
-            [
-                harmonic_minor_chord_root(root),
-                heptatonic_major_chord_root(root),
-            ]
-        };
-
-        // Prefer harmonic minor for this candidate root, then fall back to major.
-        for hept in hept_search_order {
-            let mut ok = true;
-            for pc in 0..12 {
-                if needed[pc] && !hept.contains(UnkeyedNote(pc as i16)) {
-                    ok = false;
-                    break;
-                }
-            }
-            if ok {
-                return hept;
-            }
-        }
-    }
-
-    heptatonic_major_chord_root(ROOT_I)
-}
-
-fn dynamic_heptatonic_for_active_chord(active: &Chord) -> Chord {
-    choose_heptatonic_for_active_chord(active)
 }
 
 // Decide chord from current chord_keys_down and previous chord state.
@@ -555,20 +496,26 @@ mod tests {
     }
 
     #[test]
-    fn dynamic_heptatonic_contains_active_chord() {
-        // E major triad: contains G# (pc 8), which is outside the default C-major heptatonic.
-        let chord = Chord::new(UnkeyedNote(4), Modifiers::MajorTri);
-        let hept = dynamic_heptatonic_for_active_chord(&chord);
+    fn fixed_rows_have_expected_note_sets() {
+        let state = AppState::new();
 
+        let major = state.chord_for_row(1);
         for pc in 0..12 {
             let n = UnkeyedNote(pc);
-            if chord.contains(n) {
-                assert!(hept.contains(n));
-            }
+            let exp = matches!(pc, 0 | 2 | 4 | 5 | 7 | 9 | 11);
+            assert_eq!(major.contains(n), exp);
         }
 
-        // Deterministic choice: the closest-by-fifths heptatonic that contains E major is A major.
-        assert_eq!(hept.get_root().wrap_to_octave(), 9);
+        let comp = state.chord_for_row(2);
+        for pc in 0..12 {
+            let n = UnkeyedNote(pc);
+            assert_eq!(comp.contains(n), !major.contains(n));
+        }
+
+        let chrom = state.chord_for_row(3);
+        for pc in 0..12 {
+            assert!(chrom.contains(UnkeyedNote(pc)));
+        }
     }
 
     #[test]
@@ -629,7 +576,7 @@ mod tests {
         state.transpose = Transpose(12);
 
         let effects = state.handle_key_event(KeyEvent::StrumCrossing {
-            row: crate::rows::RowId::Top,
+            row: 0,
             note: UnkeyedNote(4),
             volume: DEFAULT_STRUM_VOLUME,
         });
@@ -650,7 +597,7 @@ mod tests {
         state.transpose = Transpose(12);
 
         let effects = state.handle_key_event(KeyEvent::StrumCrossing {
-            row: crate::rows::RowId::Top,
+            row: 0,
             note: UnkeyedNote(3),
             volume: DEFAULT_STRUM_VOLUME,
         });
@@ -664,12 +611,12 @@ mod tests {
         let mut state = AppState::new();
 
         let effects1 = state.handle_key_event(KeyEvent::StrumCrossing {
-            row: crate::rows::RowId::Top,
+            row: 0,
             note: UnkeyedNote(0),
             volume: DEFAULT_STRUM_VOLUME,
         });
         let effects2 = state.handle_key_event(KeyEvent::StrumCrossing {
-            row: crate::rows::RowId::Top,
+            row: 0,
             note: UnkeyedNote(0),
             volume: DEFAULT_STRUM_VOLUME,
         });
@@ -688,12 +635,12 @@ mod tests {
         let mut state = AppState::new();
 
         state.handle_key_event(KeyEvent::StrumCrossing {
-            row: crate::rows::RowId::Top,
+            row: 0,
             note: UnkeyedNote(0),
             volume: DEFAULT_STRUM_VOLUME,
         });
         state.handle_key_event(KeyEvent::StrumCrossing {
-            row: crate::rows::RowId::Top,
+            row: 0,
             note: UnkeyedNote(4),
             volume: DEFAULT_STRUM_VOLUME,
         });

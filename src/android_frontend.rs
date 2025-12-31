@@ -29,7 +29,7 @@ pub enum NoteVisualKind {
 #[derive(Clone, Copy, Debug)]
 pub struct NoteVisualEvent {
     pub at: Instant,
-    pub row: crate::rows::RowId,
+    pub row: crate::rows::RowIndex,
     pub note: crate::notes::UnkeyedNote,
     pub kind: NoteVisualKind,
 }
@@ -319,7 +319,6 @@ impl AndroidFrontend {
 mod tests {
     use super::*;
     use crate::notes::UnkeyedNote;
-    use crate::rows::RowId;
 
     #[test]
     fn android_frontend_emits_note_on_messages() {
@@ -327,7 +326,7 @@ mod tests {
         let rx = f.take_audio_rx().expect("expected audio rx");
 
         let effects = f.engine_mut().handle_strum_crossing(
-            RowId::Top,
+            0,
             UnkeyedNote(0),
             crate::app_state::DEFAULT_STRUM_VOLUME,
         );
@@ -347,7 +346,7 @@ mod tests {
         let rx = f.take_audio_rx().expect("expected audio rx");
 
         let e1 = f.engine_mut().handle_strum_crossing(
-            RowId::Top,
+            0,
             UnkeyedNote(0),
             crate::app_state::DEFAULT_STRUM_VOLUME,
         );
@@ -355,7 +354,7 @@ mod tests {
         let _ = rx.try_recv();
 
         let e2 = f.engine_mut().handle_strum_crossing(
-            RowId::Top,
+            0,
             UnkeyedNote(0),
             crate::app_state::DEFAULT_STRUM_VOLUME,
         );

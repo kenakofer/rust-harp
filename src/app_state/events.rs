@@ -28,7 +28,7 @@ pub enum KeyEvent {
         action: Actions,
     },
     StrumCrossing {
-        row: crate::rows::RowId,
+        row: crate::rows::RowIndex,
         note: UnkeyedNote,
         /// Touch/strum intensity snapshot at note-on.
         volume: NoteVolume,

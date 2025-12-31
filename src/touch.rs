@@ -38,12 +38,12 @@ pub struct TouchOutput {
 ///
 /// This is platform-agnostic: desktop mouse-drag and Android multitouch can both feed it.
 pub struct TouchTracker {
-    last_pos: HashMap<PointerId, (crate::rows::RowId, f32)>,
+    last_pos: HashMap<PointerId, (crate::rows::RowIndex, f32)>,
 
     play_on_tap: bool,
 
     /// Which note (if any) each pointer has claimed via a strike.
-    struck_by_pointer: HashMap<PointerId, (crate::rows::RowId, crate::notes::UnkeyedNote)>,
+    struck_by_pointer: HashMap<PointerId, (crate::rows::RowIndex, crate::notes::UnkeyedNote)>,
 
     /// Per-pointer last played note; used to suppress immediate re-triggering of the same note.
     last_played_by_pointer: HashMap<PointerId, crate::notes::UnkeyedNote>,
@@ -63,9 +63,9 @@ impl TouchTracker {
         self.play_on_tap = enabled;
     }
 
-    fn nearest_unstruck_note<F: Fn(crate::rows::RowId, crate::notes::UnkeyedNote) -> bool>(
+    fn nearest_unstruck_note<F: Fn(crate::rows::RowIndex, crate::notes::UnkeyedNote) -> bool>(
         &self,
-        row: crate::rows::RowId,
+        row: crate::rows::RowIndex,
         x: f32,
         note_positions: &[f32],
         allowed: &F,
@@ -95,10 +95,10 @@ impl TouchTracker {
     pub fn handle_event(
         &mut self,
         event: TouchEvent,
+        row: crate::rows::RowIndex,
         note_positions: &[f32],
-        allowed: impl Fn(crate::rows::RowId, crate::notes::UnkeyedNote) -> bool,
+        allowed: impl Fn(crate::rows::RowIndex, crate::notes::UnkeyedNote) -> bool,
     ) -> TouchOutput {
-        let row = crate::rows::RowId::from_y_norm(event.y_norm);
 
         match event.phase {
             TouchPhase::Down => {
@@ -234,6 +234,7 @@ mod tests {
                     y_norm: Y,
                     pressure: 1.0,
                 },
+                0,
                 &positions,
                 |_, _| true,
             ),
@@ -251,7 +252,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(
@@ -276,7 +278,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
 
@@ -290,6 +293,7 @@ mod tests {
                     y_norm: Y,
                     pressure: 1.0,
                 },
+                0,
                 &positions,
                 |_, _| true,
             ),
@@ -314,7 +318,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         t.handle_event(
@@ -325,7 +330,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
 
@@ -337,7 +343,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(
@@ -356,7 +363,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(
@@ -392,7 +400,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(out1.strike, Some(UnkeyedNote(0)));
@@ -405,7 +414,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(out2.strike, Some(UnkeyedNote(1)));
@@ -419,7 +429,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(
@@ -439,7 +450,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         let out4 = t.handle_event(
@@ -450,7 +462,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(out4.strike, Some(UnkeyedNote(0)));
@@ -470,7 +483,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, n| n == UnkeyedNote(2),
         );
         assert_eq!(out.strike, Some(UnkeyedNote(2)));
@@ -489,7 +503,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(out1.strike, Some(UnkeyedNote(0)));
@@ -503,7 +518,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(out2.crossings, Vec::<StrumCrossing>::new());
@@ -517,7 +533,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(
@@ -538,7 +555,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(
@@ -570,7 +588,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
 
@@ -583,7 +602,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(
@@ -603,7 +623,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(out2.crossings, Vec::<StrumCrossing>::new());
@@ -617,7 +638,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(
@@ -637,7 +659,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
         assert_eq!(
@@ -669,7 +692,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, _| true,
         );
 
@@ -682,7 +706,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, n| n == UnkeyedNote(0),
         );
         assert_eq!(
@@ -708,7 +733,8 @@ mod tests {
                 y_norm: Y,
                 pressure: 1.0,
             },
-            &positions,
+                0,
+                &positions,
             |_, n| n == UnkeyedNote(0),
         );
         assert_eq!(
