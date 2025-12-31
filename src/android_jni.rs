@@ -1,7 +1,6 @@
 use crate::android_frontend::AndroidFrontend;
 use crate::app_state::KeyState;
 use crate::input_map::{UiButton, UiKey};
-use crate::layout;
 
 #[cfg(all(target_os = "android", feature = "android"))]
 use crate::android_aaudio;
@@ -10,7 +9,7 @@ use crate::chord_wheel::{self, WheelDir8};
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
 
 use jni::objects::{JClass, JIntArray, JShortArray};
-use jni::sys::{jboolean, jfloat, jint, jlong, jshort};
+use jni::sys::{jboolean, jfloat, jint, jlong};
 use jni::JNIEnv;
 
 macro_rules! frontend_mut_or_return {
@@ -617,7 +616,6 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustRenderStrings(
 mod render_tests {
     use super::*;
     use crate::chord::Chord;
-    use crate::layout;
     use crate::notes::UnkeyedNote;
 
     #[test]
