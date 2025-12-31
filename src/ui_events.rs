@@ -167,17 +167,33 @@ impl UiSession {
 
                 if matches!(te.phase, crate::touch::TouchPhase::Up | crate::touch::TouchPhase::Cancel)
                 {
-                    if self.bend_held_by_pointer.remove(&te.id).is_some() {
+                    if let Some(un) = self.bend_held_by_pointer.remove(&te.id) {
+                        // Keep AppState coherent: stop the note we started for bending.
+                        effects.stop_notes.push(un);
                         effects.stop_bend_pointers.push(te.id);
                     }
                 }
 
                 if let Some(note) = out.strike {
                     touch_notes.push(TouchNote { row, note });
-                    merge_effects(
-                        &mut effects,
-                        self.engine.handle_strum_crossing(row, note, vol),
-                    );
+
+                    if bend_enabled && in_bend_zone && chord.contains(note) {
+                        // In bend zone, start a pointer-bound voice so later strums can bend it.
+                        let mut e = self.engine.handle_strum_crossing(row, note, vol);
+                        for pn in &mut e.play_notes {
+                            pn.pointer = Some(te.id);
+                        }
+                        // Track the last played note for this pointer in the bend zone.
+                        if let Some(pn) = e.play_notes.last() {
+                            self.bend_held_by_pointer.insert(te.id, pn.note);
+                        }
+                        merge_effects(&mut effects, e);
+                    } else {
+                        merge_effects(
+                            &mut effects,
+                            self.engine.handle_strum_crossing(row, note, vol),
+                        );
+                    }
                 }
 
                 for crossing in out.crossings {
@@ -189,15 +205,18 @@ impl UiSession {
                         }
 
                         if bend_enabled && in_bend_zone {
-                            let un = self.engine.transpose() + note;
                             if !self.bend_held_by_pointer.contains_key(&te.id) {
-                                effects.play_notes.push(crate::app_state::NoteOn {
-                                    note: un,
-                                    volume: vol,
-                                    pointer: Some(te.id),
-                                });
-                                self.bend_held_by_pointer.insert(te.id, un);
+                                // First strummed note in bend zone: note-on (through Engine/AppState) and remember it.
+                                let mut e = self.engine.handle_strum_crossing(row, note, vol);
+                                for pn in &mut e.play_notes {
+                                    pn.pointer = Some(te.id);
+                                }
+                                if let Some(pn) = e.play_notes.last() {
+                                    self.bend_held_by_pointer.insert(te.id, pn.note);
+                                }
+                                merge_effects(&mut effects, e);
                             } else {
+                                let un = self.engine.transpose() + note;
                                 effects.bend_notes.push(crate::app_state::BendNote {
                                     pointer: te.id,
                                     target: un,
@@ -226,6 +245,185 @@ impl UiSession {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UiEventLog {
     pub events: Vec<UiEvent>,
+}
+
+#[cfg(test)]
+mod bend_tests {
+    use super::*;
+    use crate::touch::{PointerId, TouchPhase};
+
+    fn positions() -> Vec<f32> {
+        // 12 notes, evenly spaced.
+        (0..12).map(|i| i as f32 * 10.0).collect()
+    }
+
+    fn synth_bend_settings() -> crate::ui_settings::UiSettings {
+        crate::ui_settings::UiSettings {
+            bend_notes: true,
+            audio_backend: crate::ui_settings::UiAudioBackend::Synth,
+            ..crate::ui_settings::UiSettings::default()
+        }
+    }
+
+    #[test]
+    fn bend_zone_first_strum_is_note_on_then_bend_events() {
+        let mut ui = UiSession::new();
+        ui.set_play_on_tap(false);
+
+        let pos = positions();
+        let s = synth_bend_settings();
+
+        // Stay in row 0 (y_norm < 0.40). Use bend-zone y (>= 0.25).
+        let y_bend = 0.30;
+
+        let _ = ui.handle_with_settings(
+            UiEvent::Touch(TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Down,
+                x: 0.0,
+                y_norm: y_bend,
+                pressure: 1.0,
+            }),
+            &pos,
+            &s,
+        );
+
+        // Move across an active-chord note (default chord includes 0,4,7): first bend-zone strum is pointer note-on.
+        let out1 = ui.handle_with_settings(
+            UiEvent::Touch(TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: pos[4] + 5.0,
+                y_norm: y_bend,
+                pressure: 1.0,
+            }),
+            &pos,
+            &s,
+        );
+        assert!(out1.effects.bend_notes.is_empty());
+        assert_eq!(out1.effects.play_notes.len(), 1);
+        assert_eq!(out1.effects.play_notes[0].pointer, Some(PointerId(1)));
+
+        // Next active-chord note crossing in bend zone should be a bend.
+        let out2 = ui.handle_with_settings(
+            UiEvent::Touch(TouchEvent {
+                id: PointerId(1),
+                phase: TouchPhase::Move,
+                x: pos[7] + 5.0,
+                y_norm: y_bend,
+                pressure: 1.0,
+            }),
+            &pos,
+            &s,
+        );
+        assert!(out2.effects.play_notes.is_empty());
+        assert_eq!(out2.effects.bend_notes.len(), 1);
+        assert_eq!(out2.effects.bend_notes[0].pointer, PointerId(1));
+    }
+
+    #[test]
+    fn outside_bend_zone_does_not_affect_bend_state() {
+        let mut ui = UiSession::new();
+        ui.set_play_on_tap(false);
+
+        let pos = positions();
+        let s = synth_bend_settings();
+
+        // Use row 0. Establish bend state in bend zone, then strum in the top 25%.
+        let y_bend = 0.30;
+        let y_top = 0.10;
+
+        let _ = ui.handle_with_settings(
+            UiEvent::Touch(TouchEvent {
+                id: PointerId(2),
+                phase: TouchPhase::Down,
+                x: 0.0,
+                y_norm: y_bend,
+                pressure: 1.0,
+            }),
+            &pos,
+            &s,
+        );
+
+        // First bend-zone strum: pointer note-on.
+        let _ = ui.handle_with_settings(
+            UiEvent::Touch(TouchEvent {
+                id: PointerId(2),
+                phase: TouchPhase::Move,
+                x: pos[4] + 5.0,
+                y_norm: y_bend,
+                pressure: 1.0,
+            }),
+            &pos,
+            &s,
+        );
+
+        // Now strum outside bend zone: should be a normal note-on (pointer None) and should not emit bend.
+        let out = ui.handle_with_settings(
+            UiEvent::Touch(TouchEvent {
+                id: PointerId(2),
+                phase: TouchPhase::Move,
+                x: pos[7] + 5.0,
+                y_norm: y_top,
+                pressure: 1.0,
+            }),
+            &pos,
+            &s,
+        );
+        assert!(out.effects.bend_notes.is_empty());
+        assert_eq!(out.effects.play_notes.len(), 1);
+        assert!(out.effects.play_notes[0].pointer.is_none());
+    }
+
+    #[test]
+    fn touch_up_stops_bend_pointer_and_note() {
+        let mut ui = UiSession::new();
+        ui.set_play_on_tap(false);
+
+        let pos = positions();
+        let s = synth_bend_settings();
+
+        let y_bend = 0.30;
+
+        let _ = ui.handle_with_settings(
+            UiEvent::Touch(TouchEvent {
+                id: PointerId(3),
+                phase: TouchPhase::Down,
+                x: 0.0,
+                y_norm: y_bend,
+                pressure: 1.0,
+            }),
+            &pos,
+            &s,
+        );
+
+        // Establish bend held note.
+        let _ = ui.handle_with_settings(
+            UiEvent::Touch(TouchEvent {
+                id: PointerId(3),
+                phase: TouchPhase::Move,
+                x: pos[4] + 5.0,
+                y_norm: y_bend,
+                pressure: 1.0,
+            }),
+            &pos,
+            &s,
+        );
+
+        let out_up = ui.handle_with_settings(
+            UiEvent::Touch(TouchEvent {
+                id: PointerId(3),
+                phase: TouchPhase::Up,
+                x: pos[4] + 5.0,
+                y_norm: y_bend,
+                pressure: 1.0,
+            }),
+            &pos,
+            &s,
+        );
+        assert_eq!(out_up.effects.stop_bend_pointers, vec![PointerId(3)]);
+        assert_eq!(out_up.effects.stop_notes.len(), 1);
+    }
 }
 
 impl UiEventLog {
