@@ -185,7 +185,7 @@ impl SquareSynth {
         const SILENCE: f32 = 1.0e-4;
 
         // Semitones/second (constant-speed glide).
-        const PITCH_BEND_SPEED: f32 = 24.0;
+        const PITCH_BEND_SPEED: f32 = 150.0;
 
         let mut acc = 0.0f32;
         for v in &mut self.voices {
