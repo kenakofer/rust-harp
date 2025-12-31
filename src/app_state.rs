@@ -1,7 +1,7 @@
 mod effects;
 mod events;
 
-pub use effects::{AppEffects, NoteOn};
+pub use effects::{AppEffects, BendNote, NoteOn};
 pub use events::{
     ActionButton, Actions, ChordButton, KeyEvent, KeyState, ModButton, DEFAULT_STRUM_VOLUME,
 };
@@ -174,7 +174,9 @@ impl AppState {
             redraw: true,
             change_key: Some(t),
             stop_notes: self.active_notes.iter().cloned().collect(),
+            stop_bend_pointers: Vec::new(),
             play_notes: Vec::new(),
+            bend_notes: Vec::new(),
         };
 
         self.active_notes.clear();
@@ -213,7 +215,9 @@ impl AppState {
             redraw: true,
             change_key: None,
             stop_notes: Vec::new(),
+            stop_bend_pointers: Vec::new(),
             play_notes: Vec::new(),
+            bend_notes: Vec::new(),
         };
 
         if let KeyEvent::StrumCrossing { row, note, volume } = event {
@@ -235,7 +239,11 @@ impl AppState {
                 if let Some(s) = self.active_notes_by_row.get_mut(row) {
                     s.insert(un);
                 }
-                effects.play_notes.push(NoteOn { note: un, volume });
+                effects.play_notes.push(NoteOn {
+                    note: un,
+                    volume,
+                    pointer: None,
+                });
             }
             return effects;
         }
@@ -363,6 +371,7 @@ impl AppState {
                     effects.play_notes.push(NoteOn {
                         note: un,
                         volume: PULSE_VOLUME,
+                        pointer: None,
                     });
                 });
         }
@@ -586,6 +595,7 @@ mod tests {
             vec![NoteOn {
                 note: UnmidiNote(16),
                 volume: DEFAULT_STRUM_VOLUME,
+                pointer: None,
             }]
         );
         assert!(state.active_notes.contains(&UnmidiNote(16)));

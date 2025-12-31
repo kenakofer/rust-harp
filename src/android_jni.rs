@@ -195,7 +195,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetKeyIndex(
         crate::notes::Transpose(idx),
     ));
     let redraw = effects.redraw;
-    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty() || !effects.bend_notes.is_empty() || !effects.stop_bend_pointers.is_empty();
 
     frontend.push_effects(effects);
 
@@ -243,7 +243,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleAndroidKey(
 
     let effects = frontend.handle_ui_event(crate::ui_events::UiEvent::Key { state, key });
     let redraw = effects.redraw;
-    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty() || !effects.bend_notes.is_empty() || !effects.stop_bend_pointers.is_empty();
 
     frontend.push_effects(effects);
 
@@ -258,7 +258,9 @@ fn merge_effects(a: &mut crate::app_state::AppEffects, b: crate::app_state::AppE
         a.change_key = b.change_key;
     }
     a.stop_notes.extend(b.stop_notes);
+    a.stop_bend_pointers.extend(b.stop_bend_pointers);
     a.play_notes.extend(b.play_notes);
+    a.bend_notes.extend(b.bend_notes);
 }
 
 #[no_mangle]
@@ -318,7 +320,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
     }
 
     let redraw = effects.redraw;
-    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty() || !effects.bend_notes.is_empty() || !effects.stop_bend_pointers.is_empty();
     frontend.push_effects(effects);
 
     (if redraw { 1 } else { 0 }) | (if has_play { 2 } else { 0 })
@@ -391,7 +393,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustApplyChordWheelCho
     });
 
     let redraw = effects.redraw;
-    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty() || !effects.bend_notes.is_empty() || !effects.stop_bend_pointers.is_empty();
 
     // Defer chord-change note-offs while the chord wheel is active.
     if frontend.chord_hold_active() {
@@ -435,7 +437,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustToggleChordWheelMi
     });
 
     let redraw = effects.redraw;
-    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty() || !effects.bend_notes.is_empty() || !effects.stop_bend_pointers.is_empty();
 
     // Defer chord-change note-offs while the chord wheel is active.
     if frontend.chord_hold_active() {
@@ -545,7 +547,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleTouch(
 
     let (effects, haptic) = frontend.handle_touch(event, width.max(1) as f32);
     let redraw = effects.redraw;
-    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty();
+    let has_play = !effects.play_notes.is_empty() || !effects.stop_notes.is_empty() || !effects.bend_notes.is_empty() || !effects.stop_bend_pointers.is_empty();
     frontend.push_effects(effects);
 
     // Bit 0: needs redraw

@@ -11,11 +11,24 @@ struct Voice {
     max_harmonic_odd: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct BendVoice {
+    pointer: crate::touch::PointerId,
+    start_sample: u64,
+    stop_sample: Option<u64>,
+    phase: f32,
+    amp0: f32,
+    max_harmonic_odd: u32,
+    current_pitch: f32,
+    target_pitch: f32,
+}
+
 pub struct SquareSynth {
     sample_rate_hz: f32,
     a4_tuning_hz: f32,
     sample: u64,
     voices: Vec<Voice>,
+    bend_voices: Vec<BendVoice>,
 }
 
 pub fn drain_messages<T>(mut try_recv: impl FnMut() -> Option<T>, mut handle: impl FnMut(T)) {
@@ -35,6 +48,7 @@ impl SquareSynth {
             a4_tuning_hz: a4_tuning_hz.clamp(430, 450) as f32,
             sample: 0,
             voices: Vec::new(),
+            bend_voices: Vec::new(),
         }
     }
 
@@ -104,6 +118,57 @@ impl SquareSynth {
         }
     }
 
+    pub fn pointer_note_on(&mut self, pointer: crate::touch::PointerId, midi: MidiNote, volume_0_to_127: u8) {
+        let freq_hz = midi_to_hz(midi.0 as f32, self.a4_tuning_hz);
+        let amp0 = (volume_0_to_127 as f32 / 127.0) * 0.12;
+
+        // Keep bend voices cheap: fixed harmonic limit.
+        let max_harmonic = 15u32;
+
+        if let Some(v) = self.bend_voices.iter_mut().find(|v| v.pointer == pointer) {
+            *v = BendVoice {
+                pointer,
+                start_sample: self.sample,
+                stop_sample: None,
+                phase: 0.0,
+                amp0,
+                max_harmonic_odd: max_harmonic,
+                current_pitch: midi.0 as f32,
+                target_pitch: midi.0 as f32,
+            };
+            let _ = freq_hz; // (kept for parity/debugging)
+            return;
+        }
+
+        const MAX_BEND_VOICES: usize = 10;
+        if self.bend_voices.len() >= MAX_BEND_VOICES {
+            self.bend_voices.swap_remove(0);
+        }
+
+        self.bend_voices.push(BendVoice {
+            pointer,
+            start_sample: self.sample,
+            stop_sample: None,
+            phase: 0.0,
+            amp0,
+            max_harmonic_odd: max_harmonic,
+            current_pitch: midi.0 as f32,
+            target_pitch: midi.0 as f32,
+        });
+    }
+
+    pub fn pointer_bend(&mut self, pointer: crate::touch::PointerId, target: MidiNote) {
+        if let Some(v) = self.bend_voices.iter_mut().find(|v| v.pointer == pointer) {
+            v.target_pitch = target.0 as f32;
+        }
+    }
+
+    pub fn pointer_note_off(&mut self, pointer: crate::touch::PointerId) {
+        if let Some(v) = self.bend_voices.iter_mut().find(|v| v.pointer == pointer) {
+            v.stop_sample = Some(self.sample);
+        }
+    }
+
     pub fn render_i16_mono(&mut self, out: &mut [i16]) {
         self.render_i16_interleaved(out, 1);
     }
@@ -118,6 +183,9 @@ impl SquareSynth {
         const ATTACK_S: f32 = 0.004; // short ramp to prevent clicks
         const RELEASE_S: f32 = 0.10; // fade-to-silence on note_off
         const SILENCE: f32 = 1.0e-4;
+
+        // Semitones/second (constant-speed glide).
+        const PITCH_BEND_SPEED: f32 = 24.0;
 
         let mut acc = 0.0f32;
         for v in &mut self.voices {
@@ -152,6 +220,45 @@ impl SquareSynth {
             }
         }
 
+        for v in &mut self.bend_voices {
+            let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
+            let attack = (age_s / ATTACK_S).min(1.0);
+
+            let release = match v.stop_sample {
+                Some(ss) => {
+                    let t = (self.sample.saturating_sub(ss)) as f32 / self.sample_rate_hz;
+                    (1.0 - (t / RELEASE_S)).clamp(0.0, 1.0)
+                }
+                None => 1.0,
+            };
+            let env = attack * release;
+
+            let step = PITCH_BEND_SPEED / self.sample_rate_hz;
+            if v.target_pitch > v.current_pitch {
+                v.current_pitch = (v.current_pitch + step).min(v.target_pitch);
+            } else if v.target_pitch < v.current_pitch {
+                v.current_pitch = (v.current_pitch - step).max(v.target_pitch);
+            }
+
+            let freq_hz = midi_to_hz(v.current_pitch, self.a4_tuning_hz);
+            let phase_inc = (2.0 * std::f32::consts::PI * freq_hz) / self.sample_rate_hz;
+
+            let mut sq = 0.0f32;
+            let mut n = 1u32;
+            while n <= v.max_harmonic_odd {
+                sq += (n as f32 * v.phase).sin() / (n as f32);
+                n += 2;
+            }
+            sq *= 4.0 / std::f32::consts::PI;
+
+            acc += v.amp0 * env * sq;
+
+            v.phase += phase_inc;
+            if v.phase >= 2.0 * std::f32::consts::PI {
+                v.phase -= 2.0 * std::f32::consts::PI;
+            }
+        }
+
         self.sample += 1;
 
         // Periodically prune finished voices.
@@ -169,6 +276,19 @@ impl SquareSynth {
                 };
 
                 v.amp0 * decay * release > SILENCE
+            });
+
+            self.bend_voices.retain(|v| {
+                let age_s = (self.sample - v.start_sample) as f32 / self.sample_rate_hz;
+                let attack = (age_s / ATTACK_S).min(1.0);
+                let release = match v.stop_sample {
+                    Some(ss) => {
+                        let t = (self.sample.saturating_sub(ss)) as f32 / self.sample_rate_hz;
+                        (1.0 - (t / RELEASE_S)).clamp(0.0, 1.0)
+                    }
+                    None => 1.0,
+                };
+                v.amp0 * attack * release > SILENCE
             });
         }
 

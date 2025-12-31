@@ -32,6 +32,8 @@ fn empty_effects() -> AppEffects {
     AppEffects {
         play_notes: Vec::new(),
         stop_notes: Vec::new(),
+        bend_notes: Vec::new(),
+        stop_bend_pointers: Vec::new(),
         redraw: false,
         change_key: None,
     }
@@ -51,7 +53,9 @@ fn merge_effects(a: &mut AppEffects, b: AppEffects) {
         a.change_key = b.change_key;
     }
     a.stop_notes.extend(b.stop_notes);
+    a.stop_bend_pointers.extend(b.stop_bend_pointers);
     a.play_notes.extend(b.play_notes);
+    a.bend_notes.extend(b.bend_notes);
 }
 
 /// Platform-agnostic UI event processor.
@@ -61,6 +65,7 @@ fn merge_effects(a: &mut AppEffects, b: AppEffects) {
 pub struct UiSession {
     engine: Engine,
     touch: TouchTracker,
+    bend_held_by_pointer: std::collections::HashMap<crate::touch::PointerId, crate::notes::UnmidiNote>,
 }
 
 impl UiSession {
@@ -68,6 +73,7 @@ impl UiSession {
         Self {
             engine: Engine::new(),
             touch: TouchTracker::new(),
+            bend_held_by_pointer: std::collections::HashMap::new(),
         }
     }
 
@@ -84,6 +90,24 @@ impl UiSession {
     }
 
     pub fn handle(&mut self, event: UiEvent, note_positions: &[f32]) -> UiOutput {
+        self.handle_with_settings(event, note_positions, &crate::ui_settings::UiSettings::default())
+    }
+
+    pub fn handle_with_settings(
+        &mut self,
+        event: UiEvent,
+        note_positions: &[f32],
+        settings: &crate::ui_settings::UiSettings,
+    ) -> UiOutput {
+        const BEND_BOUNDARY: f32 = 0.25;
+        let bend_enabled = settings.bend_notes
+            && matches!(
+                settings.audio_backend,
+                crate::ui_settings::UiAudioBackend::Synth
+                    | crate::ui_settings::UiAudioBackend::AAudio
+                    | crate::ui_settings::UiAudioBackend::AudioTrack
+            );
+
         match event {
             UiEvent::SetPlayOnTap(enabled) => {
                 self.touch.set_play_on_tap(enabled);
@@ -123,13 +147,30 @@ impl UiSession {
             UiEvent::Touch(te) => {
                 let row = crate::layout::row_index_from_y_norm(te.y_norm, self.engine.row_specs());
                 let vol = touch_volume(te.pressure);
-
-                let out = self.touch.handle_event(te, row, note_positions, |r, n| {
-                    self.engine.active_chord_for_row(r).contains(n)
-                });
+                let in_bend_zone = te.y_norm >= BEND_BOUNDARY;
 
                 let mut effects = empty_effects();
                 let mut touch_notes = Vec::new();
+
+                // Strikes are always note-on, and begin a new touch event.
+                if matches!(te.phase, crate::touch::TouchPhase::Down) {
+                    if self.bend_held_by_pointer.remove(&te.id).is_some() {
+                        effects.stop_bend_pointers.push(te.id);
+                    }
+                }
+
+                let chord = self.engine.active_chord_for_row(row);
+
+                let out = self
+                    .touch
+                    .handle_event(te, row, note_positions, |_r, n| chord.contains(n));
+
+                if matches!(te.phase, crate::touch::TouchPhase::Up | crate::touch::TouchPhase::Cancel)
+                {
+                    if self.bend_held_by_pointer.remove(&te.id).is_some() {
+                        effects.stop_bend_pointers.push(te.id);
+                    }
+                }
 
                 if let Some(note) = out.strike {
                     touch_notes.push(TouchNote { row, note });
@@ -138,9 +179,33 @@ impl UiSession {
                         self.engine.handle_strum_crossing(row, note, vol),
                     );
                 }
+
                 for crossing in out.crossings {
                     for note in crossing.notes {
                         touch_notes.push(TouchNote { row, note });
+
+                        if !chord.contains(note) {
+                            continue;
+                        }
+
+                        if bend_enabled && in_bend_zone {
+                            let un = self.engine.transpose() + note;
+                            if !self.bend_held_by_pointer.contains_key(&te.id) {
+                                effects.play_notes.push(crate::app_state::NoteOn {
+                                    note: un,
+                                    volume: vol,
+                                    pointer: Some(te.id),
+                                });
+                                self.bend_held_by_pointer.insert(te.id, un);
+                            } else {
+                                effects.bend_notes.push(crate::app_state::BendNote {
+                                    pointer: te.id,
+                                    target: un,
+                                });
+                            }
+                            continue;
+                        }
+
                         merge_effects(
                             &mut effects,
                             self.engine.handle_strum_crossing(row, note, vol),

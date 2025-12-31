@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 pub enum AudioMsg {
     NoteOn(NoteOn),
     NoteOff(crate::notes::UnmidiNote),
+    Bend(crate::touch::PointerId, crate::notes::UnmidiNote),
+    StopPointer(crate::touch::PointerId),
     SetSampleRate(u32),
     SetA4Tuning(u16),
 }
@@ -160,8 +162,18 @@ impl AndroidFrontend {
         }
     }
 
+    fn ui_settings_snapshot(&self) -> crate::ui_settings::UiSettings {
+        // Android currently doesn't persist full settings; this is enough for bend gating.
+        let mut s = crate::ui_settings::UiSettings::default();
+        s.show_note_names = self.show_note_names;
+        s.a4_tuning_hz = self.a4_tuning_hz;
+        s.audio_backend = crate::ui_settings::UiAudioBackend::AAudio;
+        s
+    }
+
     pub fn handle_ui_event(&mut self, event: UiEvent) -> AppEffects {
-        self.ui.handle(event, &[]).effects
+        let s = self.ui_settings_snapshot();
+        self.ui.handle_with_settings(event, &[], &s).effects
     }
 
     pub fn show_note_names(&self) -> bool {
@@ -176,13 +188,19 @@ impl AndroidFrontend {
         self.flush_deferred_stop_notes();
 
         let mut tx = &self.audio_tx;
-        effects.apply_stop_then_play(
+        effects.apply_all(
             &mut tx,
             |tx, un| {
                 let _ = (*tx).send(AudioMsg::NoteOff(un));
             },
+            |tx, pid| {
+                let _ = (*tx).send(AudioMsg::StopPointer(pid));
+            },
             |tx, pn| {
                 let _ = (*tx).send(AudioMsg::NoteOn(pn));
+            },
+            |tx, bn| {
+                let _ = (*tx).send(AudioMsg::Bend(bn.pointer, bn.target));
             },
         );
     }
@@ -235,11 +253,22 @@ impl AndroidFrontend {
                     AudioMsg::NoteOn(pn) => {
                         let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
                         let NoteVolume(v) = pn.volume;
-                        s.note_on(MidiNote(m), v);
+                        if let Some(pid) = pn.pointer {
+                            s.pointer_note_on(pid, MidiNote(m), v);
+                        } else {
+                            s.note_on(MidiNote(m), v);
+                        }
                     }
                     AudioMsg::NoteOff(un) => {
                         let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
                         s.note_off(MidiNote(m));
+                    }
+                    AudioMsg::Bend(pid, un) => {
+                        let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
+                        s.pointer_bend(pid, MidiNote(m));
+                    }
+                    AudioMsg::StopPointer(pid) => {
+                        s.pointer_note_off(pid);
                     }
                     AudioMsg::SetSampleRate(sr) => {
                         let a4 = s.a4_tuning_hz();
@@ -289,7 +318,8 @@ impl AndroidFrontend {
     pub fn handle_touch(&mut self, event: TouchEvent, width_px: f32) -> (AppEffects, bool) {
         let mut cache = self.layout_cache.lock().unwrap();
         let positions = cache.android(width_px);
-        let out = self.ui.handle(UiEvent::Touch(event), positions);
+        let s = self.ui_settings_snapshot();
+        let out = self.ui.handle_with_settings(UiEvent::Touch(event), positions, &s);
 
         let kind = match event.phase {
             crate::touch::TouchPhase::Down => Some(NoteVisualKind::Strike),
