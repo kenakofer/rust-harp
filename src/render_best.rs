@@ -31,7 +31,7 @@ pub(crate) fn compute_best_per_x<C: Copy>(
         }
         let xi = xi as usize;
 
-        let (prio, color) = if chord.has_root(uknote) {
+        let (prio, color) = if chord.has_root(uknote) && chord.contains(uknote) {
             (style.root_prio, style.root_color)
         } else if chord.contains(uknote) {
             (style.chord_prio, style.chord_color)
