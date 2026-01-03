@@ -43,25 +43,18 @@ public class MainActivity extends Activity {
         int k = ((keyPc % 12) + 12) % 12;
         return k == 1 || k == 3 || k == 5 || k == 8 || k == 10;
     }
-    private static final int BTN_VIIB = 0;
 
     // Used to keep gesture-exclusion rects centered near the active touch.
     private int lastTouchY = -1;
-    private static final int BTN_IV = 1;
-    private static final int BTN_I = 2;
-    private static final int BTN_V = 3;
+    private static final int BTN_V = 0;
+    private static final int BTN_I = 1;
+    private static final int BTN_IV = 2;
+    private static final int BTN_VIIB = 3;
     private static final int BTN_II = 4;
     private static final int BTN_VI = 5;
     private static final int BTN_III = 6;
     private static final int BTN_VII_DIM = 7;
 
-    private static final int BTN_MAJ7 = 8;
-    private static final int BTN_NO3 = 9;
-    private static final int BTN_SUS4 = 10;
-    private static final int BTN_MM = 11;
-    private static final int BTN_ADD2 = 12;
-    private static final int BTN_ADD7 = 13;
-    private static final int BTN_HEPT = 14;
     static {
         System.loadLibrary("rust_harp");
     }
@@ -730,11 +723,11 @@ public class MainActivity extends Activity {
         int bh = dpToPx(55);
 
 
-        // Row 1: VIIb IV I V
-        uiButtons[BTN_VIIB] = makeUiButton("VIIb", BTN_VIIB, bw, bh);
-        uiButtons[BTN_IV] = makeUiButton("IV", BTN_IV, bw, bh);
-        uiButtons[BTN_I] = makeUiButton("I", BTN_I, bw, bh);
+        // Row 1: V I IV VIIb
         uiButtons[BTN_V] = makeUiButton("V", BTN_V, bw, bh);
+        uiButtons[BTN_I] = makeUiButton("I", BTN_I, bw, bh);
+        uiButtons[BTN_IV] = makeUiButton("IV", BTN_IV, bw, bh);
+        uiButtons[BTN_VIIB] = makeUiButton("VIIb", BTN_VIIB, bw, bh);
 
         // Row 2: ii vi iii vii°
         uiButtons[BTN_II] = makeUiButton("ii", BTN_II, bw, bh);
@@ -753,10 +746,10 @@ public class MainActivity extends Activity {
         uiButtons[BTN_VII_DIM].setOnTouchListener(chordWheelTouchListener(BTN_VII_DIM));
 
         // Add in row-major order.
-        chordGrid.addView(uiButtons[BTN_VIIB]);
-        chordGrid.addView(uiButtons[BTN_IV]);
-        chordGrid.addView(uiButtons[BTN_I]);
         chordGrid.addView(uiButtons[BTN_V]);
+        chordGrid.addView(uiButtons[BTN_I]);
+        chordGrid.addView(uiButtons[BTN_IV]);
+        chordGrid.addView(uiButtons[BTN_VIIB]);
 
         chordGrid.addView(uiButtons[BTN_II]);
         chordGrid.addView(uiButtons[BTN_VI]);
