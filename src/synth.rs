@@ -15,6 +15,7 @@ struct Voice {
 struct BendVoice {
     pointer: crate::touch::PointerId,
     start_sample: u64,
+    start_bend_sample: u64,
     stop_sample: Option<u64>,
     phase: f32,
     amp0: f32,
@@ -121,7 +122,7 @@ impl SquareSynth {
     pub fn pointer_note_on(&mut self, pointer: crate::touch::PointerId, midi: MidiNote, volume_0_to_127: u8) {
         let freq_hz = midi_to_hz(midi.0 as f32, self.a4_tuning_hz);
         let amp0 = (volume_0_to_127 as f32 / 127.0) * 0.12;
-
+bend_
         // Keep bend voices cheap: fixed harmonic limit.
         let max_harmonic = 15u32;
 
@@ -129,6 +130,7 @@ impl SquareSynth {
             *v = BendVoice {
                 pointer,
                 start_sample: self.sample,
+                start_bend_sample: self.sample,
                 stop_sample: None,
                 phase: 0.0,
                 amp0,
@@ -148,6 +150,7 @@ impl SquareSynth {
         self.bend_voices.push(BendVoice {
             pointer,
             start_sample: self.sample,
+            start_bend_sample: self.sample,
             stop_sample: None,
             phase: 0.0,
             amp0,
@@ -185,7 +188,7 @@ impl SquareSynth {
         const SILENCE: f32 = 1.0e-4;
 
         // Semitones/second (constant-speed glide).
-        const PITCH_BEND_SPEED: f32 = 150.0;
+        const PITCH_BEND_SPEED: f32 = 300.0;
 
         let mut acc = 0.0f32;
         for v in &mut self.voices {
@@ -231,14 +234,19 @@ impl SquareSynth {
                 }
                 None => 1.0,
             };
-            let env = attack * release;
 
             let step = PITCH_BEND_SPEED / self.sample_rate_hz;
+            let mut bend_duck = 1.0;
+
             if v.target_pitch > v.current_pitch {
                 v.current_pitch = (v.current_pitch + step).min(v.target_pitch);
+                bend_duck = 0.5;
             } else if v.target_pitch < v.current_pitch {
                 v.current_pitch = (v.current_pitch - step).max(v.target_pitch);
+                bend_duck = 0.5;
             }
+
+            let env = attack * release * bend_duck;
 
             let freq_hz = midi_to_hz(v.current_pitch, self.a4_tuning_hz);
             let phase_inc = (2.0 * std::f32::consts::PI * freq_hz) / self.sample_rate_hz;
