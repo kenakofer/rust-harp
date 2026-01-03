@@ -123,7 +123,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     if let Some(ue) = ui_adapter::ui_event_from_winit(&event) {
                         let positions =
                             positions_cache.desktop(window.inner_size().width.max(1) as f32);
-                        let out = ui.handle_with_settings(ue, positions, &settings);
+                        let out = ui.handle(ue, positions);
                         let _ = process_app_effects(
                             out.effects,
                             &mut audio,
@@ -258,7 +258,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         let h = window.inner_size().height.max(1) as f32;
                         let positions =
                             positions_cache.desktop(window.inner_size().width.max(1) as f32);
-                        let out = ui.handle_with_settings(
+                        let out = ui.handle(
                             UiEvent::Touch(TouchEvent {
                                 id: PointerId(0),
                                 phase,
@@ -267,7 +267,6 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                 pressure: 1.0,
                             }),
                             positions,
-                            &settings,
                         );
                         let _ = process_app_effects(
                             out.effects,
@@ -286,7 +285,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                         let h = window.inner_size().height.max(1) as f32;
                         let positions =
                             positions_cache.desktop(window.inner_size().width.max(1) as f32);
-                        let out = ui.handle_with_settings(
+                        let out = ui.handle(
                             UiEvent::Touch(TouchEvent {
                                 id: PointerId(0),
                                 phase: TouchPhase::Move,
@@ -295,7 +294,6 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                                 pressure: 1.0,
                             }),
                             positions,
-                            &settings,
                         );
                         let _ = process_app_effects(
                             out.effects,

@@ -158,22 +158,11 @@ unsafe extern "C" fn data_cb(
             AudioMsg::NoteOn(pn) => {
                 let MidiNote(m) = MIDI_BASE_TRANSPOSE + pn.note;
                 let NoteVolume(v) = pn.volume;
-                if let Some(pid) = pn.pointer {
-                    ctx.synth.pointer_note_on(pid, MidiNote(m), v);
-                } else {
-                    ctx.synth.note_on(MidiNote(m), v);
-                }
+                ctx.synth.note_on(MidiNote(m), v);
             }
             AudioMsg::NoteOff(un) => {
                 let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
                 ctx.synth.note_off(MidiNote(m));
-            }
-            AudioMsg::Bend(pid, un) => {
-                let MidiNote(m) = MIDI_BASE_TRANSPOSE + un;
-                ctx.synth.pointer_bend(pid, MidiNote(m));
-            }
-            AudioMsg::StopPointer(pid) => {
-                ctx.synth.pointer_note_off(pid);
             }
             AudioMsg::SetSampleRate(sr) => {
                 let a4 = ctx.synth.a4_tuning_hz();

@@ -72,16 +72,7 @@ pub(crate) fn render_strings(
         &positions_storage
     };
 
-    let mut row_specs_storage: Vec<layout::RowSpec> = Vec::new();
-    let row_specs: &[layout::RowSpec] = if handle != 0 {
-        let frontend = unsafe { &*(handle as *const AndroidFrontend) };
-        frontend.engine().row_specs()
-    } else {
-        row_specs_storage = layout::default_row_specs();
-        &row_specs_storage
-    };
-
-    let y_edges = layout::row_y_edges(h, row_specs);
+    let y_edges = layout::row_y_edges(h);
 
     let style = crate::render_best::BestStyle {
         root_prio: 3,

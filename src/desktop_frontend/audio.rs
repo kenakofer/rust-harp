@@ -21,23 +21,6 @@ pub(crate) const MICRO_VELOCITY: u8 = 50; // quiet click
 pub(crate) trait BackendAudio {
     fn stop_note(&mut self, backend: UiAudioBackend, midi_note: MidiNote);
     fn play_note(&mut self, backend: UiAudioBackend, midi_note: MidiNote, volume: NoteVolume);
-
-    fn stop_bend_pointer(&mut self, _backend: UiAudioBackend, _pointer: crate::touch::PointerId) {}
-    fn play_pointer_note(
-        &mut self,
-        _backend: UiAudioBackend,
-        _pointer: crate::touch::PointerId,
-        _midi_note: MidiNote,
-        _volume: NoteVolume,
-    ) {
-    }
-    fn bend_note(
-        &mut self,
-        _backend: UiAudioBackend,
-        _pointer: crate::touch::PointerId,
-        _midi_note: MidiNote,
-    ) {
-    }
 }
 
 pub(crate) struct DesktopAudio {
@@ -142,49 +125,6 @@ impl BackendAudio for DesktopAudio {
     fn play_note(&mut self, backend: UiAudioBackend, midi_note: MidiNote, volume: NoteVolume) {
         DesktopAudio::play_note(self, backend, midi_note, volume)
     }
-
-    fn stop_bend_pointer(&mut self, backend: UiAudioBackend, pointer: crate::touch::PointerId) {
-        if backend != UiAudioBackend::Synth {
-            return;
-        }
-        #[cfg(feature = "synth")]
-        if let Some(s) = &self.synth {
-            s.stop_pointer(pointer);
-        }
-    }
-
-    fn play_pointer_note(
-        &mut self,
-        backend: UiAudioBackend,
-        pointer: crate::touch::PointerId,
-        midi_note: MidiNote,
-        volume: NoteVolume,
-    ) {
-        if backend != UiAudioBackend::Synth {
-            return;
-        }
-        #[cfg(feature = "synth")]
-        if let Some(s) = &self.synth {
-            s.play_pointer_note(pointer, midi_note, volume);
-            return;
-        }
-        self.midi.play_note(midi_note, volume);
-    }
-
-    fn bend_note(
-        &mut self,
-        backend: UiAudioBackend,
-        pointer: crate::touch::PointerId,
-        midi_note: MidiNote,
-    ) {
-        if backend != UiAudioBackend::Synth {
-            return;
-        }
-        #[cfg(feature = "synth")]
-        if let Some(s) = &self.synth {
-            s.bend_note(pointer, midi_note);
-        }
-    }
 }
 
 pub(crate) fn process_app_effects(
@@ -202,21 +142,10 @@ pub(crate) fn process_app_effects(
         log::info!("Changed key: {:?}", transpose);
     }
 
-    effects.apply_all(
+    effects.apply_stop_then_play(
         audio,
         |a, un| a.stop_note(audio_backend, MIDI_BASE_TRANSPOSE + un),
-        |a, pid| a.stop_bend_pointer(audio_backend, pid),
-        |a, pn| {
-            let midi_note = MIDI_BASE_TRANSPOSE + pn.note;
-            if let Some(pid) = pn.pointer {
-                a.play_pointer_note(audio_backend, pid, midi_note, pn.volume);
-            } else {
-                a.play_note(audio_backend, midi_note, pn.volume);
-            }
-        },
-        |a, bn| {
-            a.bend_note(audio_backend, bn.pointer, MIDI_BASE_TRANSPOSE + bn.target);
-        },
+        |a, pn| a.play_note(audio_backend, MIDI_BASE_TRANSPOSE + pn.note, pn.volume),
     )
 }
 
@@ -286,13 +215,10 @@ mod tests {
     fn process_app_effects_applies_stop_before_play_and_returns_played() {
         let effects = AppEffects {
             stop_notes: vec![UnmidiNote(1), UnmidiNote(2)],
-            stop_bend_pointers: Vec::new(),
             play_notes: vec![NoteOn {
                 note: UnmidiNote(2),
                 volume: NoteVolume(70),
-                pointer: None,
             }],
-            bend_notes: Vec::new(),
             redraw: false,
             change_key: None,
         };
@@ -315,9 +241,7 @@ mod tests {
     fn process_app_effects_returns_false_when_no_play_notes() {
         let effects = AppEffects {
             stop_notes: vec![UnmidiNote(1)],
-            stop_bend_pointers: Vec::new(),
             play_notes: vec![],
-            bend_notes: Vec::new(),
             redraw: false,
             change_key: None,
         };

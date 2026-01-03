@@ -6,10 +6,8 @@ use crossbeam_channel::{Receiver, Sender};
 
 #[derive(Debug, Clone, Copy)]
 enum Msg {
-    NoteOn(Option<crate::touch::PointerId>, MidiNote, NoteVolume),
+    NoteOn(MidiNote, NoteVolume),
     NoteOff(MidiNote),
-    StopPointer(crate::touch::PointerId),
-    Bend(crate::touch::PointerId, MidiNote),
     SetA4Tuning(u16),
 }
 
@@ -57,24 +55,7 @@ impl SynthBackend {
     }
 
     pub fn play_note(&self, midi_note: MidiNote, volume: NoteVolume) {
-        let _ = self.tx.send(Msg::NoteOn(None, midi_note, volume));
-    }
-
-    pub fn play_pointer_note(
-        &self,
-        pointer: crate::touch::PointerId,
-        midi_note: MidiNote,
-        volume: NoteVolume,
-    ) {
-        let _ = self.tx.send(Msg::NoteOn(Some(pointer), midi_note, volume));
-    }
-
-    pub fn stop_pointer(&self, pointer: crate::touch::PointerId) {
-        let _ = self.tx.send(Msg::StopPointer(pointer));
-    }
-
-    pub fn bend_note(&self, pointer: crate::touch::PointerId, midi_note: MidiNote) {
-        let _ = self.tx.send(Msg::Bend(pointer, midi_note));
+        let _ = self.tx.send(Msg::NoteOn(midi_note, volume));
     }
 
     pub fn stop_note(&self, midi_note: MidiNote) {
@@ -90,11 +71,8 @@ fn drain_msgs(rx: &Receiver<Msg>, synth: &mut SquareSynth) {
     crate::synth::drain_messages(
         || rx.try_recv().ok(),
         |m| match m {
-            Msg::NoteOn(Some(pid), note, vol) => synth.pointer_note_on(pid, note, vol.0),
-            Msg::NoteOn(None, note, vol) => synth.note_on(note, vol.0),
+            Msg::NoteOn(note, vol) => synth.note_on(note, vol.0),
             Msg::NoteOff(note) => synth.note_off(note),
-            Msg::StopPointer(pid) => synth.pointer_note_off(pid),
-            Msg::Bend(pid, note) => synth.pointer_bend(pid, note),
             Msg::SetA4Tuning(a4) => synth.set_a4_tuning_hz(a4),
         },
     );

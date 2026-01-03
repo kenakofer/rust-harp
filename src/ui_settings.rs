@@ -34,9 +34,6 @@ pub struct UiSettings {
     // Android-only: whether on-screen chord buttons are visible.
     pub show_chord_buttons: bool,
 
-    // Bend notes (synth only).
-    pub bend_notes: bool,
-
     // Selected audio output backend (UI-facing selection; not all backends are implemented on all platforms yet).
     pub audio_backend: UiAudioBackend,
 
@@ -51,7 +48,6 @@ impl Default for UiSettings {
             play_on_tap: true,
             show_roman_chords: true,
             show_chord_buttons: true,
-            bend_notes: true,
             audio_backend: UiAudioBackend::Midi,
             a4_tuning_hz: 440,
         }
@@ -66,11 +62,10 @@ fn encode_settings(s: &UiSettings) -> String {
     };
 
     format!(
-        "show_note_names={}\nplay_on_tap={}\nshow_roman_chords={}\nbend_notes={}\naudio_backend={}\na4_tuning_hz={}\n",
+        "show_note_names={}\nplay_on_tap={}\nshow_roman_chords={}\naudio_backend={}\na4_tuning_hz={}\n",
         s.show_note_names,
         s.play_on_tap,
         s.show_roman_chords,
-        s.bend_notes,
         backend,
         s.a4_tuning_hz
     )
@@ -88,7 +83,6 @@ fn decode_settings(input: &str) -> UiSettings {
             "show_note_names" => s.show_note_names = v.trim() == "true",
             "play_on_tap" => s.play_on_tap = v.trim() != "false",
             "show_roman_chords" => s.show_roman_chords = v.trim() != "false",
-            "bend_notes" => s.bend_notes = v.trim() != "false",
             "audio_backend" => {
                 s.audio_backend = match v.trim() {
                     "synth" => UiAudioBackend::Synth,
@@ -199,7 +193,6 @@ mod tests {
             play_on_tap: false,
             show_roman_chords: false,
             show_chord_buttons: true,
-            bend_notes: false,
             audio_backend: UiAudioBackend::Synth,
             a4_tuning_hz: 432,
         };
@@ -209,7 +202,6 @@ mod tests {
         assert_eq!(dec.show_note_names, true);
         assert_eq!(dec.play_on_tap, false);
         assert_eq!(dec.show_roman_chords, false);
-        assert_eq!(dec.bend_notes, false);
         assert_eq!(dec.audio_backend, UiAudioBackend::Synth);
         assert_eq!(dec.a4_tuning_hz, 432);
     }
