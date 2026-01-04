@@ -14,10 +14,12 @@ pub enum UiKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UiButton {
     // Degree chords
-    VIIB,
-    IV,
-    I,
+    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
+    // android_jni.rs
     V,
+    I,
+    IV,
+    VIIB,
     II,
     VI,
     III,

@@ -45,6 +45,8 @@ public class MainActivity extends Activity {
     }
 
     // Used to keep gesture-exclusion rects centered near the active touch.
+    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
+    // android_jni.rs
     private int lastTouchY = -1;
     private static final int BTN_V = 0;
     private static final int BTN_I = 1;
@@ -554,10 +556,10 @@ public class MainActivity extends Activity {
         String[] keys = preferFlatsForKey(k) ? NOTE_NAMES_FLAT : NOTE_NAMES_SHARP;
 
         if (showRomanChords) {
-            if (uiButtons[BTN_VIIB] != null) uiButtons[BTN_VIIB].setText("VIIb");
-            if (uiButtons[BTN_IV] != null) uiButtons[BTN_IV].setText("IV");
-            if (uiButtons[BTN_I] != null) uiButtons[BTN_I].setText("I");
             if (uiButtons[BTN_V] != null) uiButtons[BTN_V].setText("V");
+            if (uiButtons[BTN_I] != null) uiButtons[BTN_I].setText("I");
+            if (uiButtons[BTN_IV] != null) uiButtons[BTN_IV].setText("IV");
+            if (uiButtons[BTN_VIIB] != null) uiButtons[BTN_VIIB].setText("VIIb");
             if (uiButtons[BTN_II] != null) uiButtons[BTN_II].setText("ii");
             if (uiButtons[BTN_VI] != null) uiButtons[BTN_VI].setText("vi");
             if (uiButtons[BTN_III] != null) uiButtons[BTN_III].setText("iii");
@@ -575,10 +577,10 @@ public class MainActivity extends Activity {
         int iii = (k + 4) % 12;
         int viiDim = (k + 11) % 12;
 
-        if (uiButtons[BTN_VIIB] != null) uiButtons[BTN_VIIB].setText(keys[viib]);
-        if (uiButtons[BTN_IV] != null) uiButtons[BTN_IV].setText(keys[iv]);
-        if (uiButtons[BTN_I] != null) uiButtons[BTN_I].setText(keys[i]);
         if (uiButtons[BTN_V] != null) uiButtons[BTN_V].setText(keys[v]);
+        if (uiButtons[BTN_I] != null) uiButtons[BTN_I].setText(keys[i]);
+        if (uiButtons[BTN_IV] != null) uiButtons[BTN_IV].setText(keys[iv]);
+        if (uiButtons[BTN_VIIB] != null) uiButtons[BTN_VIIB].setText(keys[viib]);
 
         if (uiButtons[BTN_II] != null) uiButtons[BTN_II].setText(keys[ii] + "m");
         if (uiButtons[BTN_VI] != null) uiButtons[BTN_VI].setText(keys[vi] + "m");
@@ -724,6 +726,8 @@ public class MainActivity extends Activity {
 
 
         // Row 1: V I IV VIIb
+    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
+    // android_jni.rs
         uiButtons[BTN_V] = makeUiButton("V", BTN_V, bw, bh);
         uiButtons[BTN_I] = makeUiButton("I", BTN_I, bw, bh);
         uiButtons[BTN_IV] = makeUiButton("IV", BTN_IV, bw, bh);
@@ -736,16 +740,20 @@ public class MainActivity extends Activity {
         uiButtons[BTN_VII_DIM] = makeUiButton("vii\u00B0", BTN_VII_DIM, bw, bh);
 
         // Chord-wheel gesture replaces the default button press logic for these chord buttons.
-        uiButtons[BTN_VIIB].setOnTouchListener(chordWheelTouchListener(BTN_VIIB));
-        uiButtons[BTN_IV].setOnTouchListener(chordWheelTouchListener(BTN_IV));
-        uiButtons[BTN_I].setOnTouchListener(chordWheelTouchListener(BTN_I));
+    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
+    // android_jni.rs
         uiButtons[BTN_V].setOnTouchListener(chordWheelTouchListener(BTN_V));
+        uiButtons[BTN_I].setOnTouchListener(chordWheelTouchListener(BTN_I));
+        uiButtons[BTN_IV].setOnTouchListener(chordWheelTouchListener(BTN_IV));
+        uiButtons[BTN_VIIB].setOnTouchListener(chordWheelTouchListener(BTN_VIIB));
         uiButtons[BTN_II].setOnTouchListener(chordWheelTouchListener(BTN_II));
         uiButtons[BTN_VI].setOnTouchListener(chordWheelTouchListener(BTN_VI));
         uiButtons[BTN_III].setOnTouchListener(chordWheelTouchListener(BTN_III));
         uiButtons[BTN_VII_DIM].setOnTouchListener(chordWheelTouchListener(BTN_VII_DIM));
 
         // Add in row-major order.
+    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
+    // android_jni.rs
         chordGrid.addView(uiButtons[BTN_V]);
         chordGrid.addView(uiButtons[BTN_I]);
         chordGrid.addView(uiButtons[BTN_IV]);

@@ -277,10 +277,12 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
     };
 
     let button = match button_id {
-        0 => UiButton::VIIB,
-        1 => UiButton::IV,
-        2 => UiButton::I,
-        3 => UiButton::V,
+        // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
+        // android_jni.rs
+        0 => UiButton::V,
+        1 => UiButton::I,
+        2 => UiButton::IV,
+        3 => UiButton::VIIB,
         4 => UiButton::II,
         5 => UiButton::VI,
         6 => UiButton::III,
@@ -326,10 +328,10 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
 fn chord_button_from_ui_button(button: UiButton) -> Option<crate::app_state::ChordButton> {
     use crate::app_state::ChordButton;
     match button {
-        UiButton::VIIB => Some(ChordButton::VIIB),
-        UiButton::IV => Some(ChordButton::IV),
-        UiButton::I => Some(ChordButton::I),
         UiButton::V => Some(ChordButton::V),
+        UiButton::I => Some(ChordButton::I),
+        UiButton::IV => Some(ChordButton::IV),
+        UiButton::VIIB => Some(ChordButton::VIIB),
         UiButton::II => Some(ChordButton::II),
         UiButton::VI => Some(ChordButton::VI),
         UiButton::III => Some(ChordButton::III),
@@ -351,10 +353,12 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustApplyChordWheelCho
 
     // Only degree chord buttons participate in the wheel.
     let button = match chord_button_id {
-        0 => UiButton::VIIB,
-        1 => UiButton::IV,
-        2 => UiButton::I,
-        3 => UiButton::V,
+    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
+    // android_jni.rs
+        0 => UiButton::V,
+        1 => UiButton::I,
+        2 => UiButton::IV,
+        3 => UiButton::VIIB,
         4 => UiButton::II,
         5 => UiButton::VI,
         6 => UiButton::III,
@@ -412,10 +416,12 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustToggleChordWheelMi
     let frontend = frontend_mut_or_return!(handle, 0);
 
     let button = match chord_button_id {
-        0 => UiButton::VIIB,
-        1 => UiButton::IV,
-        2 => UiButton::I,
-        3 => UiButton::V,
+    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
+    // android_jni.rs
+        0 => UiButton::V,
+        1 => UiButton::I,
+        2 => UiButton::IV,
+        3 => UiButton::VIIB,
         4 => UiButton::II,
         5 => UiButton::VI,
         6 => UiButton::III,
@@ -460,16 +466,18 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonsMask(
     let mut mask: u32 = 0;
 
     // Chords
-    if eng.chord_button_down(ChordButton::VIIB) {
+    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
+    // android_jni.rs
+    if eng.chord_button_down(ChordButton::V) {
         mask |= 1 << 0;
     }
-    if eng.chord_button_down(ChordButton::IV) {
+    if eng.chord_button_down(ChordButton::I) {
         mask |= 1 << 1;
     }
-    if eng.chord_button_down(ChordButton::I) {
+    if eng.chord_button_down(ChordButton::IV) {
         mask |= 1 << 2;
     }
-    if eng.chord_button_down(ChordButton::V) {
+    if eng.chord_button_down(ChordButton::VIIB) {
         mask |= 1 << 3;
     }
     if eng.chord_button_down(ChordButton::II) {
