@@ -8,7 +8,7 @@ use crate::android_aaudio;
 use crate::chord_wheel::{self, WheelDir8};
 use crate::touch::{PointerId, TouchEvent, TouchPhase};
 
-use jni::objects::{JClass, JIntArray, JShortArray};
+use jni::objects::{JClass, JIntArray, JShortArray, JString};
 use jni::sys::{jboolean, jfloat, jint, jlong};
 use jni::JNIEnv;
 
@@ -40,6 +40,30 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustInit(
     _class: JClass,
 ) -> jint {
     1
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonsCount(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    UiButton::COUNT as jint
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonIndex(
+    env: JNIEnv,
+    _class: JClass,
+    id: JString,
+) -> jint {
+    let id: String = match env.get_string(&id) {
+        Ok(s) => s.into(),
+        Err(_) => return -1,
+    };
+
+    UiButton::from_id(&id)
+        .map(|b| b.index() as jint)
+        .unwrap_or(-1)
 }
 
 #[no_mangle]
@@ -276,25 +300,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHandleUiButton(
         KeyState::Released
     };
 
-    let button = match button_id {
-        // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
-        // android_jni.rs
-        0 => UiButton::V,
-        1 => UiButton::I,
-        2 => UiButton::IV,
-        3 => UiButton::VIIB,
-        4 => UiButton::II,
-        5 => UiButton::VI,
-        6 => UiButton::III,
-        7 => UiButton::VIIDim,
-        8 => UiButton::Maj7,
-        9 => UiButton::No3,
-        10 => UiButton::Sus4,
-        11 => UiButton::MinorMajor,
-        12 => UiButton::Add2,
-        13 => UiButton::Add7,
-        14 => UiButton::Hept,
-        _ => return 0,
+    let button = match UiButton::from_index(button_id as usize) {
+        Some(b) => b,
+        None => return 0,
     };
 
     let is_chord_button = chord_button_from_ui_button(button).is_some();
@@ -352,18 +360,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustApplyChordWheelCho
     let frontend = frontend_mut_or_return!(handle, 0);
 
     // Only degree chord buttons participate in the wheel.
-    let button = match chord_button_id {
-    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
-    // android_jni.rs
-        0 => UiButton::V,
-        1 => UiButton::I,
-        2 => UiButton::IV,
-        3 => UiButton::VIIB,
-        4 => UiButton::II,
-        5 => UiButton::VI,
-        6 => UiButton::III,
-        7 => UiButton::VIIDim,
-        _ => return 0,
+    let button = match UiButton::from_index(chord_button_id as usize) {
+        Some(b) => b,
+        None => return 0,
     };
 
     let chord_button = match chord_button_from_ui_button(button) {
@@ -415,18 +414,9 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustToggleChordWheelMi
 ) -> jint {
     let frontend = frontend_mut_or_return!(handle, 0);
 
-    let button = match chord_button_id {
-    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
-    // android_jni.rs
-        0 => UiButton::V,
-        1 => UiButton::I,
-        2 => UiButton::IV,
-        3 => UiButton::VIIB,
-        4 => UiButton::II,
-        5 => UiButton::VI,
-        6 => UiButton::III,
-        7 => UiButton::VIIDim,
-        _ => return 0,
+    let button = match UiButton::from_index(chord_button_id as usize) {
+        Some(b) => b,
+        None => return 0,
     };
 
     // Same as rustApplyChordWheelChoice: Java chord-wheel toggles happen while the button is logically held.
@@ -460,63 +450,39 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonsMask(
 ) -> jint {
     let frontend = frontend_or_return!(handle, 0);
 
-    use crate::app_state::{ChordButton, ModButton};
     let eng = frontend.engine();
 
     let mut mask: u32 = 0;
-
-    // Chords
-    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
-    // android_jni.rs
-    if eng.chord_button_down(ChordButton::V) {
-        mask |= 1 << 0;
-    }
-    if eng.chord_button_down(ChordButton::I) {
-        mask |= 1 << 1;
-    }
-    if eng.chord_button_down(ChordButton::IV) {
-        mask |= 1 << 2;
-    }
-    if eng.chord_button_down(ChordButton::VIIB) {
-        mask |= 1 << 3;
-    }
-    if eng.chord_button_down(ChordButton::II) {
-        mask |= 1 << 4;
-    }
-    if eng.chord_button_down(ChordButton::VI) {
-        mask |= 1 << 5;
-    }
-    if eng.chord_button_down(ChordButton::III) {
-        mask |= 1 << 6;
-    }
-    if eng.chord_button_down(ChordButton::VII) {
-        mask |= 1 << 7;
-    }
-    if eng.chord_button_down(ChordButton::HeptatonicMajor) {
-        mask |= 1 << 14;
-    }
-
-    // Modifiers
-    if eng.mod_button_down(ModButton::Major7) {
-        mask |= 1 << 8;
-    }
-    if eng.mod_button_down(ModButton::No3) {
-        mask |= 1 << 9;
-    }
-    if eng.mod_button_down(ModButton::Sus4) {
-        mask |= 1 << 10;
-    }
-    if eng.mod_button_down(ModButton::MinorMajor) {
-        mask |= 1 << 11;
-    }
-    if eng.mod_button_down(ModButton::Major2) {
-        mask |= 1 << 12;
-    }
-    if eng.mod_button_down(ModButton::Minor7) {
-        mask |= 1 << 13;
+    for b in UiButton::ORDER {
+        if ui_button_down(eng, b) {
+            mask |= 1 << b.index();
+        }
     }
 
     mask as jint
+}
+
+fn ui_button_down(eng: &crate::engine::Engine, b: UiButton) -> bool {
+    use crate::app_state::{ChordButton, ModButton};
+
+    match b {
+        UiButton::V => eng.chord_button_down(ChordButton::V),
+        UiButton::I => eng.chord_button_down(ChordButton::I),
+        UiButton::IV => eng.chord_button_down(ChordButton::IV),
+        UiButton::VIIB => eng.chord_button_down(ChordButton::VIIB),
+        UiButton::II => eng.chord_button_down(ChordButton::II),
+        UiButton::VI => eng.chord_button_down(ChordButton::VI),
+        UiButton::III => eng.chord_button_down(ChordButton::III),
+        UiButton::VIIDim => eng.chord_button_down(ChordButton::VII),
+        UiButton::Hept => eng.chord_button_down(ChordButton::HeptatonicMajor),
+
+        UiButton::Maj7 => eng.mod_button_down(ModButton::Major7),
+        UiButton::No3 => eng.mod_button_down(ModButton::No3),
+        UiButton::Sus4 => eng.mod_button_down(ModButton::Sus4),
+        UiButton::MinorMajor => eng.mod_button_down(ModButton::MinorMajor),
+        UiButton::Add2 => eng.mod_button_down(ModButton::Major2),
+        UiButton::Add7 => eng.mod_button_down(ModButton::Minor7),
+    }
 }
 
 #[no_mangle]

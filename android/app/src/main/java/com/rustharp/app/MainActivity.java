@@ -45,17 +45,17 @@ public class MainActivity extends Activity {
     }
 
     // Used to keep gesture-exclusion rects centered near the active touch.
-    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
-    // android_jni.rs
     private int lastTouchY = -1;
-    private static final int BTN_V = 0;
-    private static final int BTN_I = 1;
-    private static final int BTN_IV = 2;
-    private static final int BTN_VIIB = 3;
-    private static final int BTN_II = 4;
-    private static final int BTN_VI = 5;
-    private static final int BTN_III = 6;
-    private static final int BTN_VII_DIM = 7;
+
+    // Button indices are sourced from Rust (UiButton's numeric order).
+    private int BTN_V;
+    private int BTN_I;
+    private int BTN_IV;
+    private int BTN_VIIB;
+    private int BTN_II;
+    private int BTN_VI;
+    private int BTN_III;
+    private int BTN_VII_DIM;
 
     static {
         System.loadLibrary("rust_harp");
@@ -72,7 +72,7 @@ public class MainActivity extends Activity {
     private RustAudio audio;
     private Vibrator vibrator;
 
-    private Button[] uiButtons = new Button[15];
+    private Button[] uiButtons;
 
     private boolean showNoteNames = false;
     private boolean playOnTap = true;
@@ -116,6 +116,8 @@ public class MainActivity extends Activity {
     }
 
     public static native int rustInit();
+    public static native int rustGetUiButtonsCount();
+    public static native int rustGetUiButtonIndex(String id);
     public static native long rustCreateFrontend();
     public static native void rustDestroyFrontend(long handle);
     public static native int rustHandleAndroidKey(long handle, int keyCode, int unicodeChar, boolean isDown);
@@ -594,6 +596,16 @@ public class MainActivity extends Activity {
         rustInit(); // smoke test: ensures JNI wiring is alive
         rustHandle = rustCreateFrontend();
 
+        uiButtons = new Button[rustGetUiButtonsCount()];
+        BTN_V = rustGetUiButtonIndex("v");
+        BTN_I = rustGetUiButtonIndex("i");
+        BTN_IV = rustGetUiButtonIndex("iv");
+        BTN_VIIB = rustGetUiButtonIndex("viib");
+        BTN_II = rustGetUiButtonIndex("ii");
+        BTN_VI = rustGetUiButtonIndex("vi");
+        BTN_III = rustGetUiButtonIndex("iii");
+        BTN_VII_DIM = rustGetUiButtonIndex("vii_dim");
+
         prefs = getSharedPreferences("rustharp", MODE_PRIVATE);
         showNoteNames = prefs.getBoolean("showNoteNames", false);
         playOnTap = prefs.getBoolean("playOnTap", true);
@@ -725,44 +737,16 @@ public class MainActivity extends Activity {
         int bh = dpToPx(55);
 
 
-        // Row 1: V I IV VIIb
-    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
-    // android_jni.rs
-        uiButtons[BTN_V] = makeUiButton("V", BTN_V, bw, bh);
-        uiButtons[BTN_I] = makeUiButton("I", BTN_I, bw, bh);
-        uiButtons[BTN_IV] = makeUiButton("IV", BTN_IV, bw, bh);
-        uiButtons[BTN_VIIB] = makeUiButton("VIIb", BTN_VIIB, bw, bh);
-
-        // Row 2: ii vi iii vii°
-        uiButtons[BTN_II] = makeUiButton("ii", BTN_II, bw, bh);
-        uiButtons[BTN_VI] = makeUiButton("vi", BTN_VI, bw, bh);
-        uiButtons[BTN_III] = makeUiButton("iii", BTN_III, bw, bh);
-        uiButtons[BTN_VII_DIM] = makeUiButton("vii\u00B0", BTN_VII_DIM, bw, bh);
-
-        // Chord-wheel gesture replaces the default button press logic for these chord buttons.
-    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
-    // android_jni.rs
-        uiButtons[BTN_V].setOnTouchListener(chordWheelTouchListener(BTN_V));
-        uiButtons[BTN_I].setOnTouchListener(chordWheelTouchListener(BTN_I));
-        uiButtons[BTN_IV].setOnTouchListener(chordWheelTouchListener(BTN_IV));
-        uiButtons[BTN_VIIB].setOnTouchListener(chordWheelTouchListener(BTN_VIIB));
-        uiButtons[BTN_II].setOnTouchListener(chordWheelTouchListener(BTN_II));
-        uiButtons[BTN_VI].setOnTouchListener(chordWheelTouchListener(BTN_VI));
-        uiButtons[BTN_III].setOnTouchListener(chordWheelTouchListener(BTN_III));
-        uiButtons[BTN_VII_DIM].setOnTouchListener(chordWheelTouchListener(BTN_VII_DIM));
-
-        // Add in row-major order.
-    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
-    // android_jni.rs
-        chordGrid.addView(uiButtons[BTN_V]);
-        chordGrid.addView(uiButtons[BTN_I]);
-        chordGrid.addView(uiButtons[BTN_IV]);
-        chordGrid.addView(uiButtons[BTN_VIIB]);
-
-        chordGrid.addView(uiButtons[BTN_II]);
-        chordGrid.addView(uiButtons[BTN_VI]);
-        chordGrid.addView(uiButtons[BTN_III]);
-        chordGrid.addView(uiButtons[BTN_VII_DIM]);
+        // Create chord buttons and add them in row-major order.
+        int[] chordIds = new int[]{BTN_V, BTN_I, BTN_IV, BTN_VIIB, BTN_II, BTN_VI, BTN_III, BTN_VII_DIM};
+        String[] chordLabels = new String[]{"V", "I", "IV", "VIIb", "ii", "vi", "iii", "vii\u00B0"};
+        for (int i = 0; i < chordIds.length; i++) {
+            int id = chordIds[i];
+            uiButtons[id] = makeUiButton(chordLabels[i], id, bw, bh);
+            // Chord-wheel gesture replaces the default button press logic for these chord buttons.
+            uiButtons[id].setOnTouchListener(chordWheelTouchListener(id));
+            chordGrid.addView(uiButtons[id]);
+        }
 
         root.addView(chordGrid);
 

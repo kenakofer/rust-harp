@@ -11,30 +11,120 @@ pub enum UiKey {
 /// Virtual UI buttons for touchscreen frontends.
 ///
 /// These intentionally map onto the same `KeyEvent` logic as keyboard input.
+///
+/// IMPORTANT: the numeric values here are the single source of truth for Android's button IDs
+/// and bit positions in `rustGetUiButtonsMask()`.
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UiButton {
     // Degree chords
-    // This order must match the order in MainActivity.java, input_map.rs, events.rs, and
-    // android_jni.rs
-    V,
-    I,
-    IV,
-    VIIB,
-    II,
-    VI,
-    III,
-    VIIDim,
+    V = 0,
+    I = 1,
+    IV = 2,
+    VIIB = 3,
+    II = 4,
+    VI = 5,
+    III = 6,
+    VIIDim = 7,
 
     // Modifiers
-    Maj7,
-    No3,
-    Sus4,
-    MinorMajor,
-    Add2,
-    Add7,
+    Maj7 = 8,
+    No3 = 9,
+    Sus4 = 10,
+    MinorMajor = 11,
+    Add2 = 12,
+    Add7 = 13,
 
     // Special chord mode
-    Hept,
+    Hept = 14,
+}
+
+impl UiButton {
+    pub const COUNT: usize = 15;
+
+    pub const ORDER: [UiButton; UiButton::COUNT] = [
+        UiButton::V,
+        UiButton::I,
+        UiButton::IV,
+        UiButton::VIIB,
+        UiButton::II,
+        UiButton::VI,
+        UiButton::III,
+        UiButton::VIIDim,
+        UiButton::Maj7,
+        UiButton::No3,
+        UiButton::Sus4,
+        UiButton::MinorMajor,
+        UiButton::Add2,
+        UiButton::Add7,
+        UiButton::Hept,
+    ];
+
+    pub fn index(self) -> usize {
+        self as u8 as usize
+    }
+
+    pub fn from_index(idx: usize) -> Option<Self> {
+        match idx as u8 {
+            0 => Some(UiButton::V),
+            1 => Some(UiButton::I),
+            2 => Some(UiButton::IV),
+            3 => Some(UiButton::VIIB),
+            4 => Some(UiButton::II),
+            5 => Some(UiButton::VI),
+            6 => Some(UiButton::III),
+            7 => Some(UiButton::VIIDim),
+            8 => Some(UiButton::Maj7),
+            9 => Some(UiButton::No3),
+            10 => Some(UiButton::Sus4),
+            11 => Some(UiButton::MinorMajor),
+            12 => Some(UiButton::Add2),
+            13 => Some(UiButton::Add7),
+            14 => Some(UiButton::Hept),
+            _ => None,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            UiButton::V => "v",
+            UiButton::I => "i",
+            UiButton::IV => "iv",
+            UiButton::VIIB => "viib",
+            UiButton::II => "ii",
+            UiButton::VI => "vi",
+            UiButton::III => "iii",
+            UiButton::VIIDim => "vii_dim",
+            UiButton::Maj7 => "maj7",
+            UiButton::No3 => "no3",
+            UiButton::Sus4 => "sus4",
+            UiButton::MinorMajor => "minor_major",
+            UiButton::Add2 => "add2",
+            UiButton::Add7 => "add7",
+            UiButton::Hept => "hept",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id.trim().to_ascii_lowercase().as_str() {
+            "v" => Some(UiButton::V),
+            "i" => Some(UiButton::I),
+            "iv" => Some(UiButton::IV),
+            "viib" => Some(UiButton::VIIB),
+            "ii" => Some(UiButton::II),
+            "vi" => Some(UiButton::VI),
+            "iii" => Some(UiButton::III),
+            "vii_dim" => Some(UiButton::VIIDim),
+            "maj7" => Some(UiButton::Maj7),
+            "no3" => Some(UiButton::No3),
+            "sus4" => Some(UiButton::Sus4),
+            "minor_major" => Some(UiButton::MinorMajor),
+            "add2" => Some(UiButton::Add2),
+            "add7" => Some(UiButton::Add7),
+            "hept" => Some(UiButton::Hept),
+            _ => None,
+        }
+    }
 }
 
 pub fn key_event_from_ui(state: KeyState, key: UiKey) -> Option<KeyEvent> {
