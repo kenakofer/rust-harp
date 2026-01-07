@@ -140,6 +140,7 @@ public class MainActivity extends Activity {
 
     // App-only chord-wheel behavior knobs.
     public static native void rustSetImpliedSevenths(long handle, boolean enabled);
+    public static native void rustSetWheelModifiers(long handle, int modifiersBits);
     public static native void rustSetChordReleaseNoteOffDelayMs(long handle, int ms);
     public static native void rustFlushDeferredNoteOffs(long handle);
     public static native boolean rustHasActiveNoteVisuals(long handle);
@@ -590,6 +591,39 @@ public class MainActivity extends Activity {
         if (uiButtons[BTN_VII_DIM] != null) uiButtons[BTN_VII_DIM].setText(keys[viiDim] + "dim");
     }
 
+    private void commitGestureChord(com.rustharp.app.gesture.Dir initialDir, int modifiersMask) {
+        if (rustHandle == 0 || initialDir == null) return;
+
+        int chordBtnId;
+        switch (initialDir) {
+            case UP:
+                chordBtnId = BTN_I;
+                break;
+            case LEFT:
+                chordBtnId = BTN_IV;
+                break;
+            case RIGHT:
+                chordBtnId = BTN_V;
+                break;
+            case DOWN:
+                chordBtnId = BTN_VIIB;
+                break;
+            default:
+                return;
+        }
+
+        Log.d("RustHarp", "gesture commit initial=" + initialDir + " chordBtnId=" + chordBtnId + " modifiersBits=0x" + Integer.toHexString(modifiersMask));
+        rustSetWheelModifiers(rustHandle, modifiersMask);
+
+        // Commit on release: apply chord at end-of-gesture, without keeping a chord button held.
+        int flags = 0;
+        flags |= rustHandleUiButton(rustHandle, chordBtnId, true);
+        flags |= rustHandleUiButton(rustHandle, chordBtnId, false);
+
+        if ((flags & 1) != 0) redraw();
+        if (flags != 0) updateUiButtons();
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -610,7 +644,6 @@ public class MainActivity extends Activity {
         showNoteNames = prefs.getBoolean("showNoteNames", false);
         playOnTap = prefs.getBoolean("playOnTap", true);
         showRomanChords = prefs.getBoolean("showRomanChords", true);
-        showChordButtons = prefs.getBoolean("showChordButtons", true);
         keyIndex = prefs.getInt("keyIndex", 0);
         audioBackend = prefs.getString("audioBackend", "AAudio");
         rustSetShowNoteNames(rustHandle, showNoteNames);
@@ -618,8 +651,8 @@ public class MainActivity extends Activity {
         rustSetKeyIndex(rustHandle, keyIndex);
         // App chord buttons should not auto-generate implied sevenths when multi-pressed.
         rustSetImpliedSevenths(rustHandle, false);
-        // Defer chord-change note-offs until chord release + double-tap window.
-        rustSetChordReleaseNoteOffDelayMs(rustHandle, DOUBLE_TAP_MS);
+        // Gestures commit on release; don't defer chord-change note-offs.
+        rustSetChordReleaseNoteOffDelayMs(rustHandle, 0);
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
         w = dm.widthPixels;
@@ -715,48 +748,33 @@ public class MainActivity extends Activity {
 
         root.addView(iv);
 
-        // Touch chord grid (lower-left). Modifier buttons removed; modifiers are selected via a swipe-wheel.
-        chordGrid = new GridLayout(this);
-        chordGrid.setColumnCount(4);
-        chordGrid.setRowCount(2);
-        chordGrid.setUseDefaultMargins(false);
-        chordGrid.setPadding(0, 0, 0, 0);
-        chordGrid.setMotionEventSplittingEnabled(true);
+        // Gesture pads (lower-left). Chord buttons are removed; gestures commit on release.
+        int padSize = dpToPx(166); // ~2x2 of the prior chord button footprint.
+        int padGap = dpToPx(12);
+        int padMargin = dpToPx(30);
 
-        FrameLayout.LayoutParams glp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        glp.leftMargin = dpToPx(30);
-        glp.bottomMargin = dpToPx(30);
-        glp.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
-        chordGrid.setLayoutParams(glp);
-        chordGrid.setVisibility(showChordButtons ? View.VISIBLE : View.GONE);
+        GesturePadView leftPad = new GesturePadView(this);
+        FrameLayout.LayoutParams lpLeft = new FrameLayout.LayoutParams(padSize, padSize);
+        lpLeft.leftMargin = padMargin;
+        lpLeft.bottomMargin = padMargin;
+        lpLeft.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
+        leftPad.setLayoutParams(lpLeft);
+        leftPad.setListener(new GesturePadView.Listener() {
+            @Override
+            public void onChordGestureCommitted(GesturePadView pad, com.rustharp.app.gesture.Dir initialDir, int modifiersMask) {
+                commitGestureChord(initialDir, modifiersMask);
+            }
+        });
+        root.addView(leftPad);
 
-        // ~30% bigger than before.
-        int bw = dpToPx(83);
-        int bh = dpToPx(55);
-
-
-        // Create chord buttons and add them in row-major order.
-        int[] chordIds = new int[]{BTN_V, BTN_I, BTN_IV, BTN_VIIB, BTN_II, BTN_VI, BTN_III, BTN_VII_DIM};
-        String[] chordLabels = new String[]{"V", "I", "IV", "VIIb", "ii", "vi", "iii", "vii\u00B0"};
-        for (int i = 0; i < chordIds.length; i++) {
-            int id = chordIds[i];
-            uiButtons[id] = makeUiButton(chordLabels[i], id, bw, bh);
-            // Chord-wheel gesture replaces the default button press logic for these chord buttons.
-            uiButtons[id].setOnTouchListener(chordWheelTouchListener(id));
-            chordGrid.addView(uiButtons[id]);
-        }
-
-        root.addView(chordGrid);
-
-        // Wheel overlay draws above the chord buttons (made visible only while a wheel gesture is active).
-        wheelOverlay = new WheelOverlayView(this);
-        wheelOverlay.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
-        wheelOverlay.setVisibility(View.GONE);
-        root.addView(wheelOverlay);
+        // Right pad reserved for later (minor-root mapping); currently inert.
+        GesturePadView rightPad = new GesturePadView(this);
+        FrameLayout.LayoutParams lpRight = new FrameLayout.LayoutParams(padSize, padSize);
+        lpRight.leftMargin = padMargin + padSize + padGap;
+        lpRight.bottomMargin = padMargin;
+        lpRight.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
+        rightPad.setLayoutParams(lpRight);
+        root.addView(rightPad);
 
         // Status panel (lower-right): key selector.
         LinearLayout status = new LinearLayout(this);
@@ -865,21 +883,6 @@ public class MainActivity extends Activity {
             updateChordButtonLabels();
         });
         options.addView(cbRoman);
-
-        CheckBox cbButtons = new CheckBox(this);
-        cbButtons.setText("Chord buttons");
-        cbButtons.setTextColor(0xFFFFFFFF);
-        cbButtons.setChecked(showChordButtons);
-        cbButtons.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            showChordButtons = isChecked;
-            if (prefs != null) {
-                prefs.edit().putBoolean("showChordButtons", showChordButtons).apply();
-            }
-            if (chordGrid != null) {
-                chordGrid.setVisibility(showChordButtons ? View.VISIBLE : View.GONE);
-            }
-        });
-        options.addView(cbButtons);
 
         // Audio backend selection (applies on restart for now).
         audioSpinner = new Spinner(this);

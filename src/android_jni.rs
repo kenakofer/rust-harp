@@ -158,6 +158,18 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetImpliedSevenths
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetWheelModifiers(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    modifiers_bits: jint,
+) {
+    let frontend = frontend_mut_or_return!(handle, ());
+    let mods = crate::chord::Modifiers::from_bits_truncate(modifiers_bits as u16);
+    frontend.engine_mut().set_wheel_modifiers(mods);
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustSetChordReleaseNoteOffDelayMs(
     _env: JNIEnv,
     _class: JClass,
