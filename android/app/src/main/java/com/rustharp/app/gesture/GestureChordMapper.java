@@ -19,6 +19,7 @@ public final class GestureChordMapper {
     public static final int MOD_ADD_M6 = 1 << 4;
     public static final int MOD_ADD_m7 = 1 << 6;
     public static final int MOD_ADD_M7 = 1 << 7;
+    public static final int MOD_SWITCH_MINOR_MAJOR = 1 << 10;
     public static final int MOD_ADD_4 = 1 << 11;
     public static final int MOD_NO3 = 1 << 12;
 
@@ -66,6 +67,16 @@ public final class GestureChordMapper {
     }
 
     public static Integer modifiersForTurns(List<Turn> turns) {
+        return modifiersForTurns(turns, false);
+    }
+
+    /**
+     * @param minorPad if true, CCW alone "major-ifies" (toggle) instead of "minor-ifying".
+     */
+    public static Integer modifiersForTurns(List<Turn> turns, boolean minorPad) {
+        if (minorPad && turns.size() == 1 && turns.get(0) == Turn.CCW) {
+            return MOD_SWITCH_MINOR_MAJOR;
+        }
         return TABLE.get(turns);
     }
 }

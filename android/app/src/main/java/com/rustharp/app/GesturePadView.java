@@ -50,6 +50,7 @@ public final class GesturePadView extends View {
 
     private int activePointerId = -1;
     private Listener listener;
+    private boolean minorPad = false;
 
     public GesturePadView(Context ctx) {
         super(ctx);
@@ -83,6 +84,10 @@ public final class GesturePadView extends View {
 
     public void setListener(Listener l) {
         this.listener = l;
+    }
+
+    public void setMinorPad(boolean enabled) {
+        this.minorPad = enabled;
     }
 
     @Override
@@ -198,7 +203,7 @@ public final class GesturePadView extends View {
                 return true;
             }
 
-            Integer mods = GestureChordMapper.modifiersForTurns(r.turns);
+            Integer mods = GestureChordMapper.modifiersForTurns(r.turns, minorPad);
             if (mods == null) {
                 Log.d("RustHarp", "gesture initial=" + r.initial + " turns=" + r.turns + " => undefined");
                 showOverlay = false;

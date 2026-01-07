@@ -612,7 +612,35 @@ public class MainActivity extends Activity {
                 return;
         }
 
-        Log.d("RustHarp", "gesture commit initial=" + initialDir + " chordBtnId=" + chordBtnId + " modifiersBits=0x" + Integer.toHexString(modifiersMask));
+        commitGestureChordById("majPad", initialDir, chordBtnId, modifiersMask);
+    }
+
+    private void commitGestureChordMinor(com.rustharp.app.gesture.Dir initialDir, int modifiersMask) {
+        if (rustHandle == 0 || initialDir == null) return;
+
+        int chordBtnId;
+        switch (initialDir) {
+            case UP:
+                chordBtnId = BTN_VI;
+                break;
+            case LEFT:
+                chordBtnId = BTN_II;
+                break;
+            case RIGHT:
+                chordBtnId = BTN_III;
+                break;
+            case DOWN:
+                chordBtnId = BTN_VII_DIM;
+                break;
+            default:
+                return;
+        }
+
+        commitGestureChordById("minPad", initialDir, chordBtnId, modifiersMask);
+    }
+
+    private void commitGestureChordById(String padId, com.rustharp.app.gesture.Dir initialDir, int chordBtnId, int modifiersMask) {
+        Log.d("RustHarp", "gesture commit pad=" + padId + " initial=" + initialDir + " chordBtnId=" + chordBtnId + " modifiersBits=0x" + Integer.toHexString(modifiersMask));
         rustSetWheelModifiers(rustHandle, modifiersMask);
 
         // Commit on release: apply chord at end-of-gesture, without keeping a chord button held.
@@ -767,13 +795,20 @@ public class MainActivity extends Activity {
         });
         root.addView(leftPad);
 
-        // Right pad reserved for later (minor-root mapping); currently inert.
+        // Right pad: minor-root mapping (vi/ii/iii/vii).
         GesturePadView rightPad = new GesturePadView(this);
+        rightPad.setMinorPad(true);
         FrameLayout.LayoutParams lpRight = new FrameLayout.LayoutParams(padSize, padSize);
         lpRight.leftMargin = padMargin + padSize + padGap;
         lpRight.bottomMargin = padMargin;
         lpRight.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
         rightPad.setLayoutParams(lpRight);
+        rightPad.setListener(new GesturePadView.Listener() {
+            @Override
+            public void onChordGestureCommitted(GesturePadView pad, com.rustharp.app.gesture.Dir initialDir, int modifiersMask) {
+                commitGestureChordMinor(initialDir, modifiersMask);
+            }
+        });
         root.addView(rightPad);
 
         // Status panel (lower-right): key selector.

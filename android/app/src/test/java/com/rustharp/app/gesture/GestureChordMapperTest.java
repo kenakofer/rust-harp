@@ -25,6 +25,12 @@ public class GestureChordMapperTest {
     }
 
     @Test
+    public void minorPadCcwMajorifies() {
+        assertEquals(Integer.valueOf(GestureChordMapper.MOD_SWITCH_MINOR_MAJOR),
+                GestureChordMapper.modifiersForTurns(Arrays.asList(Turn.CCW), true));
+    }
+
+    @Test
     public void diminishedSevenths() {
         assertEquals(Integer.valueOf(GestureChordMapper.MOD_DIMIN_TRI | GestureChordMapper.MOD_ADD_m7),
                 GestureChordMapper.modifiersForTurns(Arrays.asList(Turn.CCW, Turn.CW, Turn.CW)));
