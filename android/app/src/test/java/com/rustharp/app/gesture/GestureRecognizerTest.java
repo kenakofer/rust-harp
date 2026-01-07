@@ -7,7 +7,7 @@ import static org.junit.Assert.*;
 import java.util.Arrays;
 
 public class GestureRecognizerTest {
-    private static final float D = 30.0f;
+    private static final float D = 90.0f;
 
     @Test
     public void noCommitBelowThreshold() {
@@ -45,9 +45,9 @@ public class GestureRecognizerTest {
         // Commit LEFT, overshoot far left, then move right only D should commit BACK.
         GestureRecognizer gr = new GestureRecognizer(D);
         gr.onDown(0, 0);
-        gr.onMove(-100, 0); // commits LEFT at -30 anchor, but finger is at -100
-        gr.onMove(-70, 0);  // move right by 30 from committed anchor => BACK
-        GestureResult r = gr.onUp(-70, 0);
+        gr.onMove(-100, 0); // commits LEFT at -90 anchor, but finger is at -100
+        gr.onMove(0, 0);     // move right by 90 from committed anchor => BACK
+        GestureResult r = gr.onUp(0, 0);
 
         assertEquals(Arrays.asList(Dir.LEFT, Dir.RIGHT), r.committedAbsDirs);
         assertEquals(Arrays.asList(Turn.BACK), r.turns);
