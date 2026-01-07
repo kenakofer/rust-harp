@@ -112,6 +112,15 @@ public final class GestureChordMapper {
      * @param minorPad if true, CCW alone "major-ifies" (toggle) instead of "minor-ifying".
      */
     public static Integer modifiersForTurns(List<Turn> turns, boolean minorPad) {
-        return (minorPad ? TABLE_MINOR : TABLE_MAJOR).get(turns);
+        Map<List<Turn>, Integer> table = minorPad ? TABLE_MINOR : TABLE_MAJOR;
+
+        // Longest-prefix match so undefined sequences degrade gracefully.
+        for (int n = turns.size(); n >= 0; n--) {
+            Integer mods = table.get(turns.subList(0, n));
+            if (mods != null) {
+                return mods;
+            }
+        }
+        return null;
     }
 }

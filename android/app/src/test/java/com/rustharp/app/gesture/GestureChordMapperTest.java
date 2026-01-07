@@ -45,7 +45,13 @@ public class GestureChordMapperTest {
     }
 
     @Test
-    public void undefinedReturnsNull() {
-        assertNull(GestureChordMapper.modifiersForTurns(Arrays.asList(Turn.CW, Turn.CCW)));
+    public void undefinedFallsBackToLongestPrefix() {
+        // [CW, CCW] is undefined; should fall back to [CW]
+        assertEquals(Integer.valueOf(GestureChordMapper.MOD_ADD_m7),
+                GestureChordMapper.modifiersForTurns(Arrays.asList(Turn.CW, Turn.CCW)));
+
+        // Minor pad should fall back to its [CW] mapping.
+        assertEquals(Integer.valueOf(GestureChordMapper.MOD_MAJOR_TRI | GestureChordMapper.MOD_ADD_m7),
+                GestureChordMapper.modifiersForTurns(Arrays.asList(Turn.CW, Turn.CCW), true));
     }
 }
