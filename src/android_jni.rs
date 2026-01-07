@@ -52,7 +52,7 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonsCount(
 
 #[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetUiButtonIndex(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     id: JString,
 ) -> jint {
