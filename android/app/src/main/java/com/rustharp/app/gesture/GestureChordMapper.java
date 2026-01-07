@@ -71,9 +71,9 @@ public final class GestureChordMapper {
         min.put(Collections.emptyList(), 0);
 
         // CW family: force major triad so +m7 behaves like a dominant-style chord.
-        min.put(Arrays.asList(Turn.CW), MOD_MAJOR_TRI | MOD_ADD_m7);
-        min.put(Arrays.asList(Turn.CW, Turn.CW), MOD_MAJOR_TRI | MOD_ADD_m7 | MOD_ADD_M2);
-        min.put(Arrays.asList(Turn.CW, Turn.BACK), MOD_MAJOR_TRI | MOD_ADD_M7);
+        min.put(Arrays.asList(Turn.CW), MOD_SWITCH_MINOR_MAJOR | MOD_ADD_m7);
+        min.put(Arrays.asList(Turn.CW, Turn.CW), MOD_SWITCH_MINOR_MAJOR | MOD_ADD_m7 | MOD_ADD_M2);
+        min.put(Arrays.asList(Turn.CW, Turn.BACK), MOD_SWITCH_MINOR_MAJOR | MOD_ADD_M7);
 
         // CCW alone: "major-ify" (toggle) instead of "minor-ify".
         min.put(Arrays.asList(Turn.CCW), MOD_SWITCH_MINOR_MAJOR);
