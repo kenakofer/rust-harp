@@ -32,7 +32,8 @@ public final class GesturePadView extends View {
         void onChordGestureCommitted(GesturePadView pad, Dir initialDir, int modifiersMask);
     }
 
-    private static final float GESTURE_DISTANCE_PX = 30.0f;
+    private static final float GESTURE_DISTANCE_PX = 90.0f;
+    private static final float VIS_SCALE = GESTURE_DISTANCE_PX / 30.0f;
 
     private final GestureRecognizer gr = new GestureRecognizer(GESTURE_DISTANCE_PX);
 
@@ -57,7 +58,7 @@ public final class GesturePadView extends View {
         pBg.setColor(0x22FFFFFF);
 
         pPath.setColor(0xFFFFFFFF);
-        pPath.setStrokeWidth(4.0f);
+        pPath.setStrokeWidth(4.0f * VIS_SCALE);
         pPath.setStyle(Paint.Style.STROKE);
         pPath.setAntiAlias(true);
 
@@ -66,12 +67,12 @@ public final class GesturePadView extends View {
         pAnchor.setAntiAlias(true);
 
         pAllowed.setColor(0x6600FF00);
-        pAllowed.setStrokeWidth(10.0f);
+        pAllowed.setStrokeWidth(10.0f * VIS_SCALE);
         pAllowed.setStyle(Paint.Style.STROKE);
         pAllowed.setAntiAlias(true);
 
         pBlocked.setColor(0x66FF0000);
-        pBlocked.setStrokeWidth(10.0f);
+        pBlocked.setStrokeWidth(10.0f * VIS_SCALE);
         pBlocked.setStyle(Paint.Style.STROKE);
         pBlocked.setAntiAlias(true);
 
@@ -113,7 +114,7 @@ public final class GesturePadView extends View {
         }
 
         // Current anchor + threshold radius.
-        c.drawCircle(st.anchorX, st.anchorY, 8.0f, pAnchor);
+        c.drawCircle(st.anchorX, st.anchorY, 8.0f * VIS_SCALE, pAnchor);
         c.drawCircle(st.anchorX, st.anchorY, d, pAllowed);
 
         // Allowed/blocked directions from the anchor.
@@ -137,7 +138,7 @@ public final class GesturePadView extends View {
         }
 
         // Finger position.
-        c.drawCircle(lastX, lastY, 10.0f, pFinger);
+        c.drawCircle(lastX, lastY, 10.0f * VIS_SCALE, pFinger);
     }
 
     @Override
