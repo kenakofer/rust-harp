@@ -62,29 +62,32 @@ public final class GestureRecognizer {
 
         // A single move event can legitimately commit multiple segments.
         while (true) {
-            float ex = x;
-            float ey = y;
-
-            // Clamp overshoot in the blocked forward direction.
+            // Distance-agnostic behavior: once a direction is committed, further motion in that
+            // blocked (forward) direction drags the virtual anchor along with the finger.
             if (lastDir != null) {
-                switch (lastDir) {
-                    case LEFT:
-                        ex = Math.max(ex, anchorX);
-                        break;
-                    case RIGHT:
-                        ex = Math.min(ex, anchorX);
-                        break;
-                    case UP:
-                        ey = Math.max(ey, anchorY);
-                        break;
-                    case DOWN:
-                        ey = Math.min(ey, anchorY);
-                        break;
+                float dx0 = x - anchorX;
+                float dy0 = y - anchorY;
+                float forward = lastDir.proj(dx0, dy0);
+                if (forward > 0) {
+                    switch (lastDir) {
+                        case LEFT:
+                            anchorX -= forward;
+                            break;
+                        case RIGHT:
+                            anchorX += forward;
+                            break;
+                        case UP:
+                            anchorY -= forward;
+                            break;
+                        case DOWN:
+                            anchorY += forward;
+                            break;
+                    }
                 }
             }
 
-            float dx = ex - anchorX;
-            float dy = ey - anchorY;
+            float dx = x - anchorX;
+            float dy = y - anchorY;
 
             Dir commit;
 

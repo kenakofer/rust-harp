@@ -95,9 +95,23 @@ public final class GesturePadView extends View {
         GestureDebugState st = gr.debugState();
         float d = st.gestureDistancePx;
 
-        // Draw committed path (virtual, distance-agnostic).
-        float x = st.downX;
-        float y = st.downY;
+        // Draw committed path (virtual), including any anchor dragging in the blocked direction.
+        float endX = st.downX;
+        float endY = st.downY;
+        for (int i = 0; i < st.committedAbsDirs.size(); i++) {
+            Dir dir = st.committedAbsDirs.get(i);
+            switch (dir) {
+                case LEFT: endX -= d; break;
+                case RIGHT: endX += d; break;
+                case UP: endY -= d; break;
+                case DOWN: endY += d; break;
+            }
+        }
+        float offX = st.anchorX - endX;
+        float offY = st.anchorY - endY;
+
+        float x = st.downX + offX;
+        float y = st.downY + offY;
         for (int i = 0; i < st.committedAbsDirs.size(); i++) {
             Dir dir = st.committedAbsDirs.get(i);
             float nx = x;
