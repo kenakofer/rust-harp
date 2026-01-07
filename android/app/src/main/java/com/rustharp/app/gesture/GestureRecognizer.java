@@ -16,6 +16,9 @@ public final class GestureRecognizer {
 
     private boolean active = false;
 
+    private float downX;
+    private float downY;
+
     private float anchorX;
     private float anchorY;
 
@@ -31,11 +34,27 @@ public final class GestureRecognizer {
 
     public void onDown(float x, float y) {
         active = true;
+        downX = x;
+        downY = y;
         anchorX = x;
         anchorY = y;
         lastDir = null;
         committedAbs.clear();
         turns.clear();
+    }
+
+    public GestureDebugState debugState() {
+        return new GestureDebugState(
+                active,
+                d,
+                downX,
+                downY,
+                anchorX,
+                anchorY,
+                lastDir,
+                committedAbs,
+                turns
+        );
     }
 
     public void onMove(float x, float y) {
