@@ -31,8 +31,15 @@ public final class ChordNamer {
         Integer mods = GestureChordMapper.modifiersForTurns(turns, minorPad);
         if (mods == null) mods = 0;
 
+        return formatChordWithMods(rootDegree, mods, useRoman, keyPc);
+    }
+
+    /**
+     * Format a chord name given root degree and explicit modifier bits.
+     */
+    public static String formatChordWithMods(int rootDegree, int mods, boolean useRoman, int keyPc) {
         if (useRoman) {
-            return formatRoman(rootDegree, mods, minorPad);
+            return formatRoman(rootDegree, mods, false);
         } else {
             int absolutePc = (keyPc + rootDegree) % 12;
             String[] keys = preferFlatsForKey(keyPc) ? NOTE_NAMES_FLAT : NOTE_NAMES_SHARP;

@@ -191,6 +191,21 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustFlushDeferredNoteO
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetActiveChord(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jlong {
+    let frontend = frontend_or_return!(handle, 0);
+    let chord = frontend.engine().active_chord();
+    let root_pc = chord.get_root().wrap_to_octave();
+    let mods_bits = chord.mods.bits();
+    
+    // Pack root (lower 16 bits) and modifiers (upper 16 bits) into a single jlong.
+    ((mods_bits as i64) << 16) | (root_pc as i64)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_rustharp_app_MainActivity_rustHasActiveNoteVisuals(
     _env: JNIEnv,
     _class: JClass,

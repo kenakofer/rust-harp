@@ -32,7 +32,7 @@ pub struct Chord {
     // Disable name for now, since this will be better as a debugging tool rather than crucial logic
     //name: &'static str,
     root: UnkeyedNote,
-    mods: Modifiers,
+    pub(crate) mods: Modifiers,
 }
 
 type ModifierFn = fn(&mut PitchClassSet);

@@ -215,12 +215,14 @@ public class MainActivity extends Activity {
                 rustHandleUiButton(rustHandle, id, true);
                 redraw();
                 updateUiButtons();
+                updateCurrentChordLabel();
                 return true;
             }
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) {
                 rustHandleUiButton(rustHandle, id, false);
                 redraw();
                 updateUiButtons();
+                updateCurrentChordLabel();
                 return true;
             }
             return true;
@@ -660,6 +662,23 @@ public class MainActivity extends Activity {
 
         if ((flags & 1) != 0) redraw();
         if (flags != 0) updateUiButtons();
+        updateCurrentChordLabel();
+    }
+
+    private void updateCurrentChordLabel() {
+        if (rustHandle == 0 || currentChordLabel == null) return;
+        
+        long packed = rustGetActiveChord(rustHandle);
+        int rootPc = (int)(packed & 0xFFFF);
+        int modsBits = (int)((packed >> 16) & 0xFFFF);
+        
+        // Convert root pitch class to root degree relative to key.
+        int k = ((keyIndex % 12) + 12) % 12;
+        int rootDegree = ((rootPc - k) + 12) % 12;
+        
+        // Format using ChordNamer with the actual modifiers from Rust.
+        String chordName = ChordNamer.formatChordWithMods(rootDegree, modsBits, showRomanChords, k);
+        currentChordLabel.setText(chordName);
     }
 
     @Override
@@ -868,6 +887,7 @@ public class MainActivity extends Activity {
                 }
                 updateChordButtonLabels();
                 updatePadPreferences();
+                updateCurrentChordLabel();
                 int flags = rustSetKeyIndex(rustHandle, keyIndex);
                 if ((flags & 1) != 0) redraw();
                 if (flags != 0) updateUiButtons();
@@ -947,6 +967,7 @@ public class MainActivity extends Activity {
             }
             updateChordButtonLabels();
             updatePadPreferences();
+            updateCurrentChordLabel();
         });
         options.addView(cbRoman);
 
@@ -1024,6 +1045,10 @@ public class MainActivity extends Activity {
         iv.requestFocus();
         updateChordButtonLabels();
         updateUiButtons();
+        
+        // Initialize pad preferences and current chord display.
+        updatePadPreferences();
+        updateCurrentChordLabel();
 
         // Prevent system back/forward gestures from stealing edge swipes.
         // Note: Android limits the total excluded area; we only exclude thin edge strips.
