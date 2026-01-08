@@ -54,6 +54,20 @@ public class GestureRecognizerTest {
     }
 
     @Test
+    public void lateralDriftIsResetAtCommit() {
+        // Commit UP with some horizontal drift; anchor should snap X to the finger position so CCW
+        // (LEFT) still commits with exactly D additional motion.
+        GestureRecognizer gr = new GestureRecognizer(D);
+        gr.onDown(0, 0);
+        gr.onMove(D * 0.2f, -D);          // UP (with drift)
+        gr.onMove(D * 0.2f - D, -D);      // CCW from UP => LEFT
+        GestureResult r = gr.onUp(D * 0.2f - D, -D);
+
+        assertEquals(Arrays.asList(Dir.UP, Dir.LEFT), r.committedAbsDirs);
+        assertEquals(Arrays.asList(Turn.CCW), r.turns);
+    }
+
+    @Test
     public void multiSegmentCommitUpThenCcwThenBack() {
         // UP then CCW (left) then BACK (right relative to left)
         GestureRecognizer gr = new GestureRecognizer(D);

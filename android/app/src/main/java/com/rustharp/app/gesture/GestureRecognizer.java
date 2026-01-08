@@ -7,7 +7,8 @@ import java.util.List;
  * Distance-agnostic cardinal gesture recognizer.
  *
  * - Commit a segment once movement crosses gestureDistancePx along a cardinal direction.
- * - After each commit, advance a virtual anchor by exactly gestureDistancePx.
+ * - After each commit, advance a virtual anchor by exactly gestureDistancePx, while snapping the
+ *   perpendicular axis to the finger position (resets unintended lateral drift).
  * - The previous (forward) direction is blocked for the next segment, and overshoot in that
  *   direction is clamped so BACK does not require retracing overshoot.
  */
@@ -130,7 +131,7 @@ public final class GestureRecognizer {
                 if (commit == null) return;
             }
 
-            commitDir(commit);
+            commitDir(commit, x, y);
             // Continue loop: there might be enough remaining displacement for another commit.
         }
     }
@@ -151,7 +152,7 @@ public final class GestureRecognizer {
         turns.clear();
     }
 
-    private void commitDir(Dir dir) {
+    private void commitDir(Dir dir, float fingerX, float fingerY) {
         if (lastDir != null) {
             Turn t = Turn.fromDirs(lastDir, dir);
             if (t == null) {
@@ -164,19 +165,24 @@ public final class GestureRecognizer {
         committedAbs.add(dir);
         lastDir = dir;
 
-        // Advance anchor by exactly d.
+        // Advance anchor by exactly d along the committed direction, but keep lateral drift
+        // distance-agnostic by snapping the perpendicular axis to the finger position.
         switch (dir) {
             case LEFT:
                 anchorX -= d;
+                anchorY = fingerY;
                 break;
             case RIGHT:
                 anchorX += d;
+                anchorY = fingerY;
                 break;
             case UP:
                 anchorY -= d;
+                anchorX = fingerX;
                 break;
             case DOWN:
                 anchorY += d;
+                anchorX = fingerX;
                 break;
         }
     }
