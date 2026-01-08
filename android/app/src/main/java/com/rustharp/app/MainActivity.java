@@ -92,6 +92,10 @@ public class MainActivity extends Activity {
 
     private GridLayout chordGrid;
 
+    private GesturePadView leftPad;
+    private GesturePadView rightPad;
+    private TextView currentChordLabel;
+
     private boolean noteVisualsRunning = false;
     private final Runnable noteVisualsTick = new Runnable() {
         @Override
@@ -591,6 +595,12 @@ public class MainActivity extends Activity {
         if (uiButtons[BTN_VII_DIM] != null) uiButtons[BTN_VII_DIM].setText(keys[viiDim] + "dim");
     }
 
+    private void updatePadPreferences() {
+        int k = ((keyIndex % 12) + 12) % 12;
+        if (leftPad != null) leftPad.setChordPreferences(showRomanChords, k);
+        if (rightPad != null) rightPad.setChordPreferences(showRomanChords, k);
+    }
+
     private void commitGestureChord(com.rustharp.app.gesture.Dir initialDir, int modifiersMask) {
         if (rustHandle == 0 || initialDir == null) return;
 
@@ -782,6 +792,7 @@ public class MainActivity extends Activity {
         int padMargin = dpToPx(30);
 
         GesturePadView leftPad = new GesturePadView(this);
+        this.leftPad = leftPad;
         FrameLayout.LayoutParams lpLeft = new FrameLayout.LayoutParams(padSize, padSize);
         lpLeft.leftMargin = padMargin;
         lpLeft.bottomMargin = padMargin;
@@ -797,6 +808,7 @@ public class MainActivity extends Activity {
 
         // Right pad: minor-root mapping (vi/ii/iii/vii).
         GesturePadView rightPad = new GesturePadView(this);
+        this.rightPad = rightPad;
         rightPad.setMinorPad(true);
         FrameLayout.LayoutParams lpRight = new FrameLayout.LayoutParams(padSize, padSize);
         lpRight.leftMargin = padMargin + padSize + padGap;
@@ -810,6 +822,23 @@ public class MainActivity extends Activity {
             }
         });
         root.addView(rightPad);
+
+        // Current chord display (centered between pads at bottom).
+        TextView currentChordLabel = new TextView(this);
+        this.currentChordLabel = currentChordLabel;
+        currentChordLabel.setText("I"); // initial
+        currentChordLabel.setTextColor(0xFFFFFFFF);
+        currentChordLabel.setTextSize(24.0f);
+        currentChordLabel.setBackgroundColor(0x88000000);
+        currentChordLabel.setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4));
+        FrameLayout.LayoutParams lpCurrent = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        lpCurrent.bottomMargin = padMargin;
+        lpCurrent.leftMargin = padMargin * 2 + padSize * 2 + padGap;
+        lpCurrent.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
+        currentChordLabel.setLayoutParams(lpCurrent);
+        root.addView(currentChordLabel);
 
         // Status panel (lower-right): key selector.
         LinearLayout status = new LinearLayout(this);
@@ -838,6 +867,7 @@ public class MainActivity extends Activity {
                     prefs.edit().putInt("keyIndex", keyIndex).apply();
                 }
                 updateChordButtonLabels();
+                updatePadPreferences();
                 int flags = rustSetKeyIndex(rustHandle, keyIndex);
                 if ((flags & 1) != 0) redraw();
                 if (flags != 0) updateUiButtons();
@@ -916,6 +946,7 @@ public class MainActivity extends Activity {
                 prefs.edit().putBoolean("showRomanChords", showRomanChords).apply();
             }
             updateChordButtonLabels();
+            updatePadPreferences();
         });
         options.addView(cbRoman);
 
