@@ -64,6 +64,7 @@ public final class GesturePadView extends View {
     private int keyPc = 0;
 
     private List<Turn> pendingTurns = Collections.emptyList();
+    private boolean gestureActive = false;  // Track if gesture is in progress
 
     public GesturePadView(Context ctx) {
         super(ctx);
@@ -95,7 +96,7 @@ public final class GesturePadView extends View {
         pFinger.setAntiAlias(true);
 
         pChordLabel.setColor(0xFFFFFFFF);
-        pChordLabel.setTextSize(18.0f);
+        pChordLabel.setTextSize(36.0f);  // 2x the original 18
         pChordLabel.setTextAlign(Paint.Align.CENTER);
         pChordLabel.setAntiAlias(true);
 
@@ -149,16 +150,27 @@ public final class GesturePadView extends View {
         float cx = w / 2;
         float cy = h / 2;
 
-        // Determine available next directions based on gesture state.
+        // Determine available next directions and the root chord based on gesture state.
         GestureDebugState st = gr.debugState();
         List<Dir> availableDirs;
+        Dir initialDir = null;
 
-        if (st.lastDir == null) {
-            // No gesture yet: show initial directions.
+        // Check if we have an active gesture with committed directions.
+        if (gestureActive && !st.committedAbsDirs.isEmpty()) {
+            initialDir = st.committedAbsDirs.get(0);
+        }
+
+        if (initialDir == null) {
+            // No gesture active: show initial 4 directions.
             availableDirs = Arrays.asList(Dir.UP, Dir.LEFT, Dir.RIGHT, Dir.DOWN);
         } else {
-            // In-progress gesture: show CCW/CW/BACK.
-            availableDirs = Arrays.asList(st.lastDir.ccw(), st.lastDir.cw(), st.lastDir.opposite());
+            // In-progress gesture: show CCW/CW/BACK relative to last direction.
+            Dir lastDir = st.lastDir;
+            if (lastDir != null) {
+                availableDirs = Arrays.asList(lastDir.ccw(), lastDir.cw(), lastDir.opposite());
+            } else {
+                availableDirs = Arrays.asList(Dir.UP, Dir.LEFT, Dir.RIGHT, Dir.DOWN);
+            }
         }
 
         // Draw chord labels around the edge for each available direction.
@@ -175,31 +187,31 @@ public final class GesturePadView extends View {
             }
 
             List<Turn> nextTurns;
-            if (st.lastDir == null) {
-                // Initial direction => no turns yet.
+            int rootDeg;
+
+            if (initialDir == null) {
+                // No gesture yet: show the chord for starting this direction with no turns.
                 nextTurns = Collections.emptyList();
+                rootDeg = rootDegreeForDir(dir);
             } else {
-                // Append the turn for this direction.
+                // In-progress gesture: compute next turn from current state, keep initial root.
                 nextTurns = new ArrayList<>(pendingTurns);
                 Turn nextTurn = com.rustharp.app.gesture.Turn.fromDirs(st.lastDir, dir);
                 if (nextTurn != null) {
                     nextTurns.add(nextTurn);
                 }
+                rootDeg = rootDegreeForDir(initialDir);  // Always use initial root
             }
 
-            int rootDeg = rootDegreeForDir(st.lastDir == null ? dir : availableDirs.get(0));
             String chordName = ChordNamer.formatChord(rootDeg, nextTurns, minorPad, useRomanChords, keyPc);
             c.drawText(chordName, labelX, labelY + pChordLabel.getTextSize() / 3, pChordLabel);
         }
 
         // Draw pending chord in center.
-        if (!pendingTurns.isEmpty() && st.lastDir != null) {
-            Dir initial = st.committedAbsDirs.isEmpty() ? null : st.committedAbsDirs.get(0);
-            if (initial != null) {
-                int rootDeg = rootDegreeForDir(initial);
-                String centerChord = ChordNamer.formatChord(rootDeg, pendingTurns, minorPad, useRomanChords, keyPc);
-                c.drawText(centerChord, cx, cy + pChordCenter.getTextSize() / 3, pChordCenter);
-            }
+        if (!pendingTurns.isEmpty() && initialDir != null) {
+            int rootDeg = rootDegreeForDir(initialDir);
+            String centerChord = ChordNamer.formatChord(rootDeg, pendingTurns, minorPad, useRomanChords, keyPc);
+            c.drawText(centerChord, cx, cy + pChordCenter.getTextSize() / 3, pChordCenter);
         }
 
         if (!showOverlay) return;
@@ -276,6 +288,8 @@ public final class GesturePadView extends View {
             lastX = e.getX(0);
             lastY = e.getY(0);
             showOverlay = true;
+            pendingTurns = Collections.emptyList();  // Clear on new gesture
+            gestureActive = true;  // Mark gesture as active
             gr.onDown(lastX, lastY);
             invalidate();
             return true;
@@ -312,7 +326,8 @@ public final class GesturePadView extends View {
             if (r.initial == null) {
                 showOverlay = false;
                 pendingTurns = Collections.emptyList();
-                invalidate();
+                gestureActive = false;  // Gesture ended
+                invalidate();  // Reset to show basic 4 directions
                 return true;
             }
 
@@ -321,7 +336,8 @@ public final class GesturePadView extends View {
                 Log.d("RustHarp", "gesture initial=" + r.initial + " turns=" + r.turns + " => undefined");
                 showOverlay = false;
                 pendingTurns = Collections.emptyList();
-                invalidate();
+                gestureActive = false;  // Gesture ended
+                invalidate();  // Reset to show basic 4 directions
                 return true;
             }
 
@@ -329,6 +345,8 @@ public final class GesturePadView extends View {
 
             showOverlay = false;
             pendingTurns = Collections.emptyList();
+            gestureActive = false;  // Gesture ended
+            invalidate();  // Reset to show basic 4 directions after commit
 
             if (listener != null) {
                 listener.onChordGestureCommitted(this, r.initial, mods);
