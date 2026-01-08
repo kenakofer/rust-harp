@@ -147,6 +147,7 @@ public class MainActivity extends Activity {
     public static native void rustSetWheelModifiers(long handle, int modifiersBits);
     public static native void rustSetChordReleaseNoteOffDelayMs(long handle, int ms);
     public static native void rustFlushDeferredNoteOffs(long handle);
+    public static native long rustGetActiveChord(long handle);
     public static native boolean rustHasActiveNoteVisuals(long handle);
     public static native int rustApplyChordWheelChoice(long handle, int chordButtonId, int dir8);
     public static native int rustToggleChordWheelMinorMajor(long handle, int chordButtonId);
