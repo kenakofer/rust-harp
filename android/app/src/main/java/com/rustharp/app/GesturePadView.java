@@ -32,7 +32,7 @@ public final class GesturePadView extends View {
         void onChordGestureCommitted(GesturePadView pad, Dir initialDir, int modifiersMask);
     }
 
-    private static final float GESTURE_DISTANCE_PX = 50.0f;
+    private static final float GESTURE_DISTANCE_PX = 70.0f;
     private static final float VIS_SCALE = GESTURE_DISTANCE_PX / 30.0f;
 
     private final GestureRecognizer gr = new GestureRecognizer(GESTURE_DISTANCE_PX);
