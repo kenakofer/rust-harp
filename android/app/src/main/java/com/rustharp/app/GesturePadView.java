@@ -3,6 +3,7 @@ package com.rustharp.app;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Typeface;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
@@ -130,12 +131,14 @@ public final class GesturePadView extends View {
         pChordLabel.setTextSize(36.0f);  // 2x the original 18
         pChordLabel.setTextAlign(Paint.Align.CENTER);
         pChordLabel.setAntiAlias(true);
+        pChordLabel.setTypeface(Typeface.SERIF);
 
         pChordCenter.setColor(0xFFFFFF00);
         pChordCenter.setTextSize(28.0f);
         pChordCenter.setTextAlign(Paint.Align.CENTER);
         pChordCenter.setAntiAlias(true);
         pChordCenter.setFakeBoldText(true);
+        pChordCenter.setTypeface(Typeface.SERIF);
 
         pCircleOutline.setColor(0xFFFFFFFF);
         pCircleOutline.setStyle(Paint.Style.STROKE);

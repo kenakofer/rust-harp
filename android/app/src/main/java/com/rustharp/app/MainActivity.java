@@ -850,6 +850,7 @@ public class MainActivity extends Activity {
         currentChordLabel.setText("I"); // initial
         currentChordLabel.setTextColor(0xFFFFFFFF);
         currentChordLabel.setTextSize(24.0f);
+        currentChordLabel.setTypeface(android.graphics.Typeface.SERIF);
         currentChordLabel.setBackgroundColor(0x88000000);
         currentChordLabel.setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4));
         FrameLayout.LayoutParams lpCurrent = new FrameLayout.LayoutParams(
