@@ -803,6 +803,8 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
         root.setMotionEventSplittingEnabled(true);
+        root.setClipChildren(false);
+        root.setClipToPadding(false);
 
         root.addView(iv);
 

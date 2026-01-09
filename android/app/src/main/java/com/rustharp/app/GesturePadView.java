@@ -196,7 +196,13 @@ public final class GesturePadView extends View {
         float cy = h / 2;
         float radius = Math.min(w, h) * 0.45f;
 
-        // Draw static circle outline around the edge labels.
+        // During active gesture, center on finger position instead of pad center.
+        if (gestureActive) {
+            cx = lastX;
+            cy = lastY;
+        }
+
+        // Draw circle outline around the edge labels (follows finger during gesture).
         c.drawCircle(cx, cy, radius, pCircleOutline);
 
         // Determine available next directions and the root chord based on gesture state.
@@ -254,13 +260,6 @@ public final class GesturePadView extends View {
 
             String chordName = ChordNamer.formatChord(rootDeg, nextTurns, minorPad, useRomanChords, keyPc);
             c.drawText(chordName, labelX, labelY + pChordLabel.getTextSize() / 3, pChordLabel);
-        }
-
-        // Draw chevrons pointing in allowed directions (only during active gesture).
-        if (initialDir != null) {
-            for (Dir dir : availableDirs) {
-                drawChevron(c, cx, cy, dir, radius, pChevron);
-            }
         }
 
         // Draw pending chord in center (show as soon as we have an initial direction).
