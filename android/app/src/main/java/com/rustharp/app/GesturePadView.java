@@ -207,8 +207,8 @@ public final class GesturePadView extends View {
             c.drawText(chordName, labelX, labelY + pChordLabel.getTextSize() / 3, pChordLabel);
         }
 
-        // Draw pending chord in center.
-        if (!pendingTurns.isEmpty() && initialDir != null) {
+        // Draw pending chord in center (show as soon as we have an initial direction).
+        if (initialDir != null) {
             int rootDeg = rootDegreeForDir(initialDir);
             String centerChord = ChordNamer.formatChord(rootDeg, pendingTurns, minorPad, useRomanChords, keyPc);
             c.drawText(centerChord, cx, cy + pChordCenter.getTextSize() / 3, pChordCenter);
