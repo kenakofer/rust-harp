@@ -34,6 +34,35 @@ public final class GesturePadView extends View {
         c.drawLine(x, y, nx, ny, p);
     }
 
+    private static void drawChevron(Canvas c, float cx, float cy, Dir dir, float radius, Paint p) {
+        // Draw a small outward-pointing chevron (>) just outside the circle edge.
+        float angle = 0;
+        switch (dir) {
+            case UP:    angle = (float) Math.toRadians(-90); break;
+            case DOWN:  angle = (float) Math.toRadians(90); break;
+            case LEFT:  angle = (float) Math.toRadians(180); break;
+            case RIGHT: angle = (float) Math.toRadians(0); break;
+        }
+
+        // Position the tip outside the circle
+        float chevronSize = 24.0f; // 2x the original 12px
+        float tipDistance = radius + chevronSize * 0.3f; // Move tip outside by 30% of chevron size
+        float tipX = cx + tipDistance * (float) Math.cos(angle);
+        float tipY = cy + tipDistance * (float) Math.sin(angle);
+
+        float chevronAngle = (float) Math.toRadians(30); // 30° spread
+
+        // Left arm of chevron
+        float lx = tipX - chevronSize * (float) Math.cos(angle - chevronAngle);
+        float ly = tipY - chevronSize * (float) Math.sin(angle - chevronAngle);
+        c.drawLine(tipX, tipY, lx, ly, p);
+
+        // Right arm of chevron
+        float rx = tipX - chevronSize * (float) Math.cos(angle + chevronAngle);
+        float ry = tipY - chevronSize * (float) Math.sin(angle + chevronAngle);
+        c.drawLine(tipX, tipY, rx, ry, p);
+    }
+
     public interface Listener {
         void onChordGestureCommitted(GesturePadView pad, Dir initialDir, int modifiersMask);
     }
@@ -51,6 +80,8 @@ public final class GesturePadView extends View {
     private final Paint pFinger = new Paint();
     private final Paint pChordLabel = new Paint();
     private final Paint pChordCenter = new Paint();
+    private final Paint pCircleOutline = new Paint();
+    private final Paint pChevron = new Paint();
 
     private float lastX = 0;
     private float lastY = 0;
@@ -105,6 +136,17 @@ public final class GesturePadView extends View {
         pChordCenter.setTextAlign(Paint.Align.CENTER);
         pChordCenter.setAntiAlias(true);
         pChordCenter.setFakeBoldText(true);
+
+        pCircleOutline.setColor(0xFFFFFFFF);
+        pCircleOutline.setStyle(Paint.Style.STROKE);
+        pCircleOutline.setStrokeWidth(2.0f);
+        pCircleOutline.setAntiAlias(true);
+
+        pChevron.setColor(0xFFFFFFFF);
+        pChevron.setStyle(Paint.Style.STROKE);
+        pChevron.setStrokeWidth(3.0f);
+        pChevron.setStrokeCap(Paint.Cap.ROUND);
+        pChevron.setAntiAlias(true);
     }
 
     public void setListener(Listener l) {
@@ -149,6 +191,10 @@ public final class GesturePadView extends View {
         float h = getHeight();
         float cx = w / 2;
         float cy = h / 2;
+        float radius = Math.min(w, h) * 0.45f;
+
+        // Draw static circle outline around the edge labels.
+        c.drawCircle(cx, cy, radius, pCircleOutline);
 
         // Determine available next directions and the root chord based on gesture state.
         GestureDebugState st = gr.debugState();
@@ -205,6 +251,13 @@ public final class GesturePadView extends View {
 
             String chordName = ChordNamer.formatChord(rootDeg, nextTurns, minorPad, useRomanChords, keyPc);
             c.drawText(chordName, labelX, labelY + pChordLabel.getTextSize() / 3, pChordLabel);
+        }
+
+        // Draw chevrons pointing in allowed directions (only during active gesture).
+        if (initialDir != null) {
+            for (Dir dir : availableDirs) {
+                drawChevron(c, cx, cy, dir, radius, pChevron);
+            }
         }
 
         // Draw pending chord in center (show as soon as we have an initial direction).
