@@ -499,6 +499,7 @@ mod tests {
     fn fixed_rows_have_expected_note_sets() {
         let state = AppState::new();
 
+        // Row 1: Major scale
         let major = state.chord_for_row(1);
         for pc in 0..12 {
             let n = UnkeyedNote(pc);
@@ -506,15 +507,17 @@ mod tests {
             assert_eq!(major.contains(n), exp);
         }
 
-        let comp = state.chord_for_row(2);
+        // Row 2: Chromatic (3-note) - moved from row 3
+        let chrom = state.chord_for_row(2);
+        for pc in 0..12 {
+            assert!(chrom.contains(UnkeyedNote(pc)));
+        }
+
+        // Row 3: Complement of major scale (5-note pentatonic) - moved from row 2
+        let comp = state.chord_for_row(3);
         for pc in 0..12 {
             let n = UnkeyedNote(pc);
             assert_eq!(comp.contains(n), !major.contains(n));
-        }
-
-        let chrom = state.chord_for_row(3);
-        for pc in 0..12 {
-            assert!(chrom.contains(UnkeyedNote(pc)));
         }
     }
 

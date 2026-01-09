@@ -53,27 +53,31 @@ pub struct RowSpec {
 
 pub fn default_row_specs() -> Vec<RowSpec> {
     vec![
+        // Row 0: Active chord (chromatic / 12-note) - was 40%, now 36% (90% of 40%)
         RowSpec {
-            height_frac: 0.40,
+            height_frac: 0.36,
             chord: RowChordSpec::ActiveChord,
             show_note_names: true,
             label_min_prio: 1,
         },
+        // Row 1: Major scale (7-note) - was 25%, now 29% (gets extra 4% from row 0)
         RowSpec {
-            height_frac: 0.25,
+            height_frac: 0.29,
             chord: RowChordSpec::MajorScale,
             show_note_names: true,
             label_min_prio: 1,
         },
-        RowSpec {
-            height_frac: 0.25,
-            chord: RowChordSpec::ComplementOf(1),
-            show_note_names: false,
-            label_min_prio: 1,
-        },
+        // Row 2: Chromatic (3-note) - moved from bottom (was row 3)
         RowSpec {
             height_frac: 0.10,
             chord: RowChordSpec::Chromatic,
+            show_note_names: false,
+            label_min_prio: 1,
+        },
+        // Row 3: Complement of major scale (5-note pentatonic) - moved from row 2
+        RowSpec {
+            height_frac: 0.25,
+            chord: RowChordSpec::ComplementOf(1),
             show_note_names: false,
             label_min_prio: 1,
         },

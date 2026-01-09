@@ -807,13 +807,14 @@ public class MainActivity extends Activity {
         root.addView(iv);
 
         // Gesture pads (lower-left). Chord buttons are removed; gestures commit on release.
-        int padSize = dpToPx(166); // ~2x2 of the prior chord button footprint.
+        int padWidth = dpToPx(166); // ~2x2 of the prior chord button footprint.
+        int padHeight = dpToPx(133); // 80% of width (0.8 * 166 ≈ 133)
         int padGap = dpToPx(12);
         int padMargin = dpToPx(30);
 
         GesturePadView leftPad = new GesturePadView(this);
         this.leftPad = leftPad;
-        FrameLayout.LayoutParams lpLeft = new FrameLayout.LayoutParams(padSize, padSize);
+        FrameLayout.LayoutParams lpLeft = new FrameLayout.LayoutParams(padWidth, padHeight);
         lpLeft.leftMargin = padMargin;
         lpLeft.bottomMargin = padMargin;
         lpLeft.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
@@ -830,8 +831,8 @@ public class MainActivity extends Activity {
         GesturePadView rightPad = new GesturePadView(this);
         this.rightPad = rightPad;
         rightPad.setMinorPad(true);
-        FrameLayout.LayoutParams lpRight = new FrameLayout.LayoutParams(padSize, padSize);
-        lpRight.leftMargin = padMargin + padSize + padGap;
+        FrameLayout.LayoutParams lpRight = new FrameLayout.LayoutParams(padWidth, padHeight);
+        lpRight.leftMargin = padMargin + padWidth + padGap;
         lpRight.bottomMargin = padMargin;
         lpRight.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
         rightPad.setLayoutParams(lpRight);
@@ -855,7 +856,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT);
         lpCurrent.bottomMargin = padMargin;
-        lpCurrent.leftMargin = padMargin * 2 + padSize * 2 + padGap;
+        lpCurrent.leftMargin = padMargin * 2 + padWidth * 2 + padGap;
         lpCurrent.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.START;
         currentChordLabel.setLayoutParams(lpCurrent);
         root.addView(currentChordLabel);
