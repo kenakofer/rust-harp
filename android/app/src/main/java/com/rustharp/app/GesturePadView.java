@@ -194,13 +194,17 @@ public final class GesturePadView extends View {
         float h = getHeight();
         float cx = w / 2;
         float cy = h / 2;
-        float radius = Math.min(w, h) * 0.45f;
+        float baseSize = Math.min(w, h);
+        float scale = 1.0f;
 
-        // During active gesture, center on finger position instead of pad center.
+        // During active gesture, center on finger position and scale up 40%.
         if (gestureActive) {
             cx = lastX;
             cy = lastY;
+            scale = 1.4f;
         }
+
+        float radius = baseSize * 0.45f * scale;
 
         // Draw circle outline around the edge labels (follows finger during gesture).
         c.drawCircle(cx, cy, radius, pCircleOutline);
@@ -232,7 +236,7 @@ public final class GesturePadView extends View {
         for (Dir dir : availableDirs) {
             float labelX = cx;
             float labelY = cy;
-            float offset = Math.min(w, h) * 0.4f;
+            float offset = baseSize * 0.4f * scale;
 
             switch (dir) {
                 case UP:    labelY -= offset; break;
