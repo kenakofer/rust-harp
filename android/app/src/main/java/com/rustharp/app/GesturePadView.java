@@ -266,11 +266,13 @@ public final class GesturePadView extends View {
             c.drawText(chordName, labelX, labelY + pChordLabel.getTextSize() / 3, pChordLabel);
         }
 
-        // Draw pending chord in center (show as soon as we have an initial direction).
+        // Draw pending chord in static pad center (show as soon as we have an initial direction).
         if (initialDir != null) {
+            float padCx = w / 2;
+            float padCy = h / 2;
             int rootDeg = rootDegreeForDir(initialDir);
             String centerChord = ChordNamer.formatChord(rootDeg, pendingTurns, minorPad, useRomanChords, keyPc);
-            c.drawText(centerChord, cx, cy + pChordCenter.getTextSize() / 3, pChordCenter);
+            c.drawText(centerChord, padCx, padCy + pChordCenter.getTextSize() / 3, pChordCenter);
         }
 
         if (!showOverlay) return;
