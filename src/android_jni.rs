@@ -198,7 +198,8 @@ pub extern "system" fn Java_com_rustharp_app_MainActivity_rustGetActiveChord(
 ) -> jlong {
     let frontend = frontend_or_return!(handle, 0);
     let chord = frontend.engine().active_chord();
-    let root_pc = chord.get_root().wrap_to_octave();
+    let transpose = frontend.engine().transpose().wrap_to_octave();
+    let root_pc = (chord.get_root().wrap_to_octave() + transpose).rem_euclid(12);
     let mods_bits = chord.mods.bits();
     
     // Pack root (lower 16 bits) and modifiers (upper 16 bits) into a single jlong.
