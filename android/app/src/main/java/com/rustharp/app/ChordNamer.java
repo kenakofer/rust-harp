@@ -43,7 +43,7 @@ public final class ChordNamer {
         } else {
             int absolutePc = (keyPc + rootDegree) % 12;
             String[] keys = preferFlatsForKey(keyPc) ? NOTE_NAMES_FLAT : NOTE_NAMES_SHARP;
-            return formatAbsolute(keys[absolutePc], mods);
+            return formatAbsolute(keys[absolutePc], rootDegree, mods);
         }
     }
 
@@ -121,7 +121,7 @@ public final class ChordNamer {
         }
     }
 
-    private static String formatAbsolute(String rootNote, int mods) {
+    private static String formatAbsolute(String rootNote, int rootDegree, int mods) {
         String suffix = "";
 
         boolean hasMajorTri = (mods & GestureChordMapper.MOD_MAJOR_TRI) != 0;
@@ -132,14 +132,37 @@ public final class ChordNamer {
         boolean hasAddM2    = (mods & GestureChordMapper.MOD_ADD_M2) != 0;
         boolean hasAddM6    = (mods & GestureChordMapper.MOD_ADD_M6) != 0;
         boolean hasSus4     = (mods & GestureChordMapper.MOD_SUS4) == GestureChordMapper.MOD_SUS4;
+        boolean hasSwitch   = (mods & GestureChordMapper.MOD_SWITCH_MINOR_MAJOR) != 0;
 
-        boolean actuallyMinor = hasMinorTri;
-        boolean actuallyDim = hasDiminTri;
+        // Determine default quality based on root degree (same logic as Roman formatter).
+        boolean isMinorDefault;
+        boolean isDimDefault;
+
+        switch (rootDegree) {
+            case 0:  isMinorDefault = false; isDimDefault = false; break; // I
+            case 2:  isMinorDefault = true;  isDimDefault = false; break; // ii
+            case 4:  isMinorDefault = true;  isDimDefault = false; break; // iii
+            case 5:  isMinorDefault = false; isDimDefault = false; break; // IV
+            case 7:  isMinorDefault = false; isDimDefault = false; break; // V
+            case 9:  isMinorDefault = true;  isDimDefault = false; break; // vi
+            case 10: isMinorDefault = false; isDimDefault = false; break; // bVII
+            case 11: isMinorDefault = false; isDimDefault = true;  break; // vii° (dim)
+            default: isMinorDefault = false; isDimDefault = false; break;
+        }
+
+        boolean actuallyMinor = isMinorDefault;
+        boolean actuallyDim = isDimDefault;
 
         // Apply triad overrides.
         if (hasMajorTri) { actuallyMinor = false; actuallyDim = false; }
         if (hasMinorTri) { actuallyMinor = true;  actuallyDim = false; }
         if (hasDiminTri) { actuallyMinor = false; actuallyDim = true; }
+        if (hasSwitch) {
+            // Toggle logic (same as Roman)
+            if (actuallyMinor) { actuallyMinor = false; }
+            else if (actuallyDim) { actuallyDim = false; actuallyMinor = false; }
+            else { actuallyMinor = true; }
+        }
 
         // Build quality + extensions.
         if (actuallyDim && hasAddm7 && hasAddM6) {
